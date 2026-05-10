@@ -1,0 +1,1284 @@
+# IP Creator - LoRA 训练与 IP-Adapter 集成实施计划
+
+**项目版本：** v2.0  
+**计划制定日期：** 2026-05-10  
+**执行分支：** `feature/optimization`  
+**预计完成日期：** 2026-06-28（8 周）  
+**计划状态：** 📋 待开始
+
+---
+
+## 📋 执行计划总览
+
+### **项目目标**
+
+实现完整的 IP 孵化流程，确保：
+1. LoRA 训练功能完全可用（非模拟）
+2. IP-Adapter 真实集成并提供 IP 一致性保障
+3. 训练质量可评估、可验证
+4. 用户体验流畅，降低使用门槛
+
+### **关键交付物**
+
+- ✅ 完整的训练数据集管理系统
+- ✅ Kohya-ss 真实集成
+- ✅ 训练质量评估体系
+- ✅ IP-Adapter 增强功能
+- ✅ 前端工作流界面
+- ✅ 完整的技术文档和用户文档
+
+---
+
+## 📅 详细实施计划
+
+### **阶段一：数据集管理基础（Week 1-2）**
+
+**时间：** 2026-05-11 ~ 2026-05-24  
+**目标：** 实现完整的训练数据集管理功能  
+**负责人：** [待分配]  
+**状态：** ⏳ 待开始
+
+---
+
+#### **Week 1: 数据模型与后端基础**
+
+**任务 1.1: 数据库设计与迁移**
+- **优先级：** 🔴 P0
+- **预估工时：** 4 小时
+- **状态：** ⏳ 待开始
+
+**具体工作：**
+- [ ] 1.1.1 创建数据库迁移脚本
+  - 文件：`sql/migrations/006_create_training_datasets.sql`
+  - 内容：创建 `training_datasets` 表
+  - 字段：id, ip_asset_id, name, description, image_count, quality_score 等
+  
+- [ ] 1.1.2 创建 `dataset_images` 表
+  - 文件：`sql/migrations/006_create_training_datasets.sql`（同一文件）
+  - 字段：id, dataset_id, file_path, angle, expression, quality_score 等
+  
+- [ ] 1.1.3 创建 `test_images` 表
+  - 文件：`sql/migrations/007_create_test_images.sql`
+  - 字段：id, lora_model_id, file_path, prompt, quality_score 等
+  
+- [ ] 1.1.4 创建 `training_checkpoints` 表
+  - 文件：`sql/migrations/007_create_test_images.sql`（同一文件）
+  - 字段：id, lora_model_id, epoch, loss, is_recommended 等
+  
+- [ ] 1.1.5 修改 `lora_models` 表
+  - 文件：`sql/migrations/008_extend_lora_models.sql`
+  - 添加字段：dataset_id, quality_score, quality_report, recommended_checkpoint_id
+
+**验收标准：**
+- ✅ 所有表创建成功
+- ✅ 索引和约束正确
+- ✅ 外键关系正确
+- ✅ 可以执行迁移脚本无错误
+
+**交付物：**
+- `sql/migrations/006_create_training_datasets.sql`
+- `sql/migrations/007_create_test_images.sql`
+- `sql/migrations/008_extend_lora_models.sql`
+
+---
+
+**任务 1.2: SQLAlchemy 模型定义**
+- **优先级：** 🔴 P0
+- **预估工时：** 4 小时
+- **状态：** ⏳ 待开始
+
+**具体工作：**
+- [ ] 1.2.1 创建 `TrainingDataset` 模型
+  - 文件：`app/models/training_dataset.py`
+  - 包含所有字段定义
+  - 添加关系：ip_asset, images, versions
+  
+- [ ] 1.2.2 创建 `DatasetImage` 模型
+  - 文件：`app/models/dataset_image.py`
+  - 包含所有字段定义
+  - 添加关系：dataset, parent_image
+  
+- [ ] 1.2.3 创建 `TestImage` 模型
+  - 文件：`app/models/test_image.py`
+  
+- [ ] 1.2.4 创建 `TrainingCheckpoint` 模型
+  - 文件：`app/models/training_checkpoint.py`
+  
+- [ ] 1.2.5 修改 `LoRAModel` 模型
+  - 文件：`app/models/lora_model.py`
+  - 添加新字段和关系
+
+**验收标准：**
+- ✅ 模型定义完整
+- ✅ 关系映射正确
+- ✅ 可以正常 CRUD 操作
+- ✅ 通过单元测试
+
+**交付物：**
+- `app/models/training_dataset.py`
+- `app/models/dataset_image.py`
+- `app/models/test_image.py`
+- `app/models/training_checkpoint.py`
+- 修改：`app/models/lora_model.py`
+
+---
+
+**任务 1.3: Pydantic Schemas 定义**
+- **优先级：** 🔴 P0
+- **预估工时：** 3 小时
+- **状态：** ⏳ 待开始
+
+**具体工作：**
+- [ ] 1.3.1 创建 Dataset schemas
+  - 文件：`app/schemas/dataset.py`
+  - DatasetCreate, DatasetUpdate, DatasetResponse
+  
+- [ ] 1.3.2 创建 DatasetImage schemas
+  - 文件：`app/schemas/dataset_image.py`
+  
+- [ ] 1.3.3 创建 TestImage schemas
+  - 文件：`app/schemas/test_image.py`
+
+**验收标准：**
+- ✅ Schema 定义完整
+- ✅ 验证规则正确
+- ✅ 支持嵌套对象
+
+**交付物：**
+- `app/schemas/dataset.py`
+- `app/schemas/dataset_image.py`
+- `app/schemas/test_image.py`
+
+---
+
+**任务 1.4: DatasetManager 核心服务**
+- **优先级：** 🔴 P0
+- **预估工时：** 8 小时
+- **状态：** ⏳ 待开始
+
+**具体工作：**
+- [ ] 1.4.1 创建 DatasetManager 类
+  - 文件：`app/services/dataset_manager.py`
+  - 基础架构和初始化
+  
+- [ ] 1.4.2 实现数据集上传功能
+  - 方法：`upload_dataset()`
+  - 支持批量图片上传
+  - 自动生成元数据
+  
+- [ ] 1.4.3 实现图片质量检查
+  - 方法：`check_image_quality()`
+  - 检查分辨率（>= 512x512）
+  - 检查文件格式（JPG/PNG）
+  - 检查文件大小（< 10MB）
+  
+- [ ] 1.4.4 实现自动去重
+  - 方法：`detect_duplicates()`
+  - 使用感知哈希（pHash）
+  - 相似度阈值 90%
+  
+- [ ] 1.4.5 实现数据集验证
+  - 方法：`validate_dataset()`
+  - 检查图片数量（15-30 张）
+  - 检查角度覆盖
+  - 生成验证报告
+
+**验收标准：**
+- ✅ 上传功能正常
+- ✅ 质量检查准确
+- ✅ 去重功能有效
+- ✅ 验证报告完整
+- ✅ 通过单元测试（覆盖率 > 80%）
+
+**交付物：**
+- `app/services/dataset_manager.py`
+- `tests/test_dataset_manager.py`
+
+---
+
+#### **Week 1 检查点**
+
+**检查日期：** 2026-05-17  
+**检查内容：**
+- [ ] 数据库迁移脚本已创建并可执行
+- [ ] 所有 SQLAlchemy 模型已定义
+- [ ] Pydantic Schemas 已定义
+- [ ] DatasetManager 基础功能完成
+- [ ] 单元测试覆盖率 > 70%
+
+**风险点：**
+- ⚠️ 数据库设计是否合理
+- ⚠️ 图片质量检查算法是否准确
+
+---
+
+#### **Week 2: 数据增强与前端界面**
+
+**任务 2.1: 数据增强功能**
+- **优先级：** 🟡 P1
+- **预估工时：** 6 小时
+- **状态：** ⏳ 待开始
+
+**具体工作：**
+- [ ] 2.1.1 实现数据增强策略
+  - 文件：`app/services/data_augmentation.py`
+  - 水平翻转
+  - 旋转（±15度）
+  - 颜色抖动
+  - 亮度调整
+  
+- [ ] 2.1.2 实现增强执行
+  - 方法：`augment_dataset()`
+  - 支持选择性增强
+  - 记录增强元数据
+  
+- [ ] 2.1.3 实现数据集版本管理
+  - 方法：`create_version()`
+  - 记录版本差异
+  - 支持版本对比
+
+**验收标准：**
+- ✅ 增强策略有效
+- ✅ 增强后图片质量保持
+- ✅ 版本管理正常
+
+**交付物：**
+- `app/services/data_augmentation.py`
+- 更新：`app/services/dataset_manager.py`
+
+---
+
+**任务 2.2: Dataset API 路由**
+- **优先级：** 🔴 P0
+- **预估工时：** 4 小时
+- **状态：** ⏳ 待开始
+
+**具体工作：**
+- [ ] 2.2.1 创建 dataset router
+  - 文件：`app/api/v1/dataset_router.py`
+  
+- [ ] 2.2.2 实现 CRUD 端点
+  - `POST /api/v1/datasets` - 创建数据集
+  - `GET /api/v1/datasets` - 列表
+  - `GET /api/v1/datasets/{id}` - 详情
+  - `PUT /api/v1/datasets/{id}` - 更新
+  - `DELETE /api/v1/datasets/{id}` - 删除
+  
+- [ ] 2.2.3 实现图片管理端点
+  - `POST /api/v1/datasets/{id}/images` - 上传图片
+  - `DELETE /api/v1/datasets/{id}/images/{image_id}` - 删除图片
+  - `POST /api/v1/datasets/{id}/augment` - 数据增强
+  - `POST /api/v1/datasets/{id}/validate` - 验证数据集
+
+**验收标准：**
+- ✅ 所有端点正常工作
+- ✅ 错误处理完善
+- ✅ 参数验证正确
+- ✅ API 文档自动生成
+
+**交付物：**
+- `app/api/v1/dataset_router.py`
+- 更新：`app/api/v1/__init__.py`（注册路由）
+
+---
+
+**任务 2.3: 前端数据集管理界面**
+- **优先级：** 🔴 P0
+- **预估工时：** 8 小时
+- **状态：** ⏳ 待开始
+
+**具体工作：**
+- [ ] 2.3.1 创建数据集管理页面
+  - 文件：`frontend-vue/src/views/DatasetManagement.vue`
+  
+- [ ] 2.3.2 实现图片上传组件
+  - 文件：`frontend-vue/src/components/dataset/ImageUpload.vue`
+  - 拖拽上传
+  - 批量上传
+  - 上传进度
+  
+- [ ] 2.3.3 实现图片网格视图
+  - 文件：`frontend-vue/src/components/dataset/ImageGrid.vue`
+  - 缩略图展示
+  - 图片标注（角度、表情）
+  - 删除操作
+  
+- [ ] 2.3.4 实现数据集统计面板
+  - 文件：`frontend-vue/src/components/dataset/StatsPanel.vue`
+  - 图片数量
+  - 角度覆盖
+  - 质量评分
+  
+- [ ] 2.3.5 实现验证报告展示
+  - 文件：`frontend-vue/src/components/dataset/ValidationReport.vue`
+
+**验收标准：**
+- ✅ 界面美观易用
+- ✅ 上传功能流畅
+- ✅ 数据展示清晰
+- ✅ 响应式设计
+
+**交付物：**
+- `frontend-vue/src/views/DatasetManagement.vue`
+- `frontend-vue/src/components/dataset/` (整个目录)
+
+---
+
+**任务 2.4: 前端 API 集成**
+- **优先级：** 🔴 P0
+- **预估工时：** 3 小时
+- **状态：** ⏳ 待开始
+
+**具体工作：**
+- [ ] 2.4.1 创建 dataset API 客户端
+  - 文件：`frontend-vue/src/api/dataset.js`
+  - 封装所有 dataset 相关 API
+  
+- [ ] 2.4.2 集成到 IPAssets 页面
+  - 文件：`frontend-vue/src/views/IPAssets.vue`
+  - 添加"训练数据集"标签页
+  - 链接到数据集管理
+
+**验收标准：**
+- ✅ API 调用正常
+- ✅ 错误处理完善
+- ✅ 加载状态友好
+
+**交付物：**
+- `frontend-vue/src/api/dataset.js`
+- 更新：`frontend-vue/src/views/IPAssets.vue`
+
+---
+
+#### **Week 2 检查点**
+
+**检查日期：** 2026-05-24  
+**检查内容：**
+- [ ] 数据增强功能完成
+- [ ] Dataset API 端点全部可用
+- [ ] 前端数据集管理界面完成
+- [ ] 前后端集成测试通过
+- [ ] 用户界面测试通过
+
+**里程碑：** 🎉 阶段一完成 - 数据集管理功能可用
+
+---
+
+### **阶段二：Kohya-ss 真实集成（Week 3-4）**
+
+**时间：** 2026-05-25 ~ 2026-06-07  
+**目标：** 实现真实的 LoRA 训练功能  
+**状态：** ⏳ 待开始
+
+---
+
+#### **Week 3: Kohya 集成核心**
+
+**任务 3.1: Kohya 环境检测与配置**
+- **优先级：** 🔴 P0
+- **预估工时：** 6 小时
+- **状态：** ⏳ 待开始
+
+**具体工作：**
+- [ ] 3.1.1 实现 Kohya 路径检测
+  - 文件：`app/services/kohya_integration.py`
+  - 方法：`auto_detect_kohya_path()`
+  - 检测顺序：环境变量 → 常见路径 → pip → Docker
+  
+- [ ] 3.1.2 实现 Kohya 版本检查
+  - 方法：`check_kohya_version()`
+  - 验证最低版本要求
+  - 兼容性检查
+  
+- [ ] 3.1.3 实现环境验证
+  - 方法：`validate_environment()`
+  - 检查 Python 版本
+  - 检查依赖包
+  - 检查 GPU 可用性
+
+**验收标准：**
+- ✅ 能正确检测 Kohya 安装
+- ✅ 版本检查准确
+- ✅ 环境验证完整
+
+**交付物：**
+- `app/services/kohya_integration.py`
+
+---
+
+**任务 3.2: 数据集格式转换**
+- **优先级：** 🔴 P0
+- **预估工时：** 4 小时
+- **状态：** ⏳ 待开始
+
+**具体工作：**
+- [ ] 3.2.1 实现 Kohya 格式转换
+  - 方法：`convert_to_kohya_format()`
+  - 目录命名：`10_character_name`
+  - 复制图片到对应目录
+  
+- [ ] 3.2.2 实现 caption 文件生成（可选）
+  - 方法：`generate_captions()`
+  - 为每张图片生成 .txt 文件
+  - 包含触发词和描述
+
+**验收标准：**
+- ✅ 格式转换正确
+- ✅ Kohya 可识别
+
+**交付物：**
+- 更新：`app/services/kohya_integration.py`
+
+---
+
+**任务 3.3: 训练配置生成**
+- **优先级：** 🔴 P0
+- **预估工时：** 6 小时
+- **状态：** ⏳ 待开始
+
+**具体工作：**
+- [ ] 3.3.1 实现自动配置生成
+  - 方法：`generate_training_config()`
+  - 基于数据集大小计算步数
+  - 基于 GPU 显存调整 batch size
+  - 预设安全参数
+  
+- [ ] 3.3.2 实现配置模板
+  - 新手模式：保守参数
+  - 标准模式：平衡参数
+  - 专家模式：自定义参数
+  
+- [ ] 3.3.3 实现配置文件生成
+  - 方法：`generate_config_file()`
+  - 输出 JSON 格式
+  - 符合 Kohya 要求
+
+**验收标准：**
+- ✅ 配置参数合理
+- ✅ 配置文件格式正确
+- ✅ 支持多种模式
+
+**交付物：**
+- 更新：`app/services/kohya_integration.py`
+- `app/services/training_config.py`
+
+---
+
+**任务 3.4: 训练执行引擎**
+- **优先级：** 🔴 P0
+- **预估工时：** 10 小时
+- **状态：** ⏳ 待开始
+
+**具体工作：**
+- [ ] 3.4.1 实现训练进程启动
+  - 方法：`start_training_process()`
+  - 使用 subprocess 启动
+  - 捕获 stdout 和 stderr
+  
+- [ ] 3.4.2 实现日志实时解析
+  - 方法：`parse_training_log()`
+  - 提取 epoch、loss、learning rate
+  - 更新到数据库
+  
+- [ ] 3.4.3 实现进度更新
+  - 方法：`update_progress()`
+  - 每 10 秒更新一次
+  - 更新到数据库
+  
+- [ ] 3.4.4 实现训练中断
+  - 方法：`pause_training()`
+  - 保存当前状态
+  - 终止进程
+  
+- [ ] 3.4.5 实现训练恢复
+  - 方法：`resume_training()`
+  - 从最新 checkpoint 恢复
+  
+- [ ] 3.4.6 实现训练取消
+  - 方法：`cancel_training()`
+  - 清理临时文件
+  - 更新状态
+
+**验收标准：**
+- ✅ 训练可以正常启动
+- ✅ 进度实时更新
+- ✅ 可以中断和恢复
+- ✅ 错误处理完善
+
+**交付物：**
+- 更新：`app/services/kohya_integration.py`
+- 更新：`app/core/lora_trainer.py`
+
+---
+
+#### **Week 3 检查点**
+
+**检查日期：** 2026-05-31  
+**检查内容：**
+- [ ] Kohya 环境检测正常
+- [ ] 数据集格式转换正确
+- [ ] 训练配置生成合理
+- [ ] 训练可以启动并执行
+- [ ] 进度实时更新
+
+**风险点：**
+- ⚠️ Kohya-ss 版本兼容性
+- ⚠️ 训练进程稳定性
+- ⚠️ 日志解析准确性
+
+---
+
+#### **Week 4: 训练监控与前端**
+
+**任务 4.1: WebSocket 实时监控**
+- **优先级：** 🟡 P1
+- **预估工时：** 6 小时
+- **状态：** ⏳ 待开始
+
+**具体工作：**
+- [ ] 4.1.1 实现 WebSocket 端点
+  - 文件：`app/api/v1/ws_router.py`
+  - 路径：`/ws/training/{lora_id}`
+  
+- [ ] 4.1.2 实现实时推送
+  - 推送进度更新
+  - 推送日志行
+  - 推送 GPU 状态
+  
+- [ ] 4.1.3 实现心跳机制
+  - 保持连接活跃
+  - 断线重连
+
+**验收标准：**
+- ✅ WebSocket 连接稳定
+- ✅ 实时推送正常
+- ✅ 断线重连正常
+
+**交付物：**
+- `app/api/v1/ws_router.py`
+
+---
+
+**任务 4.2: 训练监控前端界面**
+- **优先级：** 🔴 P0
+- **预估工时：** 8 小时
+- **状态：** ⏳ 待开始
+
+**具体工作：**
+- [ ] 4.2.1 创建训练监控页面
+  - 文件：`frontend-vue/src/views/TrainingMonitor.vue`
+  
+- [ ] 4.2.2 实现进度展示
+  - 进度条
+  - Epoch 信息
+  - Loss 数值
+  
+- [ ] 4.2.3 实现 Loss 曲线图
+  - 使用 ECharts
+  - 实时更新
+  - 历史数据展示
+  
+- [ ] 4.2.4 实现日志查看器
+  - 实时滚动
+  - 日志过滤
+  - 错误高亮
+  
+- [ ] 4.2.5 实现 GPU 状态面板
+  - 显存使用
+  - GPU 利用率
+  - 温度监控
+
+**验收标准：**
+- ✅ 界面美观
+- ✅ 实时更新流畅
+- ✅ 数据展示清晰
+
+**交付物：**
+- `frontend-vue/src/views/TrainingMonitor.vue`
+- `frontend-vue/src/components/training/` (组件目录)
+
+---
+
+**任务 4.3: 训练结果处理**
+- **优先级：** 🔴 P0
+- **预估工时：** 4 小时
+- **状态：** ⏳ 待开始
+
+**具体工作：**
+- [ ] 4.3.1 实现训练完成处理
+  - 方法：`handle_training_complete()`
+  - 验证模型文件
+  - 更新数据库状态
+  - 触发质量评估
+  
+- [ ] 4.3.2 实现训练失败处理
+  - 方法：`handle_training_failed()`
+  - 记录错误信息
+  - 清理临时文件
+  - 发送通知
+  
+- [ ] 4.3.3 实现训练日志归档
+  - 保存完整日志
+  - 关联到训练记录
+
+**验收标准：**
+- ✅ 结果处理正确
+- ✅ 错误处理完善
+- ✅ 日志归档完整
+
+**交付物：**
+- 更新：`app/services/kohya_integration.py`
+
+---
+
+#### **Week 4 检查点**
+
+**检查日期：** 2026-06-07  
+**检查内容：**
+- [ ] WebSocket 实时监控正常
+- [ ] 训练监控界面完成
+- [ ] 训练结果处理正确
+- [ ] 完整训练流程测试通过
+
+**里程碑：** 🎉 阶段二完成 - Kohya 真实训练可用
+
+---
+
+### **阶段三：质量评估体系（Week 5-6）**
+
+**时间：** 2026-06-08 ~ 2026-06-21  
+**目标：** 实现训练质量评估和 IP 一致性检测  
+**状态：** ⏳ 待开始
+
+---
+
+#### **Week 5: 质量评估核心**
+
+**任务 5.1: 测试图片生成**
+- **优先级：** 🔴 P0
+- **预估工时：** 6 小时
+- **状态：** ⏳ 待开始
+
+**具体工作：**
+- [ ] 5.1.1 实现测试提示词模板
+  - 文件：`app/services/test_prompt_templates.py`
+  - 正面全身
+  - 侧面半身
+  - 不同表情
+  - 不同动作
+  
+- [ ] 5.1.2 实现测试图片生成
+  - 方法：`generate_test_images()`
+  - 使用训练好的 LoRA
+  - 生成 5 张测试图
+  
+- [ ] 5.1.3 实现测试图保存
+  - 保存到数据库
+  - 关联到 LoRA 模型
+
+**验收标准：**
+- ✅ 测试图生成成功
+- ✅ 覆盖多种场景
+- ✅ 图片质量良好
+
+**交付物：**
+- `app/services/test_prompt_templates.py`
+- 更新：`app/services/quality_assessor.py`
+
+---
+
+**任务 5.2: 特征提取器**
+- **优先级：** 🔴 P0
+- **预估工时：** 8 小时
+- **状态：** ⏳ 待开始
+
+**具体工作：**
+- [ ] 5.2.1 实现 CLIP 特征提取
+  - 文件：`app/services/feature_extractor.py`
+  - 加载 CLIP 模型
+  - 提取 512 维特征
+  
+- [ ] 5.2.2 实现面部特征提取（可选）
+  - 使用 FaceNet 或 ArcFace
+  - 提取 128 维面部特征
+  
+- [ ] 5.2.3 实现颜色特征提取
+  - K-Means 聚类
+  - 提取主色调
+
+**验收标准：**
+- ✅ 特征提取准确
+- ✅ 性能良好
+- ✅ 缓存机制有效
+
+**交付物：**
+- `app/services/feature_extractor.py`
+
+---
+
+**任务 5.3: 相似度计算**
+- **优先级：** 🔴 P0
+- **预估工时：** 4 小时
+- **状态：** ⏳ 待开始
+
+**具体工作：**
+- [ ] 5.3.1 实现余弦相似度
+  - 方法：`cosine_similarity()`
+  
+- [ ] 5.3.2 实现加权相似度
+  - CLIP 特征权重 60%
+  - 面部特征权重 30%
+  - 颜色特征权重 10%
+  
+- [ ] 5.3.3 实现相似度评分转换
+  - 转换为 0-100 分
+
+**验收标准：**
+- ✅ 相似度计算准确
+- ✅ 评分合理
+
+**交付物：**
+- 更新：`app/services/feature_extractor.py`
+
+---
+
+**任务 5.4: 质量评估服务**
+- **优先级：** 🔴 P0
+- **预估工时：** 8 小时
+- **状态：** ⏳ 待开始
+
+**具体工作：**
+- [ ] 5.4.1 创建 QualityAssessor 类
+  - 文件：`app/services/quality_assessor.py`
+  
+- [ ] 5.4.2 实现 IP 一致性评估
+  - 方法：`assess_consistency()`
+  - 对比参考图和测试图
+  - 计算一致性评分
+  
+- [ ] 5.4.3 实现图片质量评估
+  - 方法：`assess_image_quality()`
+  - 清晰度
+  - 色彩
+  - 噪点
+  
+- [ ] 5.4.4 实现风格匹配评估
+  - 方法：`assess_style_match()`
+  - 与目标风格对比
+  
+- [ ] 5.4.5 实现多样性评估
+  - 方法：`assess_diversity()`
+  - 测试图之间的差异
+  
+- [ ] 5.4.6 实现总体评分
+  - 方法：`calculate_overall_score()`
+  - 加权计算
+  - 过拟合/欠拟合惩罚
+
+**验收标准：**
+- ✅ 评估维度完整
+- ✅ 评分算法合理
+- ✅ 评估报告详细
+
+**交付物：**
+- `app/services/quality_assessor.py`
+
+---
+
+#### **Week 5 检查点**
+
+**检查日期：** 2026-06-14  
+**检查内容：**
+- [ ] 测试图片生成正常
+- [ ] 特征提取准确
+- [ ] 相似度计算合理
+- [ ] 质量评估完整
+
+**风险点：**
+- ⚠️ CLIP 模型加载速度
+- ⚠️ 评估算法准确性
+
+---
+
+#### **Week 6: 过拟合检测与前端**
+
+**任务 6.1: 过拟合/欠拟合检测**
+- **优先级：** 🟡 P1
+- **预估工时：** 4 小时
+- **状态：** ⏳ 待开始
+
+**具体工作：**
+- [ ] 6.1.1 实现过拟合检测
+  - 方法：`detect_overfitting()`
+  - 分析 loss 曲线
+  - 检测训练/验证差异
+  
+- [ ] 6.1.2 实现欠拟合检测
+  - 方法：`detect_underfitting()`
+  - 检测 loss 下降速度
+  
+- [ ] 6.1.3 实现改进建议生成
+  - 方法：`generate_recommendations()`
+  - 基于检测结果给出建议
+
+**验收标准：**
+- ✅ 检测准确
+- ✅ 建议实用
+
+**交付物：**
+- 更新：`app/services/quality_assessor.py`
+
+---
+
+**任务 6.2: 质量评估 API**
+- **优先级：** 🔴 P0
+- **预估工时：** 3 小时
+- **状态：** ⏳ 待开始
+
+**具体工作：**
+- [ ] 6.2.1 添加质量评估端点
+  - `POST /api/v1/lora/{id}/assess` - 触发评估
+  - `GET /api/v1/lora/{id}/quality-report` - 获取报告
+  
+- [ ] 6.2.2 集成到训练完成流程
+  - 训练完成后自动触发评估
+
+**验收标准：**
+- ✅ API 正常
+- ✅ 自动触发正常
+
+**交付物：**
+- 更新：`app/api/v1/lora_router.py`
+
+---
+
+**任务 6.3: 质量评估前端界面**
+- **优先级：** 🔴 P0
+- **预估工时：** 6 小时
+- **状态：** ⏳ 待开始
+
+**具体工作：**
+- [ ] 6.3.1 创建质量报告页面
+  - 文件：`frontend-vue/src/views/QualityReport.vue`
+  
+- [ ] 6.3.2 实现评分展示
+  - 总体评分（大数字）
+  - 维度评分（进度条）
+  
+- [ ] 6.3.3 实现测试图展示
+  - 网格视图
+  - 点击图片查看详情
+  
+- [ ] 6.3.4 实现诊断建议展示
+  - 问题列表
+  - 改进建议
+
+**验收标准：**
+- ✅ 界面美观
+- ✅ 数据展示清晰
+- ✅ 交互流畅
+
+**交付物：**
+- `frontend-vue/src/views/QualityReport.vue`
+
+---
+
+#### **Week 6 检查点**
+
+**检查日期：** 2026-06-21  
+**检查内容：**
+- [ ] 过拟合检测正常
+- [ ] 质量评估 API 可用
+- [ ] 前端质量报告页面完成
+- [ ] 完整评估流程测试通过
+
+**里程碑：** 🎉 阶段三完成 - 质量评估体系可用
+
+---
+
+### **阶段四：IP-Adapter 增强（Week 7）**
+
+**时间：** 2026-06-22 ~ 2026-06-28  
+**目标：** 增强 IP-Adapter 功能，提升 IP 一致性  
+**状态：** ⏳ 待开始
+
+---
+
+#### **Week 7: IP-Adapter 增强**
+
+**任务 7.1: 智能参考图选择**
+- **优先级：** 🔴 P0
+- **预估工时：** 6 小时
+- **状态：** ⏳ 待开始
+
+**具体工作：**
+- [ ] 7.1.1 实现参考图标注
+  - 文件：`app/services/ip_adapter_service.py`
+  - 为每张图片标注角度、表情、动作
+  
+- [ ] 7.1.2 实现智能选择算法
+  - 方法：`select_best_reference()`
+  - 根据提示词分析目标角度
+  - 选择最匹配的参考图
+  
+- [ ] 7.1.3 实现多参考图权重分配
+  - 主要图 60%
+  - 辅助图 30%
+  - 风格图 10%
+
+**验收标准：**
+- ✅ 选择算法合理
+- ✅ 权重分配有效
+
+**交付物：**
+- 更新：`app/services/ip_adapter_service.py`
+
+---
+
+**任务 7.2: 自适应 IP-Adapter Scale**
+- **优先级：** 🟡 P1
+- **预估工时：** 4 小时
+- **状态：** ⏳ 待开始
+
+**具体工作：**
+- [ ] 7.2.1 实现提示词分析
+  - 方法：`analyze_prompt()`
+  - 检测是否强调角色
+  - 检测是否强调场景
+  
+- [ ] 7.2.2 实现自适应 scale
+  - 方法：`adaptive_ip_adapter_scale()`
+  - 角色强调 → 0.7-0.9
+  - 场景强调 → 0.5-0.7
+  - 自由创作 → 0.3-0.5
+
+**验收标准：**
+- ✅ scale 调整合理
+- ✅ 生成效果改善
+
+**交付物：**
+- 更新：`app/services/ip_adapter_service.py`
+
+---
+
+**任务 7.3: 生成后一致性检查**
+- **优先级：** 🔴 P0
+- **预估工时：** 6 小时
+- **状态：** ⏳ 待开始
+
+**具体工作：**
+- [ ] 7.3.1 实现生成后自动检查
+  - 方法：`check_generated_consistency()`
+  - 生成后立即检查一致性
+  
+- [ ] 7.3.2 实现低分警告
+  - 一致性 < 80 分触发警告
+  - 提供重新生成建议
+  
+- [ ] 7.3.3 集成到生成流程
+  - 更新 generation_router
+  - 自动触发检查
+
+**验收标准：**
+- ✅ 检查自动触发
+- ✅ 警告及时显示
+- ✅ 建议实用
+
+**交付物：**
+- 更新：`app/services/ip_adapter_service.py`
+- 更新：`app/api/v1/generation_router.py`
+
+---
+
+**任务 7.4: IP-Adapter 前端优化**
+- **优先级：** 🟡 P1
+- **预估工时：** 4 小时
+- **状态：** ⏳ 待开始
+
+**具体工作：**
+- [ ] 7.4.1 优化参考图选择界面
+  - 显示角度标注
+  - 推荐最佳参考图
+  
+- [ ] 7.4.2 添加一致性评分展示
+  - 生成后显示一致性分数
+  - 低于阈值高亮警告
+  
+- [ ] 7.4.3 添加重新生成按钮
+  - 一键重新生成
+  - 自动调整参数
+
+**验收标准：**
+- ✅ 界面友好
+- ✅ 交互流畅
+
+**交付物：**
+- 更新：`frontend-vue/src/views/Generate.vue`
+
+---
+
+#### **Week 7 检查点**
+
+**检查日期：** 2026-06-28  
+**检查内容：**
+- [ ] 智能参考图选择正常
+- [ ] 自适应 scale 有效
+- [ ] 一致性检查自动触发
+- [ ] 前端界面优化完成
+
+**里程碑：** 🎉 阶段四完成 - IP-Adapter 增强完成
+
+---
+
+## 📊 进度跟踪表
+
+### **总体进度**
+
+| 阶段 | 计划时间 | 状态 | 完成度 | 实际完成日期 |
+|------|----------|------|--------|--------------|
+| 阶段一：数据集管理 | Week 1-2 | ⏳ 待开始 | 0% | - |
+| 阶段二：Kohya 集成 | Week 3-4 | ⏳ 待开始 | 0% | - |
+| 阶段三：质量评估 | Week 5-6 | ⏳ 待开始 | 0% | - |
+| 阶段四：IP-Adapter 增强 | Week 7 | ⏳ 待开始 | 0% | - |
+
+### **任务完成跟踪**
+
+| 任务 ID | 任务名称 | 优先级 | 状态 | 完成日期 | 备注 |
+|---------|----------|--------|------|----------|------|
+| 1.1 | 数据库设计与迁移 | P0 | ⏳ | - | - |
+| 1.2 | SQLAlchemy 模型定义 | P0 | ⏳ | - | - |
+| 1.3 | Pydantic Schemas | P0 | ⏳ | - | - |
+| 1.4 | DatasetManager 服务 | P0 | ⏳ | - | - |
+| 2.1 | 数据增强功能 | P1 | ⏳ | - | - |
+| 2.2 | Dataset API 路由 | P0 | ⏳ | - | - |
+| 2.3 | 前端数据集界面 | P0 | ⏳ | - | - |
+| 2.4 | 前端 API 集成 | P0 | ⏳ | - | - |
+| 3.1 | Kohya 环境检测 | P0 | ⏳ | - | - |
+| 3.2 | 数据集格式转换 | P0 | ⏳ | - | - |
+| 3.3 | 训练配置生成 | P0 | ⏳ | - | - |
+| 3.4 | 训练执行引擎 | P0 | ⏳ | - | - |
+| 4.1 | WebSocket 监控 | P1 | ⏳ | - | - |
+| 4.2 | 训练监控前端 | P0 | ⏳ | - | - |
+| 4.3 | 训练结果处理 | P0 | ⏳ | - | - |
+| 5.1 | 测试图片生成 | P0 | ⏳ | - | - |
+| 5.2 | 特征提取器 | P0 | ⏳ | - | - |
+| 5.3 | 相似度计算 | P0 | ⏳ | - | - |
+| 5.4 | 质量评估服务 | P0 | ⏳ | - | - |
+| 6.1 | 过拟合检测 | P1 | ⏳ | - | - |
+| 6.2 | 质量评估 API | P0 | ⏳ | - | - |
+| 6.3 | 质量报告前端 | P0 | ⏳ | - | - |
+| 7.1 | 智能参考图选择 | P0 | ⏳ | - | - |
+| 7.2 | 自适应 Scale | P1 | ⏳ | - | - |
+| 7.3 | 一致性检查 | P0 | ⏳ | - | - |
+| 7.4 | IP-Adapter 前端 | P1 | ⏳ | - | - |
+
+---
+
+## 🔍 定期检查机制
+
+### **周检查（每周日）**
+
+**检查内容：**
+- [ ] 本周任务完成情况
+- [ ] 代码质量审查
+- [ ] 单元测试覆盖率
+- [ ] 文档更新情况
+- [ ] 遇到的问题和风险
+
+**检查方式：**
+1. 运行单元测试，确保通过率 100%
+2. 检查代码规范（lint）
+3. 审查已合并的 PR
+4. 更新进度跟踪表
+5. 记录问题和解决方案
+
+---
+
+### **阶段检查（每个阶段结束）**
+
+**检查内容：**
+- [ ] 阶段目标是否达成
+- [ ] 所有任务是否完成
+- [ ] 集成测试是否通过
+- [ ] 用户界面测试是否通过
+- [ ] 性能是否达标
+- [ ] 文档是否完整
+
+**检查方式：**
+1. 完整的功能测试
+2. 端到端测试
+3. 性能测试
+4. 用户体验测试
+5. 编写阶段总结报告
+
+---
+
+### **里程碑检查（4 个里程碑）**
+
+**检查内容：**
+- [ ] 阶段目标完全达成
+- [ ] 代码已合并到主分支
+- [ ] 所有测试通过
+- [ ] 文档已更新
+- [ ] 可以演示给利益相关者
+
+**检查方式：**
+1. 演示会议
+2. 代码审查会议
+3. 测试报告审查
+4. 文档审查
+5. 签署里程碑完成确认
+
+---
+
+## ⚠️ 风险管理
+
+### **技术风险**
+
+| 风险 | 概率 | 影响 | 缓解措施 | 负责人 |
+|------|------|------|----------|--------|
+| Kohya-ss 版本不兼容 | 中 | 高 | 版本锁定，提前测试 | [待分配] |
+| GPU 显存不足 | 中 | 高 | 显存预估，自动降参 | [待分配] |
+| CLIP 模型加载慢 | 低 | 中 | 模型缓存，预加载 | [待分配] |
+| 训练质量不稳定 | 中 | 高 | 自动评估，重训建议 | [待分配] |
+
+### **进度风险**
+
+| 风险 | 概率 | 影响 | 缓解措施 | 负责人 |
+|------|------|------|----------|--------|
+| 任务预估时间不足 | 高 | 中 | 预留 20% 缓冲时间 | [待分配] |
+| 关键技术难点 | 中 | 高 | 提前调研，POC 验证 | [待分配] |
+| 需求变更 | 低 | 高 | 变更控制流程 | [待分配] |
+
+---
+
+## 📝 交付物清单
+
+### **代码交付物**
+
+**后端：**
+- `app/models/training_dataset.py`
+- `app/models/dataset_image.py`
+- `app/models/test_image.py`
+- `app/models/training_checkpoint.py`
+- `app/services/dataset_manager.py`
+- `app/services/data_augmentation.py`
+- `app/services/kohya_integration.py`
+- `app/services/quality_assessor.py`
+- `app/services/feature_extractor.py`
+- `app/services/training_config.py`
+- `app/api/v1/dataset_router.py`
+- `app/api/v1/ws_router.py`
+- `sql/migrations/006-008_*.sql`
+
+**前端：**
+- `frontend-vue/src/views/DatasetManagement.vue`
+- `frontend-vue/src/views/TrainingMonitor.vue`
+- `frontend-vue/src/views/QualityReport.vue`
+- `frontend-vue/src/components/dataset/` (组件目录)
+- `frontend-vue/src/components/training/` (组件目录)
+- `frontend-vue/src/api/dataset.js`
+
+**测试：**
+- `tests/test_dataset_manager.py`
+- `tests/test_kohya_integration.py`
+- `tests/test_quality_assessor.py`
+- `tests/test_feature_extractor.py`
+
+### **文档交付物**
+
+- `docs/DATASET_MANAGEMENT_GUIDE.md` - 数据集管理指南
+- `docs/LORA_TRAINING_GUIDE.md` - LoRA 训练指南（更新）
+- `docs/QUALITY_ASSESSMENT_GUIDE.md` - 质量评估指南
+- `docs/TROUBLESHOOTING.md` - 故障排查指南
+- `CHANGELOG.md` - 更新日志
+
+---
+
+## ✅ 验收标准
+
+### **功能验收**
+
+- ✅ 数据集上传成功率 > 95%
+- ✅ 训练成功率 > 90%
+- ✅ 质量评估准确率 > 85%
+- ✅ IP 一致性评分 > 85
+- ✅ 所有 API 端点正常
+- ✅ 前端界面完整可用
+
+### **性能验收**
+
+- ✅ 训练启动时间 < 30 秒
+- ✅ 进度更新延迟 < 5 秒
+- ✅ 质量评估时间 < 2 分钟
+- ✅ 前端页面加载 < 3 秒
+- ✅ WebSocket 连接稳定
+
+### **质量验收**
+
+- ✅ 单元测试覆盖率 > 80%
+- ✅ 集成测试通过率 100%
+- ✅ 代码规范检查通过
+- ✅ 无严重 bug
+- ✅ 文档完整准确
+
+---
+
+## 📞 沟通机制
+
+### **日常沟通**
+- **工具：** [待确定]
+- **频率：** 每日
+- **内容：** 进度更新、问题反馈
+
+### **周会议**
+- **时间：** 每周日
+- **内容：** 
+  - 本周完成情况
+  - 下周计划
+  - 问题和风险
+  - 需要支持的事项
+
+### **阶段会议**
+- **时间：** 每个阶段结束
+- **内容：**
+  - 阶段总结
+  - 演示
+  - 下阶段计划
+  - 风险评估
+
+---
+
+## 📌 重要说明
+
+1. **严格执行：** 本计划为执行基准，所有任务必须按计划实施
+2. **定期检查：** 每周日进行进度检查，不得跳过
+3. **问题上报：** 遇到问题立即上报，不得隐瞒
+4. **质量优先：** 不得为了赶进度而降低质量
+5. **文档同步：** 代码变更必须同步更新文档
+6. **测试先行：** 新功能必须先写测试
+7. **代码审查：** 所有代码必须经过审查才能合并
+
+---
+
+**计划制定人：** AI Assistant  
+**计划审核人：** [待填写]  
+**计划批准人：** [待填写]  
+**计划生效日期：** 2026-05-11
+
+---
+
+## 🔄 变更记录
+
+| 日期 | 变更内容 | 变更人 | 原因 |
+|------|----------|--------|------|
+| 2026-05-10 | 初始版本创建 | AI Assistant | - |
+| - | - | - | - |
+
+---
+
+**下一步行动：**
+1. 审核并批准本计划
+2. 分配任务负责人
+3. 准备开发环境
+4. 开始执行 Week 1 任务
