@@ -31,6 +31,10 @@
           <el-icon><PictureFilled /></el-icon>
           <template #title>{{ $t('nav.ip_assets') }}</template>
         </el-menu-item>
+        <el-menu-item index="/datasets">
+          <el-icon><FolderOpened /></el-icon>
+          <template #title>{{ $t('nav.datasets') || '训练数据集' }}</template>
+        </el-menu-item>
         <el-menu-item index="/lora">
           <el-icon><Coin /></el-icon>
           <template #title>{{ $t('nav.lora_models') }}</template>
