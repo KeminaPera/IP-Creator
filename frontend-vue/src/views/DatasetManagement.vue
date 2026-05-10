@@ -1,6 +1,6 @@
 <template>
   <div class="dataset-page">
-    <h1 class="page-title">{{ $t('dataset.title') || '训练数据集管理' }}</h1>
+    <h1 class="page-title">{{ $t('dataset.title') }}</h1>
 
     <!-- Toolbar -->
     <DataTable
@@ -32,7 +32,7 @@
           </el-col>
           <el-col :span="12" style="text-align:right;">
             <el-button type="primary" @click="openCreateDialog">
-              <el-icon><Plus /></el-icon> 创建数据集
+              <el-icon><Plus /></el-icon> {{ $t('dataset.create_dataset') }}
             </el-button>
           </el-col>
         </el-row>
