@@ -1,0 +1,10 @@
+{
+  "title": "Story - 20260507_124131",
+  "description": "",
+  "story": "\n```json\n{\n  \"title\": \"甲骨上的希望\",\n  \"description\": \"在商朝的某个夜晚，一位占卜者通过龟甲裂纹，从焦虑中寻得一丝慰藉与希望，这是一个关于古代心灵疗愈的温暖瞬间。\",\n  \"scenes\": [\n    {\n      \"scene_number\": 1,\n      \"description\": \"一位身着商朝传统服饰的占卜者，正专注地用灼热的青铜器在龟甲上灼烧，观察裂纹。他的神情从最初的忧虑和专注，逐渐转变为看到裂纹后流露出的释然与希望，整个氛围宁静而治愈。\",\n      \"prompt\": \"A person dressed in traditional Shang Dynasty clothing (yi), with long hair tied back, is performing a divination ritual. They hold a heated bronze rod over a turtle shell oracle bone, their face showing a mix of anxious concentration. As the cracks form, their expression shifts to a gentle, relieved smile, a sense of hope and peace washing over them. The setting is an ancient, dimly lit room with stone walls, lit by a soft, warm lamp. Cinematic, highly detailed, historical accuracy, soft lighting, emotional.\",\n      \"duration\": 10\n    }\n  ]\n}\n```",
+  "prompt": "讲一段商朝的故事",
+  "ip_name": null,
+  "style": "healing",
+  "duration_seconds": 10,
+  "generated_at": "2026-05-07T12:41:31.461870"
+}

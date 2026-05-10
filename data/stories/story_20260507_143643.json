@@ -1,0 +1,10 @@
+{
+  "title": "Story - 20260507_143643",
+  "description": "",
+  "story": "\n```json\n{\n  \"title\": \"The Potter's Hands\",\n  \"description\": \"A quiet, healing story of a Shang Dynasty artisan finding peace and purpose in the simple, meditative act of shaping clay into a vessel.\",\n  \"scenes\": [\n    {\n      \"scene_number\": 1,\n      \"description\": \"A close-up of a Shang Dynasty artisan's hands as they skillfully shape a piece of clay on a pottery wheel. The focus is on the gentle, precise movements, conveying a sense of calm and dedication.\",\n      \"prompt\": \"Extreme close-up shot of a Shang Dynasty artisan's hands, covered in wet clay, skillfully shaping a simple, elegant vessel on a pottery wheel. The lighting is soft and warm, creating a peaceful, meditative atmosphere. The background is a softly blurred ancient workshop with other pottery and a window showing a serene, misty landscape. The overall mood is healing and focused on the quiet beauty of creation. Hyper-realistic, cinematic style.\",\n      \"duration\": 10\n    }\n  ]\n}\n```",
+  "prompt": "生成一段关于商朝的故事",
+  "ip_name": null,
+  "style": "healing",
+  "duration_seconds": 10,
+  "generated_at": "2026-05-07T14:36:43.128784"
+}

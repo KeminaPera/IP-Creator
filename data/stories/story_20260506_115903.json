@@ -1,0 +1,10 @@
+{
+  "title": "Story - 20260506_115903",
+  "description": "",
+  "story": "\n```json\n{\n  \"title\": \"司马光砸缸\",\n  \"description\": \"A story of a young boy's quick wit and courage, saving a friend from danger through an act of brilliant resourcefulness.\",\n  \"scenes\": [\n    {\n      \"scene_number\": 1,\n      \"description\": \"The scene shows the aftermath of the rescue. The child who fell into the vat is now safe, sitting on the ground, wet but unharmed. Sima Guang stands beside him, looking relieved and proud. The broken pieces of the large ceramic vat are scattered around them, with water slowly draining away. Other children look on with awe and gratitude.\",\n      \"prompt\": \"A heartwarming, traditional Chinese painting style, soft and gentle colors, reminiscent of ancient storybook illustrations. In a traditional Chinese courtyard garden, a young boy (Sima Guang), around 7-8 years old, dressed in simple ancient Chinese robes, stands with a look of relief and pride. Beside him, another child, also young, sits on the ground, wet but safe and smiling, looking at Sima Guang with gratitude. In the background, a few other children watch with expressions of awe and relief. A large, broken ceramic water vat lies in pieces around them, with water still draining from it. Soft, warm sunlight filters through trees, creating a peaceful and hopeful atmosphere.\",\n      \"duration\": 10\n    }\n  ]\n}\n```",
+  "prompt": "讲一下司马光砸缸的故事",
+  "ip_name": null,
+  "style": "healing",
+  "duration_seconds": 10,
+  "generated_at": "2026-05-06T11:59:03.442623"
+}

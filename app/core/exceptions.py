@@ -1,0 +1,338 @@
+"""
+Unified Error Handling System
+
+Provides consistent error response models and exception handlers
+across the entire API.
+"""
+from typing import Optional, Any, Dict
+from fastapi import HTTPException, Request, status
+from fastapi.responses import JSONResponse
+from fastapi.exceptions import RequestValidationError
+from pydantic import BaseModel
+from app.utils.logger import logger
+
+
+# ==========================================
+# Error Response Models
+# ==========================================
+
+class APIError(BaseModel):
+    """
+    Unified API error response model.
+    
+    All API errors should follow this structure for consistency.
+    """
+    error: str  # Error type (e.g., "ValidationError", "NotFoundError")
+    message: str  # Human-readable error message
+    code: Optional[str] = None  # Machine-readable error code (e.g., "CONTENT_NOT_FOUND")
+    details: Optional[Any] = None  # Additional error details (validation errors, etc.)
+    request_id: Optional[str] = None  # Request tracking ID for debugging
+    
+    class Config:
+        json_schema_extra = {
+            "example": {
+                "error": "NotFoundError",
+                "message": "Content with ID 123 not found",
+                "code": "CONTENT_NOT_FOUND",
+                "details": None,
+                "request_id": "req_abc123"
+            }
+        }
+
+
+class ErrorResponse(BaseModel):
+    """
+    Standard error response wrapper.
+    """
+    success: bool = False
+    error: APIError
+
+
+# ==========================================
+# Custom Exception Classes
+# ==========================================
+
+class AppException(HTTPException):
+    """
+    Base application exception with unified error structure.
+    
+    All custom exceptions should inherit from this class.
+    """
+    def __init__(
+        self,
+        status_code: int = status.HTTP_500_INTERNAL_SERVER_ERROR,
+        error: str = "InternalServerError",
+        message: str = "An internal server error occurred",
+        code: Optional[str] = None,
+        details: Optional[Any] = None
+    ):
+        self.error_type = error
+        self.error_code = code
+        self.error_details = details
+        
+        super().__init__(
+            status_code=status_code,
+            detail=message  # FastAPI will handle this, but we override in handler
+        )
+
+
+class NotFoundException(AppException):
+    """Resource not found (404)."""
+    def __init__(self, resource: str = "Resource", identifier: Optional[str] = None):
+        message = f"{resource} not found"
+        if identifier:
+            message = f"{resource} with identifier '{identifier}' not found"
+        
+        super().__init__(
+            status_code=status.HTTP_404_NOT_FOUND,
+            error="NotFoundError",
+            message=message,
+            code=f"{resource.upper()}_NOT_FOUND"
+        )
+
+
+class BadRequestException(AppException):
+    """Bad request (400)."""
+    def __init__(self, message: str = "Bad request", details: Optional[Any] = None):
+        super().__init__(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            error="BadRequestError",
+            message=message,
+            code="BAD_REQUEST",
+            details=details
+        )
+
+
+class UnauthorizedException(AppException):
+    """Unauthorized access (401)."""
+    def __init__(self, message: str = "Invalid credentials", details: Optional[Any] = None):
+        super().__init__(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            error="UnauthorizedError",
+            message=message,
+            code="UNAUTHORIZED",
+            details=details
+        )
+
+
+class ForbiddenException(AppException):
+    """Forbidden access (403)."""
+    def __init__(self, message: str = "Access denied", details: Optional[Any] = None):
+        super().__init__(
+            status_code=status.HTTP_403_FORBIDDEN,
+            error="ForbiddenError",
+            message=message,
+            code="FORBIDDEN",
+            details=details
+        )
+
+
+class ConflictException(AppException):
+    """Resource conflict (409)."""
+    def __init__(self, message: str = "Resource conflict", details: Optional[Any] = None):
+        super().__init__(
+            status_code=status.HTTP_409_CONFLICT,
+            error="ConflictError",
+            message=message,
+            code="CONFLICT",
+            details=details
+        )
+
+
+class ValidationException(AppException):
+    """Validation error (422)."""
+    def __init__(self, message: str = "Validation error", details: Optional[Any] = None):
+        super().__init__(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            error="ValidationError",
+            message=message,
+            code="VALIDATION_ERROR",
+            details=details
+        )
+
+
+class RateLimitException(AppException):
+    """Rate limit exceeded (429)."""
+    def __init__(self, message: str = "Rate limit exceeded", details: Optional[Any] = None):
+        super().__init__(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            error="RateLimitError",
+            message=message,
+            code="RATE_LIMIT_EXCEEDED",
+            details=details
+        )
+
+
+# ==========================================
+# Exception Handlers
+# ==========================================
+
+async def app_exception_handler(request: Request, exc: AppException):
+    """
+    Handle custom AppException with unified error response.
+    """
+    error_response = APIError(
+        error=exc.error_type,
+        message=exc.detail,
+        code=exc.error_code,
+        details=exc.error_details,
+        request_id=getattr(request.state, "request_id", None)
+    )
+    
+    logger.warning(
+        f"AppException: {exc.error_type} - {exc.detail} "
+        f"[{request.method} {request.url.path}] "
+        f"Status: {exc.status_code}"
+    )
+    
+    return JSONResponse(
+        status_code=exc.status_code,
+        content={"success": False, "error": error_response.model_dump()}
+    )
+
+
+async def http_exception_handler(request: Request, exc: HTTPException):
+    """
+    Handle standard FastAPI HTTPException with unified error response.
+    """
+    # Determine error type from status code
+    error_type_map = {
+        400: "BadRequestError",
+        401: "UnauthorizedError",
+        403: "ForbiddenError",
+        404: "NotFoundError",
+        405: "MethodNotAllowedError",
+        409: "ConflictError",
+        422: "ValidationError",
+        429: "RateLimitError",
+        500: "InternalServerError",
+        502: "BadGatewayError",
+        503: "ServiceUnavailableError",
+    }
+    
+    error_type = error_type_map.get(exc.status_code, "HTTPError")
+    
+    error_response = APIError(
+        error=error_type,
+        message=exc.detail if isinstance(exc.detail, str) else str(exc.detail),
+        code=None,
+        details=None,
+        request_id=getattr(request.state, "request_id", None)
+    )
+    
+    logger.warning(
+        f"HTTPException: {exc.status_code} - {exc.detail} "
+        f"[{request.method} {request.url.path}]"
+    )
+    
+    return JSONResponse(
+        status_code=exc.status_code,
+        content={"success": False, "error": error_response.model_dump()}
+    )
+
+
+async def validation_exception_handler(request: Request, exc: RequestValidationError):
+    """
+    Handle Pydantic validation errors with detailed error messages.
+    """
+    # Extract validation errors
+    validation_errors = []
+    for error in exc.errors():
+        validation_errors.append({
+            "field": ".".join(str(loc) for loc in error["loc"]),
+            "message": error["msg"],
+            "type": error["type"],
+            "input": error.get("input")
+        })
+    
+    error_response = APIError(
+        error="ValidationError",
+        message="Request validation failed",
+        code="VALIDATION_ERROR",
+        details=validation_errors,
+        request_id=getattr(request.state, "request_id", None)
+    )
+    
+    logger.warning(
+        f"Validation error: {validation_errors} "
+        f"[{request.method} {request.url.path}]"
+    )
+    
+    return JSONResponse(
+        status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+        content={"success": False, "error": error_response.model_dump()}
+    )
+
+
+async def general_exception_handler(request: Request, exc: Exception):
+    """
+    Handle all unhandled exceptions with 500 error.
+    """
+    error_response = APIError(
+        error="InternalServerError",
+        message="An unexpected error occurred. Please try again later.",
+        code="INTERNAL_ERROR",
+        details=None,  # Don't expose internal details to client
+        request_id=getattr(request.state, "request_id", None)
+    )
+    
+    logger.error(
+        f"Unhandled exception: {type(exc).__name__} - {str(exc)} "
+        f"[{request.method} {request.url.path}]",
+        exc_info=True  # Include stack trace in logs
+    )
+    
+    return JSONResponse(
+        status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+        content={"success": False, "error": error_response.model_dump()}
+    )
+
+
+# ==========================================
+# Helper Functions
+# ==========================================
+
+def create_error_response(
+    status_code: int,
+    error: str,
+    message: str,
+    code: Optional[str] = None,
+    details: Optional[Any] = None
+) -> JSONResponse:
+    """
+    Create a unified error response manually (for use in try-except blocks).
+    
+    Example:
+        try:
+            # Some operation
+        except Exception as e:
+            return create_error_response(
+                status_code=500,
+                error="DatabaseError",
+                message="Failed to query database",
+                details=str(e)
+            )
+    """
+    error_response = APIError(
+        error=error,
+        message=message,
+        code=code,
+        details=details
+    )
+    
+    return JSONResponse(
+        status_code=status_code,
+        content={"success": False, "error": error_response.model_dump()}
+    )
+
+
+def register_exception_handlers(app):
+    """
+    Register all exception handlers with the FastAPI app.
+    
+    Call this in main.py after creating the FastAPI app.
+    """
+    app.add_exception_handler(AppException, app_exception_handler)
+    app.add_exception_handler(HTTPException, http_exception_handler)
+    app.add_exception_handler(RequestValidationError, validation_exception_handler)
+    app.add_exception_handler(Exception, general_exception_handler)
