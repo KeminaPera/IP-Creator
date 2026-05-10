@@ -112,10 +112,18 @@ python init_database.py
 ```
 
 This will:
-- ✅ Create all 8 database tables
-- ✅ Insert 5 LLM providers (OpenAI, Zhipu, Qwen, Ollama, DeepSeek)
-- ✅ Insert 11 pre-configured LLM models
+- ✅ Create all 10 database tables (using `sql/schema_complete.sql`)
+- ✅ Insert 11 LLM providers (OpenAI, Anthropic, Google, DeepSeek, etc.)
+- ✅ Insert pre-configured LLM models
 - ✅ Create default admin account (admin/admin123)
+
+**📚 Database Scripts Location:**
+- Schema: `sql/schema_complete.sql` (v2.0, latest)
+- Seed Data: `sql/seed_data.sql`
+- Migrations: `sql/migrations/`
+- Documentation: `sql/README.md`
+
+**⚠️ Note:** Always use `schema_complete.sql` for new installations. Migration scripts in `sql/migrations/` are only for upgrading existing databases.
 
 ### 3️⃣ Start Services
 
@@ -204,21 +212,24 @@ ip-creator/
 │   ├── lora_models/          # Trained LoRA models
 │   ├── models/               # Diffusion model files
 │   └── exports/              # Data backups (JSON)
-├── sql/                       # Database schemas
-│   ├── schema.sql            # Basic schema
-│   ├── schema_complete.sql   # Complete schema with indexes
-│   └── seed_data.sql         # Initial seed data
-├── migrations/                # Database migration scripts (5 files)
+├── sql/                       # Database schemas and migrations
+│   ├── README.md             # Database documentation
+│   ├── schema_complete.sql   # Complete schema (v2.0, latest)
+│   ├── seed_data.sql         # Initial seed data (11 providers)
+│   └── migrations/           # Migration scripts
+│       ├── 004_create_generated_contents.sql
+│       └── 005_add_performance_indexes.sql
+├── migrations/                # Database migration scripts (Python)
+│   ├── 001_add_last_synced_at_to_providers.py
+│   ├── 002_create_task_records_table.py
+│   └── 003_create_system_settings.py
 ├── docs/                      # Documentation
-│   └── ERROR_HANDLING_GUIDE.md # Error handling reference
-├── examples/                  # Code examples
-│   └── error_handling_migration.py
+│   ├── ERROR_HANDLING_GUIDE.md # Error handling reference
+│   └── 可配置多LLM本地化AI卡通IP视频生成系统——详细项目设计文档.md
 ├── celery_worker.py           # Celery worker for async tasks
 ├── init_database.py           # DB initialization (schema + seed + admin)
 ├── init_admin.py             # Admin user creation
 ├── export_database.py        # Data export utility
-├── migrate_lora_progress.py  # DB migration utility
-├── quick_api_test.py         # API smoke test
 ├── requirements.txt           # Python dependencies
 ├── .env                       # Environment variables
 └── README.md                  # This file
@@ -228,18 +239,36 @@ ip-creator/
 
 ## 🗄️ Database Schema
 
+### Database Files
+
+All database scripts are organized in the `sql/` directory:
+
+```
+sql/
+├── README.md                     # Detailed database documentation
+├── schema_complete.sql           # Complete schema (v2.0, use this!)
+├── seed_data.sql                 # Seed data (11 LLM providers)
+└── migrations/                   # SQL migration scripts
+    ├── 004_create_generated_contents.sql
+    └── 005_add_performance_indexes.sql
+```
+
+**📖 For detailed documentation, see: [sql/README.md](sql/README.md)**
+
 ### Tables Overview
 
 | Table | Description | Key Fields |
 |-------|-------------|------------|
 | **users** | User authentication | username, email, role, permissions |
-| **llm_providers** | LLM provider configs | code, name, endpoint, api_key |
+| **llm_providers** | LLM provider configs | code, name, endpoint, requires_api_key |
 | **llm_models** | Model versions | provider_id, code, capabilities |
 | **llm_configs** | Active channels | provider, model_name, is_active |
-| **lora_models** | Trained LoRA models | name, file_path, status |
-| **ip_assets** | IP characters | name, trigger_word, reference_images |
-| **task_records** | Async task tracking | task_id, status, progress |
-| **generated_contents** | Content library | content_type, file_path, tags |
+| **ip_assets** | IP characters | name, trigger_word, style_template |
+| **ip_reference_images** | IP reference images | ip_asset_id, image_type, file_path |
+| **lora_models** | Trained LoRA models | name, file_path, training_status |
+| **task_records** | Async task tracking | task_id, task_type, status, progress |
+| **generated_contents** | Content library | content_type, file_path, tags, is_favorite |
+| **system_settings** | System configuration | key, value, category |
 
 ### Relationships
 
