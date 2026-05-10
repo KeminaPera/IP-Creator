@@ -6,5 +6,21 @@ from app.models.task import TaskRecord
 from app.models.user import User
 from app.models.generated_content import GeneratedContent
 from app.models.system_setting import SystemSetting
+from app.models.training_dataset import TrainingDataset
+from app.models.dataset_image import DatasetImage
+from app.models.test_image import TestImage
+from app.models.training_checkpoint import TrainingCheckpoint
 
-__all__ = ["LLMConfig", "IPAsset", "LoRAModel", "TaskRecord", "User", "GeneratedContent", "SystemSetting"]
+__all__ = [
+    "LLMConfig",
+    "IPAsset",
+    "LoRAModel",
+    "TaskRecord",
+    "User",
+    "GeneratedContent",
+    "SystemSetting",
+    "TrainingDataset",
+    "DatasetImage",
+    "TestImage",
+    "TrainingCheckpoint",
+]

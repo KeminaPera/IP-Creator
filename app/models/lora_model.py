@@ -4,7 +4,7 @@ LoRA Model Asset Model
 Tracks trained LoRA models for IP character fine-tuning,
 including training parameters and performance metrics.
 """
-from sqlalchemy import Column, Integer, String, Float, Boolean, Text, JSON, DateTime, Index
+from sqlalchemy import Column, Integer, String, Float, Boolean, Text, JSON, DateTime, ForeignKey, Index
 from sqlalchemy.sql import func
 from sqlalchemy.orm import relationship
 from app.config.database import Base
@@ -52,6 +52,14 @@ class LoRAModel(Base):
     weight_default = Column(Float, default=0.7, comment="Default inference weight (0.0-1.0)")
     is_active = Column(Boolean, default=True, index=True, comment="Whether model is available for use")
     
+    # Training Dataset Association
+    dataset_id = Column(Integer, ForeignKey("training_datasets.id"), nullable=True, index=True, comment="Training dataset used")
+    
+    # Quality Assessment
+    quality_score = Column(Float, nullable=True, comment="Overall quality score (0-100)")
+    quality_report = Column(JSON, nullable=True, comment="Detailed quality assessment report")
+    recommended_checkpoint_id = Column(Integer, ForeignKey("training_checkpoints.id"), nullable=True, comment="Best checkpoint to use")
+    
     # Metadata
     description = Column(Text, nullable=True, comment="Model description")
     created_at = Column(DateTime(timezone=True), server_default=func.now(), index=True, comment="Creation timestamp")
@@ -59,6 +67,8 @@ class LoRAModel(Base):
     
     # Relationship
     ip_assets = relationship("IPAsset", back_populates="lora_model")
+    dataset = relationship("TrainingDataset", back_populates="lora_models")
+    recommended_checkpoint = relationship("TrainingCheckpoint", foreign_keys=[recommended_checkpoint_id])
     
     # Composite Indexes
     __table_args__ = (
@@ -66,6 +76,10 @@ class LoRAModel(Base):
         Index('idx_lora_status_active_created', 'status', 'is_active', 'created_at'),
         # Base model query: filter by base_model, status
         Index('idx_lora_base_status', 'base_model', 'status'),
+        # Quality-based queries: filter by quality_score
+        Index('idx_lora_quality_score', 'quality_score'),
+        # Dataset association: filter by dataset_id
+        Index('idx_lora_dataset', 'dataset_id'),
     )
     
     def __repr__(self):
