@@ -79,6 +79,29 @@
 - **Redis** (for Celery task queue)
 - **SQLite** (included, no installation needed)
 
+**Or use Docker:**
+- **Docker** 20.10+
+- **Docker Compose** 2.0+
+- **NVIDIA GPU** (optional, for AI generation)
+
+### Option 1: Docker Deployment (Recommended)
+
+```bash
+# Build and start all services
+docker-compose up -d --build
+
+# Initialize database
+docker-compose exec web python init_database.py
+
+# Access the application
+# Frontend: http://localhost:8000
+# API Docs: http://localhost:8000/docs
+```
+
+**📚 For detailed Docker documentation, see: [DOCKER_DEPLOYMENT.md](DOCKER_DEPLOYMENT.md)**
+
+### Option 2: Local Development
+
 ### 1️⃣ Installation
 
 ```bash
@@ -216,13 +239,14 @@ ip-creator/
 │   ├── README.md             # Database documentation
 │   ├── schema_complete.sql   # Complete schema (v2.0, latest)
 │   ├── seed_data.sql         # Initial seed data (11 providers)
-│   └── migrations/           # Migration scripts
+│   └── migrations/           # SQL migration scripts
 │       ├── 004_create_generated_contents.sql
 │       └── 005_add_performance_indexes.sql
-├── migrations/                # Database migration scripts (Python)
-│   ├── 001_add_last_synced_at_to_providers.py
-│   ├── 002_create_task_records_table.py
-│   └── 003_create_system_settings.py
+├── Dockerfile                 # Docker multi-stage build
+├── docker-compose.yml         # Docker Compose configuration
+├── nginx.conf                 # Nginx reverse proxy config
+├── .dockerignore              # Docker build exclusions
+├── DOCKER_DEPLOYMENT.md       # Docker deployment guide
 ├── docs/                      # Documentation
 │   ├── ERROR_HANDLING_GUIDE.md # Error handling reference
 │   └── 可配置多LLM本地化AI卡通IP视频生成系统——详细项目设计文档.md
@@ -230,6 +254,7 @@ ip-creator/
 ├── init_database.py           # DB initialization (schema + seed + admin)
 ├── init_admin.py             # Admin user creation
 ├── export_database.py        # Data export utility
+├── start.bat                 # Windows startup script
 ├── requirements.txt           # Python dependencies
 ├── .env                       # Environment variables
 └── README.md                  # This file

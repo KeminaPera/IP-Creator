@@ -1,0 +1,59 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+venv/
+env/
+ENV/
+.mypy_cache/
+.pytest_cache/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Git
+.git/
+.gitignore
+
+# Docker
+Dockerfile
+docker-compose.yml
+.dockerignore
+
+# Documentation
+*.md
+docs/
+
+# Data (will be mounted as volumes)
+data/
+logs/
+
+# Frontend source (only need dist)
+frontend-vue/node_modules/
+frontend-vue/src/
+frontend-vue/public/
+frontend-vue/*.html
+frontend-vue/*.js
+frontend-vue/*.json
+frontend-vue/*.ts
+
+# Environment
+.env
+.env.example
+
+# Tests
+tests/
+test/
+
+# Temporary
+*.tmp
+*.bak
