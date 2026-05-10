@@ -25,6 +25,7 @@ from app.config.settings import settings
 from app.utils.logger import logger
 from app.config.database import async_session_factory
 from app.core.exceptions import NotFoundException, BadRequestException
+from app.core.data_augmentation import data_augmentation
 
 
 class DatasetManager:
@@ -37,8 +38,10 @@ class DatasetManager:
     
     def __init__(self):
         """Initialize dataset manager."""
-        self.datasets_path = Path(settings.DATA_PATH) / "training_datasets"
+        self.datasets_path = Path(settings.STORAGE_PATH) / "training_datasets"
         self.datasets_path.mkdir(parents=True, exist_ok=True)
+        self.augmentation_path = self.datasets_path / "augmented"
+        self.augmentation_path.mkdir(parents=True, exist_ok=True)
     
     async def create_dataset(
         self,
@@ -432,6 +435,148 @@ class DatasetManager:
         
         logger.info(f"Dataset validation complete for {dataset_id}: score={quality_score}")
         return report
+    
+    async def augment_dataset(
+        self,
+        dataset_id: int,
+        db: AsyncSession,
+        augmentation_factor: int = 2,
+        strategies: Optional[List[str]] = None
+    ) -> Dict[str, Any]:
+        """
+        Augment dataset images to increase diversity.
+        
+        Args:
+            dataset_id: Dataset ID
+            db: Database session
+            augmentation_factor: Number of augmented versions per image
+            strategies: Specific strategies to apply (default: random)
+            
+        Returns:
+            Augmentation results with statistics
+        """
+        # Get dataset
+        dataset = await self.get_dataset(dataset_id, db)
+        
+        # Get all selected images
+        result = await db.execute(
+            select(DatasetImage).where(
+                and_(
+                    DatasetImage.dataset_id == dataset_id,
+                    DatasetImage.is_selected == True,
+                    DatasetImage.is_augmented == False  # Only augment original images
+                )
+            )
+        )
+        original_images = result.scalars().all()
+        
+        if not original_images:
+            raise BadRequestException(
+                message="No original images found to augment",
+                details={"dataset_id": dataset_id}
+            )
+        
+        # Prepare image paths
+        image_paths = [img.file_path for img in original_images]
+        
+        # Create augmentation output directory
+        aug_dir = self.augmentation_path / f"dataset_{dataset_id}_v{dataset.version}"
+        aug_dir.mkdir(parents=True, exist_ok=True)
+        
+        # Perform augmentation
+        logger.info(f"Starting augmentation for dataset {dataset_id}: "
+                   f"{len(image_paths)} images x {augmentation_factor} = "
+                   f"{len(image_paths) * augmentation_factor} augmented images")
+        
+        augmentation_results = data_augmentation.augment_dataset(
+            image_paths=image_paths,
+            output_dir=str(aug_dir),
+            augmentation_factor=augmentation_factor,
+            strategies=strategies
+        )
+        
+        # Add augmented images to database
+        added_count = 0
+        for aug_result in augmentation_results:
+            # Find parent image
+            parent_path = aug_result['input_path']
+            parent_image = next(
+                (img for img in original_images if img.file_path == parent_path),
+                None
+            )
+            
+            if not parent_image:
+                continue
+            
+            # Create augmented image record
+            augmented_image = DatasetImage(
+                dataset_id=dataset_id,
+                file_path=aug_result['output_path'],
+                width=aug_result['output_size'][0],
+                height=aug_result['output_size'][1],
+                file_size_kb=aug_result['file_size_kb'],
+                angle=parent_image.angle,
+                expression=parent_image.expression,
+                pose=parent_image.pose,
+                background=parent_image.background,
+                quality_score=parent_image.quality_score,  # Inherit quality score
+                is_augmented=True,
+                parent_image_id=parent_image.id,
+            )
+            
+            db.add(augmented_image)
+            added_count += 1
+        
+        # Update dataset statistics
+        dataset.augmented_count = added_count
+        
+        await db.commit()
+        
+        # Generate augmentation report
+        report = data_augmentation.get_augmentation_report(augmentation_results)
+        report['added_to_database'] = added_count
+        
+        logger.info(f"Augmentation complete for dataset {dataset_id}: "
+                   f"{added_count} images added")
+        
+        return report
+    
+    async def create_dataset_version(
+        self,
+        dataset_id: int,
+        db: AsyncSession,
+        version_note: Optional[str] = None
+    ) -> TrainingDataset:
+        """
+        Create a new version of the dataset.
+        
+        Args:
+            dataset_id: Dataset ID
+            db: Database session
+            version_note: Note about this version
+            
+        Returns:
+            New version dataset
+        """
+        # Get current dataset
+        current_dataset = await self.get_dataset(dataset_id, db)
+        
+        # Create new version
+        new_version = TrainingDataset(
+            ip_asset_id=current_dataset.ip_asset_id,
+            name=f"{current_dataset.name} v{current_dataset.version + 1}",
+            description=current_dataset.description,
+            status="pending",
+            version=current_dataset.version + 1,
+            parent_version_id=current_dataset.id,
+        )
+        
+        db.add(new_version)
+        await db.commit()
+        await db.refresh(new_version)
+        
+        logger.info(f"Created dataset version {new_version.version} for dataset {dataset_id}")
+        return new_version
 
 
 # Singleton instance

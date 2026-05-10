@@ -40,7 +40,7 @@ class TrainingCheckpoint(Base):
     created_at = Column(DateTime(timezone=True), server_default=func.now(), comment="Checkpoint save timestamp")
     
     # Relationships
-    lora_model = relationship("LoRAModel", backref="checkpoints")
+    lora_model = relationship("LoRAModel", backref="checkpoints", foreign_keys=[lora_model_id])
     
     # Composite Indexes
     __table_args__ = (
