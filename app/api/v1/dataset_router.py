@@ -177,3 +177,50 @@ async def get_dataset_stats(
     """
     stats = await dataset_manager.calculate_dataset_stats(dataset_id, db)
     return success_response(data=stats, message="Dataset statistics retrieved")
+
+
+@router.post("/{dataset_id}/augment")
+async def augment_dataset(
+    dataset_id: int,
+    augmentation_factor: int = 2,
+    strategies: Optional[List[str]] = None,
+    current_user: dict = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db_session),
+):
+    """
+    Augment dataset images to increase diversity.
+    
+    Args:
+        dataset_id: Dataset ID
+        augmentation_factor: Number of augmented versions per image (default: 2)
+        strategies: Specific strategies to apply (default: random)
+            Options: horizontal_flip, rotation, brightness, contrast, color_jitter
+    """
+    result = await dataset_manager.augment_dataset(
+        dataset_id, db, augmentation_factor, strategies
+    )
+    return success_response(
+        data=result,
+        message=f"Dataset augmentation complete: {result.get('added_to_database', 0)} images added"
+    )
+
+
+@router.post("/{dataset_id}/versions")
+async def create_dataset_version(
+    dataset_id: int,
+    version_note: Optional[str] = None,
+    current_user: dict = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db_session),
+):
+    """
+    Create a new version of the dataset.
+    
+    Use this to save the current state before making major changes.
+    """
+    new_version = await dataset_manager.create_dataset_version(
+        dataset_id, db, version_note
+    )
+    return created_response(
+        data=TrainingDatasetResponse.model_validate(new_version),
+        message=f"Dataset version {new_version.version} created successfully"
+    )
