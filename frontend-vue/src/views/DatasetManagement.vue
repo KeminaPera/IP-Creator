@@ -191,7 +191,7 @@
 import { ref, reactive, onMounted } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Plus, ArrowDown, Check, MagicStick, DocumentCopy, Delete } from '@element-plus/icons-vue'
-import DataTable from '@/components/DataTable.vue'
+import DataTable from '@/components/common/DataTable.vue'
 import {
   getDatasetList,
   createDataset,

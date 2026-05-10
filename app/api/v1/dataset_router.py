@@ -86,8 +86,13 @@ async def list_datasets(
         db, ip_asset_id, status, skip, limit
     )
     
+    # Calculate page (convert from skip/limit to page/page_size)
+    page = (skip // limit) + 1 if limit > 0 else 1
+    
     return list_response(
-        data=[TrainingDatasetResponse.model_validate(d) for d in datasets],
+        items=[TrainingDatasetResponse.model_validate(d) for d in datasets],
+        page=page,
+        page_size=limit,
         total=total,
         message="Datasets retrieved successfully"
     )
@@ -120,7 +125,10 @@ async def delete_dataset(
     Delete dataset and all associated images.
     """
     await dataset_manager.delete_dataset(dataset_id, db)
-    return deleted_response(message="Dataset deleted successfully")
+    return deleted_response(
+        resource_id=dataset_id,
+        message="Dataset deleted successfully"
+    )
 
 
 @router.post("/{dataset_id}/images", response_model=DatasetImageResponse)
@@ -155,6 +163,7 @@ async def validate_dataset(
     # Update dataset status based on validation
     if not report.issues:
         update_data = TrainingDatasetUpdate(
+            name=None,  # Will be ignored due to exclude_unset
             status="ready",
             validation_report=report.model_dump()
         )
