@@ -11,6 +11,7 @@ from typing import List, Optional
 
 from app.config.database import get_db_session
 from app.models.training_dataset import TrainingDataset
+from app.models.dataset_image import DatasetImage
 from app.schemas.training_dataset import (
     TrainingDatasetCreate,
     TrainingDatasetUpdate,
@@ -29,11 +30,13 @@ from app.core.dataset_manager import dataset_manager
 from app.core.exceptions import NotFoundException, BadRequestException
 from app.utils.logger import logger
 from app.utils.response import success_response, list_response, created_response, updated_response, deleted_response
+from app.utils.caption_generator import generate_caption_from_annotation, generate_caption_batch
+from app.config.feature_types import FEATURE_TYPE_CONFIG
 
 router = APIRouter(prefix="/api/v1/datasets", tags=["Training Datasets"])
 
 
-@router.post("", response_model=TrainingDatasetResponse)
+@router.post("", status_code=201)
 async def create_dataset(
     dataset_data: TrainingDatasetCreate,
     current_user: dict = Depends(get_current_user),
@@ -51,7 +54,7 @@ async def create_dataset(
     )
 
 
-@router.get("/{dataset_id}", response_model=TrainingDatasetDetail)
+@router.get("/{dataset_id}")
 async def get_dataset(
     dataset_id: int,
     include_images: bool = False,
@@ -70,7 +73,7 @@ async def get_dataset(
     )
 
 
-@router.get("", response_model=TrainingDatasetListResponse)
+@router.get("")
 async def list_datasets(
     ip_asset_id: Optional[int] = None,
     status: Optional[str] = None,
@@ -86,19 +89,15 @@ async def list_datasets(
         db, ip_asset_id, status, skip, limit
     )
     
-    # Calculate page (convert from skip/limit to page/page_size)
-    page = (skip // limit) + 1 if limit > 0 else 1
-    
     return list_response(
         items=[TrainingDatasetResponse.model_validate(d) for d in datasets],
-        page=page,
+        page=(skip // limit) + 1 if limit > 0 else 1,
         page_size=limit,
-        total=total,
-        message="Datasets retrieved successfully"
+        total=total
     )
 
 
-@router.patch("/{dataset_id}", response_model=TrainingDatasetResponse)
+@router.patch("/{dataset_id}")
 async def update_dataset(
     dataset_id: int,
     dataset_data: TrainingDatasetUpdate,
@@ -131,7 +130,7 @@ async def delete_dataset(
     )
 
 
-@router.post("/{dataset_id}/images", response_model=DatasetImageResponse)
+@router.post("/{dataset_id}/images", status_code=201)
 async def add_image(
     dataset_id: int,
     image_data: DatasetImageCreate,
@@ -233,3 +232,127 @@ async def create_dataset_version(
         data=TrainingDatasetResponse.model_validate(new_version),
         message=f"Dataset version {new_version.version} created successfully"
     )
+
+
+@router.post("/{dataset_id}/generate-captions")
+async def generate_captions(
+    dataset_id: int,
+    trigger_word: str = Form(...),
+    use_ai: bool = Form(False),
+    current_user: dict = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db_session),
+):
+    """
+    Generate captions for all images in dataset.
+    
+    Uses fixed template + annotations to generate consistent captions.
+    
+    Args:
+        dataset_id: Dataset ID
+        trigger_word: IP trigger word (e.g., "xiao_huli_character")
+        use_ai: Whether to use AI enhancement (not implemented yet)
+    """
+    # Get all images in dataset
+    result = await db.execute(
+        select(TrainingDataset).where(TrainingDataset.id == dataset_id)
+    )
+    dataset = result.scalar_one_or_none()
+    
+    if not dataset:
+        raise NotFoundException(f"Dataset {dataset_id} not found")
+    
+    # Load images with annotations
+    images_result = await db.execute(
+        select(DatasetImage).where(
+            DatasetImage.dataset_id == dataset_id,
+            DatasetImage.is_selected == True
+        )
+    )
+    images = images_result.scalars().all()
+    
+    # Generate captions
+    updated_count = 0
+    captions = []
+    
+    for image in images:
+        # Build features dict from annotations
+        features = {}
+        if image.expression:
+            features["expression"] = image.expression
+        if image.pose:
+            features["pose"] = image.pose
+        
+        # Generate caption
+        caption = generate_caption_from_annotation(
+            trigger_word=trigger_word,
+            angle=image.angle or "front",
+            pose=image.pose,
+            background=image.background,
+            features=features
+        )
+        
+        # Store caption (you can add a caption field to DatasetImage if needed)
+        # For now, we return the generated captions
+        captions.append({
+            "image_id": image.id,
+            "file_path": image.file_path,
+            "caption": caption
+        })
+        updated_count += 1
+    
+    return success_response(
+        data={
+            "dataset_id": dataset_id,
+            "trigger_word": trigger_word,
+            "captions": captions,
+            "total_generated": updated_count
+        },
+        message=f"Generated {updated_count} captions successfully"
+    )
+
+
+@router.post("/{dataset_id}/batch-annotate")
+async def batch_annotate_images(
+    dataset_id: int,
+    annotations: dict,
+    current_user: dict = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db_session),
+):
+    """
+    Batch annotate multiple images in dataset.
+    
+    Args:
+        dataset_id: Dataset ID
+        annotations: Dict of {image_id: {angle, expression, pose, background}}
+    """
+    updated_count = 0
+    
+    for image_id, annotation in annotations.items():
+        result = await db.execute(
+            select(DatasetImage).where(
+                DatasetImage.id == int(image_id),
+                DatasetImage.dataset_id == dataset_id
+            )
+        )
+        image = result.scalar_one_or_none()
+        
+        if image:
+            # Update annotations
+            if "angle" in annotation:
+                image.angle = annotation["angle"]
+            if "expression" in annotation:
+                image.expression = annotation["expression"]
+            if "pose" in annotation:
+                image.pose = annotation["pose"]
+            if "background" in annotation:
+                image.background = annotation["background"]
+            
+            updated_count += 1
+    
+    await db.commit()
+    
+    return success_response(
+        data={"updated_count": updated_count},
+        message=f"Updated {updated_count} images successfully"
+    )
+

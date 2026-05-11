@@ -16,6 +16,10 @@ export function deleteIP(id) {
   return request.delete(`/ip/${id}`)
 }
 
+export function getIPAsset(id) {
+  return request.get(`/ip/${id}`)
+}
+
 export function uploadFile(formData) {
   return request.post('/generate/upload', formData, {
     headers: { 'Content-Type': 'multipart/form-data' },

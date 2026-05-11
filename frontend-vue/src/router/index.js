@@ -26,6 +26,12 @@ const routes = [
     meta: { requiresAuth: true },
   },
   {
+    path: '/ip/:id',
+    name: 'IPAssetDetail',
+    component: () => import('../views/IPAssetDetail.vue'),
+    meta: { requiresAuth: true },
+  },
+  {
     path: '/generate',
     name: 'Generate',
     component: () => import('../views/Generate.vue'),
@@ -59,6 +65,12 @@ const routes = [
     path: '/datasets',
     name: 'DatasetManagement',
     component: () => import('../views/DatasetManagement.vue'),
+    meta: { requiresAuth: true },
+  },
+  {
+    path: '/datasets/annotate',
+    name: 'DatasetAnnotation',
+    component: () => import('../views/DatasetAnnotation.vue'),
     meta: { requiresAuth: true },
   },
 ]

@@ -48,6 +48,8 @@ class IPAsset(Base):
     
     # Relationship
     lora_model = relationship("LoRAModel", back_populates="ip_assets")
+    multi_views = relationship("IPMultiView", back_populates="ip_asset", cascade="all, delete-orphan")
+    feature_library = relationship("IPFeatureLibrary", back_populates="ip_asset", cascade="all, delete-orphan")
     
     # Composite Indexes
     __table_args__ = (

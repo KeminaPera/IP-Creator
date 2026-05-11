@@ -21,6 +21,15 @@ from app.core.exceptions import (
 from app.utils.response import success_response, list_response, created_response, updated_response, deleted_response, message_response
 from app.core.lora_trainer import lora_trainer
 from app.utils.logger import logger
+from app.schemas.training_config import (
+    LoRATrainingConfig,
+    TrainingConfigResponse,
+    StartTrainingRequest,
+    list_presets,
+    get_preset,
+    estimate_training_time
+)
+from app.services.training_logger import training_logger
 
 router = APIRouter(prefix="/api/v1/lora", tags=["LoRA Models"])
 
@@ -145,6 +154,66 @@ async def list_lora_models(
         raise AppException(status_code=500, error="ServerError", message="Failed to list LoRA models: {str(e)}")
 
 
+@router.get("/presets")
+async def get_training_presets(
+    current_user: dict = Depends(get_current_user),
+):
+    """
+    Get all available training presets.
+    """
+    try:
+        presets = list_presets()
+        
+        return success_response(
+            data={"presets": [p.model_dump() for p in presets]},
+            message="Training presets retrieved successfully"
+        )
+    except Exception as e:
+        logger.error(f"Error getting training presets: {e}")
+        raise AppException(status_code=500, error="ServerError", message="Failed to get training presets")
+
+
+@router.post("/validate-config")
+async def validate_training_config(
+    config: LoRATrainingConfig,
+    current_user: dict = Depends(get_current_user),
+):
+    """
+    Validate training configuration and provide recommendations.
+    """
+    try:
+        # Estimate training time
+        estimated_time = estimate_training_time(config)
+        
+        # Generate recommendations
+        recommendations = []
+        
+        if config.epochs < 5:
+            recommendations.append("Consider using at least 5 epochs for better results")
+        
+        if config.learning_rate > 5e-4:
+            recommendations.append("High learning rate may cause instability")
+        
+        if config.network_dim < 32:
+            recommendations.append("Low network dimension may limit model capacity")
+        
+        if config.resolution > 768 and config.batch_size > 1:
+            recommendations.append("High resolution with large batch size requires significant VRAM")
+        
+        return success_response(
+            data={
+                "valid": True,
+                "estimated_time_minutes": estimated_time,
+                "recommendations": recommendations,
+                "config": config.model_dump(),
+            },
+            message="Training configuration is valid"
+        )
+    except Exception as e:
+        logger.error(f"Error validating training config: {e}")
+        raise AppException(status_code=500, error="ServerError", message="Failed to validate configuration")
+
+
 @router.get("/{lora_id}")
 async def get_lora_model(
     lora_id: int,
@@ -198,44 +267,6 @@ async def get_lora_model(
         raise AppException(status_code=500, error="ServerError", message="Failed to get LoRA model: {str(e)}")
 
 
-@router.post("/{lora_id}/train")
-async def start_training(
-    lora_id: int,
-    current_user: dict = Depends(get_current_user),
-    db: AsyncSession = Depends(get_db_session),
-):
-    """
-    Start LoRA training for a model.
-    """
-    try:
-        result = await db.execute(
-            select(LoRAModel).where(LoRAModel.id == lora_id)
-        )
-        model = result.scalar_one_or_none()
-        
-        if not model:
-            raise NotFoundException(message=f"LoRA model with ID {lora_id} not found")
-        
-        if model.status == "training":
-            raise BadRequestException(message="Model is already training")
-        
-        # Start training
-        success = await lora_trainer.start_training(lora_id)
-        
-        if success:
-            return message_response(
-                message="Training started"
-            )
-        else:
-            raise AppException(status_code=500, error="ServerError", message="Failed to start training")
-            
-    except Exception:
-        raise
-    except Exception as e:
-        logger.error(f"Error starting training: {e}")
-        raise AppException(status_code=500, error="ServerError", message="Failed to start training: {str(e)}")
-
-
 @router.post("/{lora_id}/cancel")
 async def cancel_training(
     lora_id: int,
@@ -243,23 +274,21 @@ async def cancel_training(
     db: AsyncSession = Depends(get_db_session),
 ):
     """
-    Cancel ongoing LoRA training.
+    Cancel LoRA training for a model.
     """
     try:
         success = await lora_trainer.cancel_training(lora_id)
         
         if success:
-            return message_response(
-                message="Training cancelled"
-            )
+            return message_response(message="Training cancelled")
         else:
-            raise BadRequestException(message="Cannot cancel: model is not training")
+            raise BadRequestException(message="Cannot cancel training")
             
     except Exception:
         raise
     except Exception as e:
         logger.error(f"Error cancelling training: {e}")
-        raise AppException(status_code=500, error="ServerError", message="Failed to cancel training: {str(e)}")
+        raise AppException(status_code=500, error="ServerError", message="Failed to cancel training")
 
 
 @router.delete("/{lora_id}")
@@ -312,3 +341,126 @@ async def validate_lora_model(
     except Exception as e:
         logger.error(f"Error validating LoRA model: {e}")
         raise AppException(status_code=500, error="ServerError", message="Failed to validate LoRA model: {str(e)}")
+
+
+@router.post("/{lora_id}/train")
+async def start_training(
+    lora_id: int,
+    request: StartTrainingRequest = None,
+    current_user: dict = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db_session),
+):
+    """
+    Start training for a LoRA model.
+    
+    Supports:
+    - Using preset configuration
+    - Custom configuration
+    - Default configuration (no request body)
+    """
+    try:
+        # Check if model exists
+        result = await db.execute(
+            select(LoRAModel).where(LoRAModel.id == lora_id)
+        )
+        lora_model = result.scalar_one_or_none()
+        
+        if not lora_model:
+            raise NotFoundException(f"LoRA model {lora_id} not found")
+        
+        if lora_model.status == "training":
+            raise BadRequestException("Model is already training")
+        
+        # Apply configuration if provided
+        config_applied = False
+        config_info = {}
+        
+        if request:
+            if request.use_preset:
+                # Apply preset configuration
+                preset = get_preset(request.use_preset)
+                if preset:
+                    config_info = {
+                        "preset": preset.name,
+                        "preset_display_name": preset.display_name,
+                        "description": preset.description
+                    }
+                    config_applied = True
+                    logger.info(f"Applied preset '{preset.display_name}' for LoRA {lora_id}")
+            
+            if request.custom_config:
+                # Validate and apply custom configuration
+                config_info = {
+                    "custom": True,
+                    "epochs": request.custom_config.epochs,
+                    "learning_rate": request.custom_config.learning_rate,
+                    "network_dim": request.custom_config.network_dim,
+                    "estimated_time_minutes": estimate_training_time(request.custom_config)
+                }
+                config_applied = True
+                logger.info(f"Applied custom configuration for LoRA {lora_id}")
+        
+        # Start training in background
+        import asyncio
+        asyncio.create_task(lora_trainer.start_training(lora_id))
+        
+        response_data = {
+            "lora_id": lora_id,
+            "status": "training_started",
+            "config_applied": config_applied
+        }
+        
+        if config_info:
+            response_data["config"] = config_info
+        
+        return success_response(
+            data=response_data,
+            message="Training started successfully"
+        )
+    except (NotFoundException, BadRequestException):
+        raise
+    except Exception as e:
+        logger.error(f"Error starting training: {e}")
+        raise AppException(status_code=500, error="ServerError", message="Failed to start training")
+
+
+@router.get("/{lora_id}/logs")
+async def get_training_logs(
+    lora_id: int,
+    limit: int = 100,
+    offset: int = 0,
+    current_user: dict = Depends(get_current_user),
+):
+    """
+    Get training logs for a LoRA model.
+    """
+    try:
+        logs = await training_logger.get_logs(lora_id, limit, offset)
+        
+        return success_response(
+            data={"logs": logs, "count": len(logs)},
+            message="Training logs retrieved successfully"
+        )
+    except Exception as e:
+        logger.error(f"Error getting training logs: {e}")
+        raise AppException(status_code=500, error="ServerError", message="Failed to get training logs")
+
+
+@router.get("/{lora_id}/metrics")
+async def get_training_metrics(
+    lora_id: int,
+    current_user: dict = Depends(get_current_user),
+):
+    """
+    Get training metrics (loss curve, learning rate, etc.).
+    """
+    try:
+        metrics = await training_logger.get_metrics(lora_id)
+        
+        return success_response(
+            data=metrics,
+            message="Training metrics retrieved successfully"
+        )
+    except Exception as e:
+        logger.error(f"Error getting training metrics: {e}")
+        raise AppException(status_code=500, error="ServerError", message="Failed to get training metrics")

@@ -251,8 +251,8 @@ const loadDatasets = async () => {
     if (filterStatus.value) params.status = filterStatus.value
 
     const res = await getDatasetList(params)
-    datasets.value = res.data.items || []
-    total.value = res.data.total || 0
+    datasets.value = res.data.data || []
+    total.value = res.data.pagination?.total || 0
   } catch (error) {
     ElMessage.error('加载数据集失败')
   } finally {
@@ -263,7 +263,7 @@ const loadDatasets = async () => {
 const loadIpList = async () => {
   try {
     const res = await getIPList({ limit: 100 })
-    ipList.value = res.data.items || []
+    ipList.value = res.data.data || []
   } catch (error) {
     console.error('Failed to load IP list:', error)
   }

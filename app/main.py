@@ -89,12 +89,13 @@ app.add_middleware(
 )
 
 # Import routers
-from app.api.v1 import llm_router, auth_router, ip_router, task_router, generation_router, lora_router, content_router, system_health, settings_router, dataset_router
+from app.api.v1 import llm_router, auth_router, ip_router, task_router, generation_router, lora_router, content_router, system_health, settings_router, dataset_router, ip_feature_router
 
 # Include API routers
 app.include_router(llm_router.router)
 app.include_router(auth_router.router)
 app.include_router(ip_router.router)
+app.include_router(ip_feature_router.router)
 app.include_router(task_router.router)
 app.include_router(generation_router.router)
 app.include_router(lora_router.router)

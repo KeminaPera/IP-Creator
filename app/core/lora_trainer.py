@@ -8,11 +8,13 @@ from typing import Optional, Dict, Any
 from pathlib import Path
 import subprocess
 import asyncio
+from datetime import datetime
 from app.models.lora_model import LoRAModel
 from app.config.settings import settings
 from app.utils.logger import logger
 from app.config.database import async_session_factory
 from sqlalchemy import select
+from app.services.training_logger import training_logger
 
 
 class LoRATrainer:
@@ -90,19 +92,43 @@ class LoRATrainer:
             try:
                 # Update status to training
                 lora_model.status = "training"
+                lora_model.started_at = datetime.now()
                 await session.commit()
+                
+                # Log training start
+                await training_logger.log(
+                    lora_id,
+                    f"Starting training for {lora_model.name}",
+                    level="INFO"
+                )
                 
                 # Run Kohya-sd training
                 success = await self._run_kohya_training(lora_model)
                 
                 if success:
                     lora_model.status = "completed"
+                    lora_model.completed_at = datetime.now()
+                    lora_model.progress = 100.0
                     await session.commit()
+                    
+                    await training_logger.log(
+                        lora_id,
+                        f"Training completed successfully",
+                        level="INFO"
+                    )
+                    
                     logger.info(f"Completed training for LoRA model: {lora_model.name}")
                 else:
                     lora_model.status = "failed"
                     lora_model.error_message = "Training process failed"
                     await session.commit()
+                    
+                    await training_logger.log(
+                        lora_id,
+                        f"Training failed",
+                        level="ERROR"
+                    )
+                    
                     logger.error(f"Training failed for {lora_model.name}")
                 
                 return success
@@ -111,6 +137,13 @@ class LoRATrainer:
                 lora_model.status = "failed"
                 lora_model.error_message = str(e)
                 await session.commit()
+                
+                await training_logger.log(
+                    lora_id,
+                    f"Training error: {str(e)}",
+                    level="ERROR"
+                )
+                
                 logger.error(f"Training failed for {lora_model.name}: {e}")
                 return False
     

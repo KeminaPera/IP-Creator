@@ -43,3 +43,17 @@ export function augmentDataset(id, data = {}) {
 export function createDatasetVersion(id, params = {}) {
   return request.post(`/datasets/${id}/versions`, null, { params })
 }
+
+// Batch Annotation & Caption Generation
+export function batchAnnotateImages(datasetId, annotations) {
+  return request.post(`/datasets/${datasetId}/batch-annotate`, annotations)
+}
+
+export function generateCaptions(datasetId, triggerWord, useAi = false) {
+  const formData = new FormData()
+  formData.append('trigger_word', triggerWord)
+  formData.append('use_ai', useAi)
+  return request.post(`/datasets/${datasetId}/generate-captions`, formData, {
+    headers: { 'Content-Type': 'multipart/form-data' }
+  })
+}
