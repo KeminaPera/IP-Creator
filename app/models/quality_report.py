@@ -52,7 +52,7 @@ class QualityReport(Base):
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), comment="Update timestamp")
     
     # Relationships
-    lora_model = relationship("LoRAModel", backref="quality_reports")
+    lora_model = relationship("LoRAModel", back_populates="quality_reports")
     
     # Indexes
     __table_args__ = (
