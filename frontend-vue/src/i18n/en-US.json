@@ -572,6 +572,11 @@
         "768": "768x768 (HD)",
         "1024": "1024x1024 (Ultra HD)"
       },
+      "optimizers": {
+        "adamw8bit": "AdamW8bit",
+        "adamw": "AdamW",
+        "dadaptation": "DAdaptation"
+      },
       "presets": {
         "quick_test": {
           "name": "Quick Test",
@@ -619,9 +624,17 @@
       "auto_scroll": "Auto Scroll",
       "stop_scroll": "Stop Scroll",
       "no_logs": "No logs yet",
+      "no_logs_hint": "Training logs will appear here",
       "cancel": "Cancel Training",
       "cancel_confirm": "Are you sure to cancel training? Current progress will be lost.",
-      "cancelled": "Training cancelled"
+      "cancelled": "Training cancelled",
+      "load_logs_error": "Failed to load training logs",
+      "load_metrics_error": "Failed to load training metrics",
+      "y_axis": {
+        "loss": "Loss Value",
+        "learning_rate": "Learning Rate",
+        "step": "Training Step"
+      }
     }
   },
   "user": {

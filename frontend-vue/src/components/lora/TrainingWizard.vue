@@ -13,7 +13,7 @@
     </el-steps>
 
     <!-- Step 1: Select Preset -->
-    <div v-show="currentStep === 0" class="step-content">
+    <div v-show="currentStep === 0" class="step-content" v-loading="loadingPresets">
       <h3>{{ $t('lora.training_wizard.select_preset') }}</h3>
       <p class="step-description">{{ $t('lora.training_wizard.preset_description') }}</p>
       
@@ -122,9 +122,9 @@
 
         <el-form-item :label="$t('lora.training_wizard.optimizer')">
           <el-select v-model="customConfig.optimizer" style="width: 100%;">
-            <el-option label="AdamW8bit" value="AdamW8bit" />
-            <el-option label="AdamW" value="AdamW" />
-            <el-option label="DAdaptation" value="DAdaptation" />
+            <el-option :label="$t('lora.training_wizard.optimizers.adamw8bit')" value="AdamW8bit" />
+            <el-option :label="$t('lora.training_wizard.optimizers.adamw')" value="AdamW" />
+            <el-option :label="$t('lora.training_wizard.optimizers.dadaptation')" value="DAdaptation" />
           </el-select>
         </el-form-item>
 
@@ -243,6 +243,7 @@ const presets = ref([])
 const selectedPreset = ref('standard')
 const useCustomConfig = ref(false)
 const training = ref(false)
+const loadingPresets = ref(false)
 const configFormRef = ref(null)
 
 const customConfig = ref({
@@ -301,11 +302,14 @@ watch(() => props.modelValue, (newVal) => {
 })
 
 async function loadPresets() {
+  loadingPresets.value = true
   try {
     const { data } = await getTrainingPresets()
     presets.value = data.data || []
   } catch (err) {
     ElMessage.error(t('lora.training_wizard.load_presets_error'))
+  } finally {
+    loadingPresets.value = false
   }
 }
 

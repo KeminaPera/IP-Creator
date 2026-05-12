@@ -565,6 +565,11 @@
         "768": "768x768 (高清)",
         "1024": "1024x1024 (超高清)"
       },
+      "optimizers": {
+        "adamw8bit": "AdamW8bit",
+        "adamw": "AdamW",
+        "dadaptation": "DAdaptation"
+      },
       "presets": {
         "quick_test": {
           "name": "快速测试",
@@ -612,9 +617,17 @@
       "auto_scroll": "自动滚动",
       "stop_scroll": "停止滚动",
       "no_logs": "暂无日志",
+      "no_logs_hint": "训练日志将在这里显示",
       "cancel": "取消训练",
       "cancel_confirm": "确定要取消训练吗？已训练的进度将会丢失。",
-      "cancelled": "训练已取消"
+      "cancelled": "训练已取消",
+      "load_logs_error": "加载训练日志失败",
+      "load_metrics_error": "加载训练指标失败",
+      "y_axis": {
+        "loss": "Loss 值",
+        "learning_rate": "学习率",
+        "step": "训练步数"
+      }
     }
   },
   "user": {

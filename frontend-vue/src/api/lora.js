@@ -40,3 +40,8 @@ export function getTrainingMetrics(id) {
 export function startTraining(id, data) {
   return request.post(`/lora/${id}/train`, data)
 }
+
+// Cancel training
+export function cancelTraining(id) {
+  return request.post(`/lora/${id}/cancel`)
+}

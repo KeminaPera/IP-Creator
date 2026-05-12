@@ -10,9 +10,7 @@
     <el-card shadow="never" style="margin-bottom: 20px;">
       <div class="status-header">
         <h3>{{ $t('lora.training_monitor.training_status') }}</h3>
-        <el-tag :type="getStatusType(status)" size="large">
-          {{ $t(`lora.training_monitor.status.${status}`) }}
-        </el-tag>
+        <StatusBadge :status="status" size="large" />
       </div>
 
       <el-progress
@@ -101,7 +99,9 @@ import { useI18n } from 'vue-i18n'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Refresh } from '@element-plus/icons-vue'
 import * as echarts from 'echarts'
-import { getTrainingLogs, getTrainingMetrics } from '../api/lora'
+import { getTrainingLogs, getTrainingMetrics, cancelTraining } from '../api/lora'
+import StatusBadge from '../common/StatusBadge.vue'
+import { formatTimeOnly } from '../../utils/time'
 
 const { t } = useI18n()
 
@@ -172,7 +172,7 @@ async function loadLogs() {
       scrollToBottom()
     }
   } catch (err) {
-    console.error('Failed to load logs:', err)
+    ElMessage.error(t('lora.training_monitor.load_logs_error'))
   }
 }
 
@@ -194,33 +194,37 @@ async function loadMetrics() {
     
     updateCharts(metrics)
   } catch (err) {
-    console.error('Failed to load metrics:', err)
+    ElMessage.error(t('lora.training_monitor.load_metrics_error'))
   }
 }
 
 function updateCharts(metrics) {
-  // Update loss chart
-  if (lossChart && metrics.loss_history) {
-    lossChart.setOption({
-      xAxis: {
-        data: metrics.loss_history.map((_, i) => i + 1)
-      },
-      series: [{
-        data: metrics.loss_history
-      }]
-    })
-  }
+  try {
+    // Update loss chart
+    if (lossChart && metrics.loss_history?.length) {
+      lossChart.setOption({
+        xAxis: {
+          data: metrics.loss_history.map((_, i) => i + 1)
+        },
+        series: [{
+          data: metrics.loss_history
+        }]
+      }, { replaceMerge: ['series'] })
+    }
 
-  // Update learning rate chart
-  if (lrChart && metrics.lr_history) {
-    lrChart.setOption({
-      xAxis: {
-        data: metrics.lr_history.map((_, i) => i + 1)
-      },
-      series: [{
-        data: metrics.lr_history
-      }]
-    })
+    // Update learning rate chart
+    if (lrChart && metrics.lr_history?.length) {
+      lrChart.setOption({
+        xAxis: {
+          data: metrics.lr_history.map((_, i) => i + 1)
+        },
+        series: [{
+          data: metrics.lr_history
+        }]
+      }, { replaceMerge: ['series'] })
+    }
+  } catch (err) {
+    console.error('Failed to update charts:', err)
   }
 }
 
@@ -237,12 +241,12 @@ function initCharts() {
       },
       xAxis: {
         type: 'category',
-        name: 'Step',
+        name: t('lora.training_monitor.y_axis.step'),
         data: []
       },
       yAxis: {
         type: 'value',
-        name: 'Loss'
+        name: t('lora.training_monitor.y_axis.loss')
       },
       series: [{
         type: 'line',
@@ -280,12 +284,12 @@ function initCharts() {
       },
       xAxis: {
         type: 'category',
-        name: 'Step',
+        name: t('lora.training_monitor.y_axis.step'),
         data: []
       },
       yAxis: {
         type: 'value',
-        name: 'Learning Rate'
+        name: t('lora.training_monitor.y_axis.learning_rate')
       },
       series: [{
         type: 'line',
@@ -325,17 +329,6 @@ function stopPolling() {
   }
 }
 
-function getStatusType(status) {
-  const types = {
-    pending: 'info',
-    training: 'warning',
-    completed: 'success',
-    failed: 'danger',
-    cancelled: 'info'
-  }
-  return types[status] || 'info'
-}
-
 function getLogLevel(level) {
   const types = {
     INFO: 'info',
@@ -363,9 +356,7 @@ function formatDuration(seconds) {
 }
 
 function formatLogTime(timestamp) {
-  if (!timestamp) return ''
-  const date = new Date(timestamp)
-  return date.toLocaleTimeString()
+  return formatTimeOnly(timestamp)
 }
 
 function scrollToBottom() {
@@ -387,7 +378,7 @@ async function handleCancel() {
     )
     
     cancelling.value = true
-    // TODO: Implement cancel API
+    await cancelTraining(props.loraId)
     ElMessage.success(t('lora.training_monitor.cancelled'))
     emit('cancelled')
     handleClose()
