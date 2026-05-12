@@ -515,6 +515,7 @@
     "description": "Description",
     "actions": "Actions",
     "train": "Train",
+    "monitor": "Monitor",
     "cancel": "Cancel Training",
     "validate": "Validate Model",
     "delete": "Delete",
@@ -532,7 +533,96 @@
     "training": "Training",
     "pending": "Pending",
     "failed": "Failed",
-    "not_trained": "Not Trained"
+    "not_trained": "Not Trained",
+    "custom": "Custom",
+    "training_wizard": {
+      "title": "Training Configuration Wizard",
+      "step_preset": "Select Preset",
+      "step_config": "Configure",
+      "step_confirm": "Confirm",
+      "select_preset": "Select Training Preset",
+      "preset_description": "Choose a preset configuration or customize parameters later",
+      "epochs": "Training Epochs",
+      "learning_rate": "Learning Rate",
+      "network_dim": "Network Dimension",
+      "batch_size": "Batch Size",
+      "resolution": "Resolution",
+      "optimizer": "Optimizer",
+      "estimated_time": "Estimated Time",
+      "estimated": "Estimated Training Time",
+      "custom_hint": "Tip: You can customize all parameters in the next step",
+      "enable_custom": "Enable Custom Configuration",
+      "basic_config": "Basic Configuration",
+      "advanced_config": "Advanced Configuration",
+      "using_preset": "Using Preset Configuration",
+      "confirm_title": "Confirm Training Configuration",
+      "confirm_description": "Please review the configuration below and click Start Training when ready",
+      "warning": "Warning: Training will consume GPU resources. Do not close this page during training.",
+      "previous": "Previous",
+      "next": "Next",
+      "start_training": "Start Training",
+      "training_started": "Training started!",
+      "start_error": "Failed to start training",
+      "load_presets_error": "Failed to load presets",
+      "preset": "Preset",
+      "minutes": "minutes",
+      "hours": "hours",
+      "resolutions": {
+        "512": "512x512 (Standard)",
+        "768": "768x768 (HD)",
+        "1024": "1024x1024 (Ultra HD)"
+      },
+      "presets": {
+        "quick_test": {
+          "name": "Quick Test",
+          "description": "For quickly validating dataset quality, fast training"
+        },
+        "standard": {
+          "name": "Standard",
+          "description": "Recommended configuration balancing quality and time"
+        },
+        "high_quality": {
+          "name": "High Quality",
+          "description": "For best quality, longer training time"
+        },
+        "anime_style": {
+          "name": "Anime Style",
+          "description": "Optimized configuration for anime style"
+        }
+      },
+      "rules": {
+        "epochs_required": "Please enter training epochs",
+        "lr_required": "Please enter learning rate",
+        "dim_required": "Please select network dimension"
+      }
+    },
+    "training_monitor": {
+      "title": "Training Monitor",
+      "training_status": "Training Status",
+      "status": {
+        "pending": "Pending",
+        "training": "Training",
+        "completed": "Completed",
+        "failed": "Failed",
+        "cancelled": "Cancelled"
+      },
+      "epoch": "Current Epoch",
+      "current_loss": "Current Loss",
+      "learning_rate": "Learning Rate",
+      "elapsed_time": "Elapsed Time",
+      "estimated_remaining": "Estimated Remaining",
+      "steps": "Training Steps",
+      "loss_curve": "Loss Curve",
+      "lr_curve": "Learning Rate Curve",
+      "logs": "Training Logs",
+      "refresh": "Refresh",
+      "auto_scroll": "Auto Scroll",
+      "stop_scroll": "Stop Scroll",
+      "no_logs": "No logs yet",
+      "cancel": "Cancel Training",
+      "cancel_confirm": "Are you sure to cancel training? Current progress will be lost.",
+      "cancelled": "Training cancelled"
+    }
   },
   "user": {
     "account_settings": "Account Settings",

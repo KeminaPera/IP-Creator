@@ -55,13 +55,20 @@
 
       <template #actions="{ row }">
         <el-button
-          v-if="row.status !== 'trained'"
+          v-if="row.status !== 'trained' && row.status !== 'training'"
           size="small"
           type="primary"
-          @click="handleTrain(row)"
-          :disabled="row.status === 'training'"
+          @click="showTrainingWizard(row)"
         >
           {{ $t('lora.train') }}
+        </el-button>
+        <el-button
+          v-if="row.status === 'training'"
+          size="small"
+          type="success"
+          @click="showTrainingMonitor(row)"
+        >
+          {{ $t('lora.monitor') }}
         </el-button>
         <el-popconfirm :title="$t('lora.delete_confirm')" @confirm="handleDelete(row)">
           <template #reference>
@@ -95,6 +102,20 @@
         <el-button type="primary" @click="handleCreate" :loading="creating">{{ $t('common.confirm') }}</el-button>
       </template>
     </el-dialog>
+
+    <!-- Training Wizard Dialog -->
+    <TrainingWizard
+      v-model="wizardVisible"
+      :lora-id="selectedLoraId"
+      @training-started="handleTrainingStarted"
+    />
+
+    <!-- Training Monitor Dialog -->
+    <TrainingMonitor
+      v-model="monitorVisible"
+      :lora-id="selectedLoraId"
+      @cancelled="handleTrainingCancelled"
+    />
   </div>
 </template>
 
@@ -103,9 +124,11 @@ import { ref, onMounted, onUnmounted } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Plus } from '@element-plus/icons-vue'
-import { getLoraList, trainLora, deleteLora, createLora } from '../api/lora'
+import { getLoraList, deleteLora, createLora } from '../api/lora'
 import StatusBadge from '../components/common/StatusBadge.vue'
 import DataTable from '../components/common/DataTable.vue'
+import TrainingWizard from '../components/lora/TrainingWizard.vue'
+import TrainingMonitor from '../components/lora/TrainingMonitor.vue'
 
 const { t } = useI18n()
 
@@ -123,6 +146,13 @@ const createForm = ref({
   description: '',
   epochs: 10,
 })
+
+// Training wizard
+const wizardVisible = ref(false)
+const selectedLoraId = ref(null)
+
+// Training monitor
+const monitorVisible = ref(false)
 
 async function loadModels() {
   loading.value = true
@@ -194,6 +224,24 @@ async function handleDelete(row) {
   } catch (err) {
     ElMessage.error(t('common.error'))
   }
+}
+
+function showTrainingWizard(row) {
+  selectedLoraId.value = row.id
+  wizardVisible.value = true
+}
+
+function showTrainingMonitor(row) {
+  selectedLoraId.value = row.id
+  monitorVisible.value = true
+}
+
+function handleTrainingStarted() {
+  loadModels()
+}
+
+function handleTrainingCancelled() {
+  loadModels()
 }
 
 function showCreateDialog() {

@@ -508,6 +508,7 @@
     "description": "描述",
     "actions": "操作",
     "train": "训练",
+    "monitor": "监控",
     "cancel": "取消训练",
     "validate": "验证模型",
     "delete": "删除",
@@ -525,7 +526,96 @@
     "training": "训练中",
     "pending": "待训练",
     "failed": "失败",
-    "not_trained": "未训练"
+    "not_trained": "未训练",
+    "custom": "自定义",
+    "training_wizard": {
+      "title": "训练配置向导",
+      "step_preset": "选择预设",
+      "step_config": "配置参数",
+      "step_confirm": "确认启动",
+      "select_preset": "选择训练预设",
+      "preset_description": "选择一个预设配置，或稍后自定义参数",
+      "epochs": "训练轮数 (Epochs)",
+      "learning_rate": "学习率",
+      "network_dim": "网络维度",
+      "batch_size": "批次大小",
+      "resolution": "分辨率",
+      "optimizer": "优化器",
+      "estimated_time": "预计时间",
+      "estimated": "预计训练时间",
+      "custom_hint": "提示：您可以在下一步自定义所有参数",
+      "enable_custom": "启用自定义配置",
+      "basic_config": "基础配置",
+      "advanced_config": "高级配置",
+      "using_preset": "使用预设配置",
+      "confirm_title": "确认训练配置",
+      "confirm_description": "请检查以下配置，确认无误后点击开始训练",
+      "warning": "警告：训练过程将占用 GPU 资源，请勿中途关闭页面",
+      "previous": "上一步",
+      "next": "下一步",
+      "start_training": "开始训练",
+      "training_started": "训练已启动！",
+      "start_error": "启动训练失败",
+      "load_presets_error": "加载预设失败",
+      "preset": "预设配置",
+      "minutes": "分钟",
+      "hours": "小时",
+      "resolutions": {
+        "512": "512x512 (标准)",
+        "768": "768x768 (高清)",
+        "1024": "1024x1024 (超高清)"
+      },
+      "presets": {
+        "quick_test": {
+          "name": "快速测试",
+          "description": "用于快速验证数据集质量，训练速度快"
+        },
+        "standard": {
+          "name": "标准训练",
+          "description": "平衡质量和时间的推荐配置"
+        },
+        "high_quality": {
+          "name": "高质量",
+          "description": "追求最佳质量，训练时间较长"
+        },
+        "anime_style": {
+          "name": "动漫风格",
+          "description": "针对动漫风格优化的配置"
+        }
+      },
+      "rules": {
+        "epochs_required": "请输入训练轮数",
+        "lr_required": "请输入学习率",
+        "dim_required": "请选择网络维度"
+      }
+    },
+    "training_monitor": {
+      "title": "训练监控",
+      "training_status": "训练状态",
+      "status": {
+        "pending": "等待中",
+        "training": "训练中",
+        "completed": "已完成",
+        "failed": "失败",
+        "cancelled": "已取消"
+      },
+      "epoch": "当前轮数",
+      "current_loss": "当前 Loss",
+      "learning_rate": "学习率",
+      "elapsed_time": "已用时间",
+      "estimated_remaining": "预计剩余",
+      "steps": "训练步数",
+      "loss_curve": "Loss 曲线",
+      "lr_curve": "学习率曲线",
+      "logs": "训练日志",
+      "refresh": "刷新",
+      "auto_scroll": "自动滚动",
+      "stop_scroll": "停止滚动",
+      "no_logs": "暂无日志",
+      "cancel": "取消训练",
+      "cancel_confirm": "确定要取消训练吗？已训练的进度将会丢失。",
+      "cancelled": "训练已取消"
+    }
   },
   "user": {
     "account_settings": "账号设置",

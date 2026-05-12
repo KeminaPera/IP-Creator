@@ -15,3 +15,28 @@ export function trainLora(id) {
 export function deleteLora(id) {
   return request.delete(`/lora/${id}`)
 }
+
+// Training presets
+export function getTrainingPresets() {
+  return request.get('/lora/presets')
+}
+
+// Validate training config
+export function validateTrainingConfig(config) {
+  return request.post('/lora/validate-config', config)
+}
+
+// Get training logs
+export function getTrainingLogs(id, params) {
+  return request.get(`/lora/${id}/logs`, { params })
+}
+
+// Get training metrics
+export function getTrainingMetrics(id) {
+  return request.get(`/lora/${id}/metrics`)
+}
+
+// Start training with config
+export function startTraining(id, data) {
+  return request.post(`/lora/${id}/train`, data)
+}
