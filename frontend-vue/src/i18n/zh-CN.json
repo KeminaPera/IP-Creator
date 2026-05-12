@@ -628,6 +628,30 @@
         "learning_rate": "学习率",
         "step": "训练步数"
       }
+    },
+    "quality": "质量评分",
+    "quality_report": "质量报告",
+    "quality": {
+      "title": "质量评估报告",
+      "assessed_at": "评估时间",
+      "detailed_scores": "详细评分",
+      "loss_score": "训练 Loss",
+      "completion_score": "训练完成度",
+      "file_score": "模型文件质量",
+      "generation_success": "生成成功率",
+      "test_images": "测试图片",
+      "recommendations": "优化建议",
+      "no_report": "暂无质量报告",
+      "reassess": "重新评估",
+      "load_failed": "加载质量报告失败",
+      "assess_success": "质量评估完成：{score}/100 ({grade})",
+      "assess_failed": "质量评估失败",
+      "grade_s": "优秀 - 模型质量非常好，可以直接使用",
+      "grade_a": "良好 - 模型质量不错，推荐使用",
+      "grade_b": "合格 - 模型质量可以，能够使用",
+      "grade_c": "一般 - 模型质量一般，建议优化",
+      "grade_d": "较差 - 模型质量较差，需要重新训练",
+      "grade_f": "失败 - 模型训练失败，必须重新训练"
     }
   },
   "user": {

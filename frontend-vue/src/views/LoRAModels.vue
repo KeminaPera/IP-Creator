@@ -51,6 +51,19 @@
           </template>
         </el-table-column>
         <el-table-column prop="training_steps" :label="$t('lora.training_steps')" width="120" align="center" />
+        <el-table-column :label="$t('lora.quality')" width="120" align="center">
+          <template #default="{ row }">
+            <el-tag
+              v-if="row.quality_grade"
+              :type="getGradeType(row.quality_grade)"
+              size="small"
+              effect="dark"
+            >
+              {{ row.quality_grade }} ({{ row.quality_score?.toFixed(0) }})
+            </el-tag>
+            <span v-else>-</span>
+          </template>
+        </el-table-column>
       </template>
 
       <template #actions="{ row }">
@@ -69,6 +82,14 @@
           @click="showTrainingMonitor(row)"
         >
           {{ $t('lora.monitor') }}
+        </el-button>
+        <el-button
+          v-if="row.status === 'completed' || row.status === 'trained'"
+          size="small"
+          type="warning"
+          @click="showQualityReport(row)"
+        >
+          {{ $t('lora.quality_report') }}
         </el-button>
         <el-button
           size="small"
@@ -118,6 +139,13 @@
       :lora-id="selectedLoraId"
       @cancelled="handleTrainingCancelled"
     />
+
+    <!-- Quality Report Dialog -->
+    <QualityReport
+      ref="qualityReportRef"
+      :lora-id="selectedLoraId"
+      @update="loadModels"
+    />
   </div>
 </template>
 
@@ -131,6 +159,7 @@ import StatusBadge from '../components/common/StatusBadge.vue'
 import DataTable from '../components/common/DataTable.vue'
 import TrainingWizard from '../components/lora/TrainingWizard.vue'
 import TrainingMonitor from '../components/lora/TrainingMonitor.vue'
+import QualityReport from '../components/lora/QualityReport.vue'
 
 const { t } = useI18n()
 
@@ -155,6 +184,9 @@ const selectedLoraId = ref(null)
 
 // Training monitor
 const monitorVisible = ref(false)
+
+// Quality report
+const qualityReportRef = ref(null)
 
 async function loadModels() {
   loading.value = true
@@ -247,6 +279,23 @@ function showTrainingWizard(row) {
 function showTrainingMonitor(row) {
   selectedLoraId.value = row.id
   monitorVisible.value = true
+}
+
+function showQualityReport(row) {
+  selectedLoraId.value = row.id
+  qualityReportRef.value?.open()
+}
+
+function getGradeType(grade) {
+  const typeMap = {
+    'S': 'success',
+    'A': 'success',
+    'B': '',
+    'C': 'warning',
+    'D': 'danger',
+    'F': 'danger',
+  }
+  return typeMap[grade] || 'info'
 }
 
 function handleTrainingStarted() {

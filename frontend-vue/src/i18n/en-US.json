@@ -635,6 +635,30 @@
         "learning_rate": "Learning Rate",
         "step": "Training Step"
       }
+    },
+    "quality": "Quality Score",
+    "quality_report": "Quality Report",
+    "quality": {
+      "title": "Quality Assessment Report",
+      "assessed_at": "Assessed At",
+      "detailed_scores": "Detailed Scores",
+      "loss_score": "Training Loss",
+      "completion_score": "Training Completion",
+      "file_score": "Model File Quality",
+      "generation_success": "Generation Success Rate",
+      "test_images": "Test Images",
+      "recommendations": "Recommendations",
+      "no_report": "No quality report yet",
+      "reassess": "Re-assess",
+      "load_failed": "Failed to load quality report",
+      "assess_success": "Quality assessment completed: {score}/100 ({grade})",
+      "assess_failed": "Quality assessment failed",
+      "grade_s": "Excellent - Model quality is outstanding, ready to use",
+      "grade_a": "Good - Model quality is solid, recommended to use",
+      "grade_b": "Acceptable - Model quality is okay, can be used",
+      "grade_c": "Fair - Model quality is average, optimization suggested",
+      "grade_d": "Poor - Model quality is low, retraining needed",
+      "grade_f": "Failed - Model training failed, must retrain"
     }
   },
   "user": {

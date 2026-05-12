@@ -45,3 +45,17 @@ export function startTraining(id, data) {
 export function cancelTraining(id) {
   return request.post(`/lora/${id}/cancel`)
 }
+
+// Quality assessment
+export function assessQuality(id, data) {
+  return request.post(`/lora/${id}/assess-quality`, data)
+}
+
+export function getQualityReport(id) {
+  return request.get(`/lora/${id}/quality-report`)
+}
+
+// Kohya environment check
+export function checkKohyaEnvironment() {
+  return request.get('/lora/check-kohya')
+}
