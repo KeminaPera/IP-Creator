@@ -29,6 +29,7 @@
         <template #header>
           <div class="card-header">
             <span>{{ $t('quality.detailed_scores') }}</span>
+            <el-tag size="small" type="info">5 维度评分</el-tag>
           </div>
         </template>
 
@@ -77,6 +78,18 @@
             <el-progress
               :percentage="report.generation_success"
               :color="getScoreColor(report.generation_success)"
+              :stroke-width="20"
+            />
+          </div>
+
+          <div class="score-bar-item">
+            <div class="bar-label">
+              <span>{{ $t('quality.clip_consistency') }}</span>
+              <span class="bar-value">{{ report.clip_consistency }}</span>
+            </div>
+            <el-progress
+              :percentage="report.clip_consistency || 0"
+              :color="getScoreColor(report.clip_consistency || 0)"
               :stroke-width="20"
             />
           </div>

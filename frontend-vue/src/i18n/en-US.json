@@ -646,6 +646,7 @@
       "completion_score": "Training Completion",
       "file_score": "Model File Quality",
       "generation_success": "Generation Success Rate",
+      "clip_consistency": "CLIP Character Consistency",
       "test_images": "Test Images",
       "recommendations": "Recommendations",
       "no_report": "No quality report yet",

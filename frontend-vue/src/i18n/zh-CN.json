@@ -639,6 +639,7 @@
       "completion_score": "训练完成度",
       "file_score": "模型文件质量",
       "generation_success": "生成成功率",
+      "clip_consistency": "CLIP 角色一致性",
       "test_images": "测试图片",
       "recommendations": "优化建议",
       "no_report": "暂无质量报告",

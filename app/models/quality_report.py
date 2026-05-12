@@ -34,6 +34,7 @@ class QualityReport(Base):
     completion_score = Column(Float, nullable=True, comment="Training completion score")
     file_score = Column(Float, nullable=True, comment="Model file quality score")
     generation_success = Column(Float, nullable=True, comment="Image generation success rate")
+    clip_consistency = Column(Float, nullable=True, comment="CLIP character consistency score")
     
     # Test Images
     test_images = Column(JSON, nullable=True, comment="Generated test images info: [{prompt, path, seed, scenario}]")

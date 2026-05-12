@@ -155,7 +155,7 @@ async def list_lora_models(
         
     except Exception as e:
         logger.error(f"Error listing LoRA models: {e}")
-        raise AppException(status_code=500, error="ServerError", message="Failed to list LoRA models: {str(e)}")
+        raise AppException(status_code=500, error="ServerError", message=f"Failed to list LoRA models: {str(e)}")
 
 
 @router.get("/presets")
@@ -268,7 +268,7 @@ async def get_lora_model(
         raise
     except Exception as e:
         logger.error(f"Error getting LoRA model: {e}")
-        raise AppException(status_code=500, error="ServerError", message="Failed to get LoRA model: {str(e)}")
+        raise AppException(status_code=500, error="ServerError", message=f"Failed to get LoRA model: {str(e)}")
 
 
 @router.post("/{lora_id}/cancel")
@@ -326,7 +326,7 @@ async def delete_lora_model(
         raise
     except Exception as e:
         logger.error(f"Error deleting LoRA model: {e}")
-        raise AppException(status_code=500, error="ServerError", message="Failed to delete LoRA model: {str(e)}")
+        raise AppException(status_code=500, error="ServerError", message=f"Failed to delete LoRA model: {str(e)}")
 
 
 @router.get("/{lora_id}/validate")
@@ -622,6 +622,7 @@ async def get_quality_report(
                 "completion_score": report.completion_score,
                 "file_score": report.file_score,
                 "generation_success": report.generation_success,
+                "clip_consistency": report.clip_consistency,
                 "test_images": report.test_images,
                 "recommendations": report.recommendations,
                 "created_at": report.created_at.isoformat() if report.created_at else None,
