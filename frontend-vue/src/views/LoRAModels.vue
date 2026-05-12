@@ -70,11 +70,13 @@
         >
           {{ $t('lora.monitor') }}
         </el-button>
-        <el-popconfirm :title="$t('lora.delete_confirm')" @confirm="handleDelete(row)">
-          <template #reference>
-            <el-button size="small" type="danger">{{ $t('lora.delete') }}</el-button>
-          </template>
-        </el-popconfirm>
+        <el-button
+          size="small"
+          type="danger"
+          @click="handleDelete(row)"
+        >
+          {{ $t('lora.delete') }}
+        </el-button>
       </template>
     </DataTable>
 
@@ -218,11 +220,22 @@ async function handleTrain(row) {
 
 async function handleDelete(row) {
   try {
+    await ElMessageBox.confirm(
+      t('lora.delete_confirm'),
+      t('common.warning'),
+      {
+        confirmButtonText: t('common.confirm'),
+        cancelButtonText: t('common.cancel'),
+        type: 'warning',
+      }
+    )
     await deleteLora(row.id)
     ElMessage.success(t('common.success'))
     loadModels()
   } catch (err) {
-    ElMessage.error(t('common.error'))
+    if (err !== 'cancel') {
+      ElMessage.error(t('common.error'))
+    }
   }
 }
 

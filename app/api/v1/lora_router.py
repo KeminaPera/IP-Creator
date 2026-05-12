@@ -12,6 +12,7 @@ from typing import Optional, List
 from app.config.database import get_db_session
 from app.models.lora_model import LoRAModel
 from app.models.ip_asset import IPAsset
+from app.models.training_dataset import TrainingDataset
 from app.api.deps import get_current_user
 from app.core.exceptions import (
     NotFoundException,
@@ -30,6 +31,8 @@ from app.schemas.training_config import (
     estimate_training_time
 )
 from app.services.training_logger import training_logger
+from app.services.dataset_converter import DatasetConverter
+from app.services.kohya_detector import KohyaDetector
 
 router = APIRouter(prefix="/api/v1/lora", tags=["LoRA Models"])
 
@@ -356,6 +359,7 @@ async def start_training(
     Supports:
     - Using preset configuration
     - Custom configuration
+    - Dataset association (automatic conversion to Kohya format)
     - Default configuration (no request body)
     """
     try:
@@ -374,6 +378,7 @@ async def start_training(
         # Apply configuration if provided
         config_applied = False
         config_info = {}
+        dataset_info = {}
         
         if request:
             if request.use_preset:
@@ -400,6 +405,36 @@ async def start_training(
                 config_applied = True
                 logger.info(f"Applied custom configuration for LoRA {lora_id}")
         
+        # Handle dataset association and conversion
+        if lora_model.dataset_id:
+            # Load dataset
+            dataset = await db.get(TrainingDataset, lora_model.dataset_id)
+            if dataset:
+                dataset_info = {
+                    "dataset_id": dataset.id,
+                    "dataset_name": dataset.name,
+                    "image_count": dataset.image_count,
+                }
+                
+                # Convert to Kohya format if not already done
+                converter = DatasetConverter()
+                from pathlib import Path
+                from app.config.settings import settings
+                kohya_dir = Path(settings.STORAGE_PATH) / "datasets" / f"kohya_dataset_{dataset.id}"
+                
+                if not kohya_dir.exists():
+                    logger.info(f"Converting dataset {dataset.id} to Kohya format")
+                    conversion_result = await converter.convert_to_kohya_format(
+                        dataset_id=dataset.id
+                    )
+                    dataset_info["kohya_directory"] = conversion_result["kohya_directory"]
+                    dataset_info["converted_images"] = conversion_result["converted_images"]
+                else:
+                    dataset_info["kohya_directory"] = str(kohya_dir)
+                    dataset_info["already_converted"] = True
+                
+                logger.info(f"Dataset associated: {dataset.name} with {dataset.image_count} images")
+        
         # Start training in background
         import asyncio
         asyncio.create_task(lora_trainer.start_training(lora_id))
@@ -412,6 +447,9 @@ async def start_training(
         
         if config_info:
             response_data["config"] = config_info
+        
+        if dataset_info:
+            response_data["dataset"] = dataset_info
         
         return success_response(
             data=response_data,
@@ -464,3 +502,33 @@ async def get_training_metrics(
     except Exception as e:
         logger.error(f"Error getting training metrics: {e}")
         raise AppException(status_code=500, error="ServerError", message="Failed to get training metrics")
+
+
+# ============================================
+# Kohya Environment Detection
+# ============================================
+
+@router.get("/check-kohya")
+async def check_kohya_environment(
+    current_user: dict = Depends(get_current_user),
+):
+    """
+    Check Kohya-ss environment installation and readiness.
+    
+    Returns:
+    - Installation status
+    - GPU availability
+    - Required packages
+    - Recommendations
+    """
+    try:
+        detector = KohyaDetector()
+        validation = detector.validate_environment()
+        
+        return success_response(
+            data=validation,
+            message="Environment check completed"
+        )
+    except Exception as e:
+        logger.error(f"Error checking Kohya environment: {e}")
+        raise AppException(status_code=500, error="ServerError", message="Failed to check environment")

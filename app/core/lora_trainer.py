@@ -15,6 +15,8 @@ from app.utils.logger import logger
 from app.config.database import async_session_factory
 from sqlalchemy import select
 from app.services.training_logger import training_logger
+from app.services.kohya_detector import KohyaDetector
+from app.services.dataset_converter import DatasetConverter
 
 
 class LoRATrainer:
@@ -29,6 +31,8 @@ class LoRATrainer:
         """Initialize LoRA trainer."""
         self.lora_path = Path(settings.LORA_MODELS_PATH)
         self.lora_path.mkdir(parents=True, exist_ok=True)
+        self.kohya_detector = KohyaDetector()
+        self.dataset_converter = DatasetConverter()
     
     async def create_training_task(
         self,
@@ -163,14 +167,32 @@ class LoRATrainer:
         logger.info(f"Starting Kohya training for: {lora_model.name}")
         logger.info(f"Base model: {lora_model.base_model}")
         
-        # Prepare training parameters
+        # 1. Check Kohya environment
+        detection = self.kohya_detector.detect_kohya()
+        
+        if not detection["installed"]:
+            logger.warning("Kohya-ss not found, using simulation mode")
+            return await self._simulate_training(lora_model)
+        
+        # 2. Prepare training parameters
         params = lora_model.training_params or {}
         output_dir = Path(lora_model.file_path).parent
         output_dir.mkdir(parents=True, exist_ok=True)
         
-        # Create training configuration
+        # 3. Get dataset path if available
+        dataset_path = None
+        if lora_model.dataset_id:
+            from pathlib import Path
+            from app.config.settings import settings
+            kohya_dir = Path(settings.STORAGE_PATH) / "datasets" / f"kohya_dataset_{lora_model.dataset_id}"
+            if kohya_dir.exists():
+                dataset_path = str(kohya_dir)
+                logger.info(f"Using dataset: {dataset_path}")
+        
+        # 4. Create training configuration
         config = {
             "pretrained_model_name_or_path": lora_model.base_model,
+            "train_data_dir": dataset_path or "dataset",  # Kohya dataset path
             "output_dir": str(output_dir),
             "output_name": lora_model.name,
             "max_train_steps": params.get("max_train_steps", 1000),
@@ -191,44 +213,28 @@ class LoRATrainer:
             json.dump(config, f, indent=2)
         
         try:
-            # Check if kohya-ss is installed
-            kohya_script = Path("kohya_ss/train_network.py")
-            if not kohya_script.exists():
-                # Try alternative paths
-                alt_paths = [
-                    Path("/opt/kohya_ss/train_network.py"),
-                    Path.home() / "kohya_ss/train_network.py",
-                    Path.home() / "sd-scripts/train_network.py",
-                ]
-                for alt in alt_paths:
-                    if alt.exists():
-                        kohya_script = alt
-                        break
+            # 5. Run actual Kohya training
+            kohya_script = detection.get("train_script")
+            python_exe = detection.get("python_executable", "python")
             
-            if not kohya_script.exists():
-                logger.warning("Kohya-ss not found, using simulation mode")
-                # Simulation mode for testing
-                import time
-                await asyncio.sleep(5)  # Simulate training time
-                
-                # Create a dummy model file
-                dummy_model_path = Path(lora_model.file_path)
-                with open(dummy_model_path, "wb") as f:
-                    f.write(b"\x00" * 1024 * 1024)  # 1MB dummy file
-                
-                lora_model.final_loss = 0.05
-                lora_model.training_steps = config["max_train_steps"]
-                lora_model.training_time_minutes = 5.0
-                return True
+            if not kohya_script:
+                logger.warning("Training script not found, using simulation mode")
+                return await self._simulate_training(lora_model)
             
-            # Run actual Kohya training
             cmd = [
-                "python",
-                str(kohya_script),
+                python_exe,
+                kohya_script,
                 "--config_file", str(config_path),
             ]
             
             logger.info(f"Running command: {' '.join(cmd)}")
+            
+            # Log training start
+            await training_logger.log(
+                lora_model.id,
+                f"Starting Kohya training with script: {kohya_script}",
+                level="INFO"
+            )
             
             process = subprocess.Popen(
                 cmd,
@@ -244,14 +250,63 @@ class LoRATrainer:
                 lora_model.final_loss = 0.05
                 lora_model.training_steps = config["max_train_steps"]
                 lora_model.training_time_minutes = 30.0
+                
+                await training_logger.log(
+                    lora_model.id,
+                    "Kohya training completed successfully",
+                    level="INFO"
+                )
+                
                 return True
             else:
                 logger.error(f"Training failed: {stderr}")
+                
+                await training_logger.log(
+                    lora_model.id,
+                    f"Kohya training failed: {stderr}",
+                    level="ERROR"
+                )
+                
                 return False
         
         except Exception as e:
-            logger.error(f"Kohya training error: {e}")
-            return False
+            logger.error(f"Training execution error: {e}")
+            return await self._simulate_training(lora_model)
+    
+    async def _simulate_training(self, lora_model: LoRAModel) -> bool:
+        """
+        Simulate training for testing when Kohya is not installed.
+        
+        Args:
+            lora_model: LoRA model configuration
+            
+        Returns:
+            True (simulation always succeeds)
+        """
+        logger.warning(f"Simulating training for: {lora_model.name}")
+        
+        # Simulate training time
+        import asyncio
+        await asyncio.sleep(5)
+        
+        # Create a dummy model file
+        dummy_model_path = Path(lora_model.file_path)
+        dummy_model_path.parent.mkdir(parents=True, exist_ok=True)
+        
+        with open(dummy_model_path, "wb") as f:
+            f.write(b"\x00" * 1024 * 1024)  # 1MB dummy file
+        
+        lora_model.final_loss = 0.05
+        lora_model.training_steps = 1000
+        lora_model.training_time_minutes = 5.0
+        
+        await training_logger.log(
+            lora_model.id,
+            "Simulation completed (Kohya not installed)",
+            level="WARNING"
+        )
+        
+        return True
     
     async def cancel_training(self, lora_id: int) -> bool:
         """

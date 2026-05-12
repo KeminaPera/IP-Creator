@@ -32,6 +32,8 @@ from app.utils.logger import logger
 from app.utils.response import success_response, list_response, created_response, updated_response, deleted_response
 from app.utils.caption_generator import generate_caption_from_annotation, generate_caption_batch
 from app.config.feature_types import FEATURE_TYPE_CONFIG
+from app.services.dataset_generator import DatasetGenerator
+from app.services.dataset_converter import DatasetConverter
 
 router = APIRouter(prefix="/api/v1/datasets", tags=["Training Datasets"])
 
@@ -355,4 +357,189 @@ async def batch_annotate_images(
         data={"updated_count": updated_count},
         message=f"Updated {updated_count} images successfully"
     )
+
+
+# ============================================
+# Dataset Generation from Features
+# ============================================
+
+@router.post("/generate-from-features")
+async def generate_dataset_from_features(
+    request: dict,
+    current_user: dict = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db_session),
+):
+    """
+    Generate training dataset from IP feature library.
+    
+    Request body:
+    {
+        "ip_asset_id": 1,
+        "selected_features": {
+            "outfit": [1, 2],
+            "expression": [3, 4, 5],
+            "pose": [6, 7]
+        },
+        "dataset_name": "小狐狸 - 完整训练集",
+        "description": "包含2种服装、3种表情、2种动作"
+    }
+    """
+    try:
+        ip_asset_id = request.get("ip_asset_id")
+        selected_features = request.get("selected_features", {})
+        dataset_name = request.get("dataset_name")
+        description = request.get("description", "")
+        
+        if not ip_asset_id or not dataset_name:
+            raise BadRequestException("ip_asset_id and dataset_name are required")
+        
+        if not selected_features:
+            raise BadRequestException("selected_features cannot be empty")
+        
+        # Generate dataset
+        generator = DatasetGenerator(db)
+        dataset = await generator.generate_dataset_from_features(
+            ip_asset_id=ip_asset_id,
+            selected_features=selected_features,
+            dataset_name=dataset_name,
+            description=description,
+        )
+        
+        return created_response(
+            data={
+                "id": dataset.id,
+                "name": dataset.name,
+                "image_count": dataset.image_count,
+                "status": dataset.status,
+            },
+            message=f"Dataset created with {dataset.image_count} images"
+        )
+        
+    except (BadRequestException, NotFoundException):
+        raise
+    except Exception as e:
+        logger.error(f"Error generating dataset: {e}")
+        raise BadRequestException(f"Failed to generate dataset: {str(e)}")
+
+
+@router.post("/preview-combinations")
+async def preview_dataset_combinations(
+    request: dict,
+    current_user: dict = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db_session),
+):
+    """
+    Preview dataset combinations without creating dataset.
+    
+    Request body:
+    {
+        "ip_asset_id": 1,
+        "selected_features": {
+            "outfit": [1, 2],
+            "expression": [3, 4, 5]
+        }
+    }
+    """
+    try:
+        ip_asset_id = request.get("ip_asset_id")
+        selected_features = request.get("selected_features", {})
+        
+        if not ip_asset_id or not selected_features:
+            raise BadRequestException("ip_asset_id and selected_features are required")
+        
+        generator = DatasetGenerator(db)
+        preview = await generator.preview_combinations(
+            ip_asset_id=ip_asset_id,
+            selected_features=selected_features,
+        )
+        
+        return success_response(
+            data=preview,
+            message="Preview generated successfully"
+        )
+        
+    except (BadRequestException, NotFoundException):
+        raise
+    except Exception as e:
+        logger.error(f"Error previewing combinations: {e}")
+        raise BadRequestException(f"Failed to preview: {str(e)}")
+
+
+@router.post("/{dataset_id}/convert-to-kohya")
+async def convert_dataset_to_kohya(
+    dataset_id: int,
+    request: Optional[dict] = None,
+    current_user: dict = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db_session),
+):
+    """
+    Convert dataset to Kohya-sd training format.
+    
+    Creates:
+    - Image files in kohya directory
+    - Caption .txt files for each image
+    - metadata.json with dataset info
+    """
+    try:
+        output_dir = request.get("output_dir") if request else None
+        
+        converter = DatasetConverter()
+        result = await converter.convert_to_kohya_format(
+            dataset_id=dataset_id,
+            output_dir=output_dir,
+        )
+        
+        return success_response(
+            data=result,
+            message=f"Converted {result['converted_images']} images to Kohya format"
+        )
+        
+    except (BadRequestException, NotFoundException, ValueError) as e:
+        raise BadRequestException(str(e))
+    except Exception as e:
+        logger.error(f"Error converting dataset: {e}")
+        raise BadRequestException(f"Failed to convert dataset: {str(e)}")
+
+
+@router.post("/{dataset_id}/validate-kohya")
+async def validate_kohya_dataset(
+    dataset_id: int,
+    current_user: dict = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db_session),
+):
+    """
+    Validate a Kohya dataset directory.
+    
+    Checks:
+    - Image files exist
+    - Caption files match images
+    - Caption content is valid
+    """
+    try:
+        # Get dataset
+        dataset = await db.get(TrainingDataset, dataset_id)
+        if not dataset:
+            raise NotFoundException(f"Dataset {dataset_id} not found")
+        
+        # Find kohya directory (assume it's in storage path)
+        from pathlib import Path
+        from app.config.settings import settings
+        kohya_dir = Path(settings.STORAGE_PATH) / "datasets" / f"kohya_dataset_{dataset_id}"
+        
+        if not kohya_dir.exists():
+            raise BadRequestException(f"Kohya directory not found. Please convert the dataset first.")
+        
+        converter = DatasetConverter()
+        validation = await converter.validate_kohya_dataset(str(kohya_dir))
+        
+        return success_response(
+            data=validation,
+            message="Validation completed"
+        )
+        
+    except (BadRequestException, NotFoundException):
+        raise
+    except Exception as e:
+        logger.error(f"Error validating dataset: {e}")
+        raise BadRequestException(f"Failed to validate: {str(e)}")
 
