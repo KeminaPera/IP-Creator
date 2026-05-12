@@ -89,7 +89,7 @@ app.add_middleware(
 )
 
 # Import routers
-from app.api.v1 import llm_router, auth_router, ip_router, task_router, generation_router, lora_router, content_router, system_health, settings_router, dataset_router, ip_feature_router
+from app.api.v1 import llm_router, auth_router, ip_router, task_router, generation_router, lora_router, content_router, system_health, settings_router, dataset_router, ip_feature_router, training_websocket
 
 # Include API routers
 app.include_router(llm_router.router)
@@ -104,6 +104,9 @@ app.include_router(content_router.router)
 app.include_router(system_health.router)
 app.include_router(settings_router.router)
 app.include_router(dataset_router.router)
+
+# Include WebSocket routers
+app.include_router(training_websocket.router)
 
 # Register unified exception handlers
 register_exception_handlers(app)
