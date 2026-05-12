@@ -13,6 +13,7 @@ from app.models.quality_report import QualityReport
 from app.config.database import async_session_factory
 from app.utils.logger import logger
 from app.config.settings import settings
+from app.services.sd_image_generator import SDImageGenerator
 
 
 class QualityAssessor:
@@ -27,6 +28,7 @@ class QualityAssessor:
         """Initialize quality assessor."""
         self.test_images_path = Path(settings.STORAGE_PATH) / "test_images"
         self.test_images_path.mkdir(parents=True, exist_ok=True)
+        self.sd_generator = SDImageGenerator()
     
     async def generate_test_images(
         self,
@@ -177,35 +179,42 @@ class QualityAssessor:
         seed: int = 42,
     ) -> bool:
         """
-        Generate a single test image.
+        Generate a single test image using Stable Diffusion.
         
-        In production, this would call Stable Diffusion with the LoRA model.
-        For now, creates a placeholder image.
+        Args:
+            lora_model: Trained LoRA model
+            prompt: Generation prompt
+            negative_prompt: Negative prompt
+            output_path: Path to save the image
+            seed: Random seed
+            
+        Returns:
+            True if generation succeeded
         """
-        from PIL import Image
-        import numpy as np
-        
         try:
-            # Check if we have a real LoRA model file
-            lora_path = Path(lora_model.file_path)
-            has_real_model = lora_path.exists() and lora_path.stat().st_size > 1000
+            # Get LoRA path
+            lora_path = lora_model.file_path if Path(lora_model.file_path).exists() else None
             
-            if has_real_model:
-                # TODO: Implement real Stable Diffusion generation
-                # This would require:
-                # 1. Load base model (SD 1.5, SDXL, etc.)
-                # 2. Load LoRA weights
-                # 3. Generate image with prompt
-                # 4. Save to output_path
-                logger.warning("Real image generation not yet implemented, using placeholder")
+            # Generate image using SD
+            result = await self.sd_generator.generate_image(
+                prompt=prompt,
+                negative_prompt=negative_prompt,
+                lora_path=lora_path,
+                lora_weight=0.8,
+                seed=seed,
+                width=512,
+                height=512,
+                steps=20,
+                cfg_scale=7.0,
+                output_path=output_path,
+            )
             
-            # Create placeholder image for now
-            img_array = np.random.randint(0, 255, (512, 512, 3), dtype=np.uint8)
-            img = Image.fromarray(img_array)
-            img.save(output_path)
-            
-            logger.info(f"Saved placeholder test image: {output_path}")
-            return True
+            if result["success"]:
+                logger.info(f"Generated test image: {result.get('backend', 'unknown')} backend")
+                return True
+            else:
+                logger.error(f"Failed to generate image: {result.get('error')}")
+                return False
         
         except Exception as e:
             logger.error(f"Failed to generate image: {e}")
