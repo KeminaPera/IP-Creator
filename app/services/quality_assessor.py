@@ -14,6 +14,7 @@ from app.config.database import async_session_factory
 from app.utils.logger import logger
 from app.config.settings import settings
 from app.services.sd_image_generator import SDImageGenerator
+from app.services.clip_similarity import CLIPSimilarityCalculator
 
 
 class QualityAssessor:
@@ -29,6 +30,7 @@ class QualityAssessor:
         self.test_images_path = Path(settings.STORAGE_PATH) / "test_images"
         self.test_images_path.mkdir(parents=True, exist_ok=True)
         self.sd_generator = SDImageGenerator()
+        self.clip_calculator = CLIPSimilarityCalculator()
     
     async def generate_test_images(
         self,
@@ -230,7 +232,7 @@ class QualityAssessor:
         
         Evaluates:
         - Training loss analysis
-        - Image consistency
+        - Image consistency (CLIP similarity)
         - Feature preservation
         - Overall quality
         
@@ -261,16 +263,21 @@ class QualityAssessor:
         success_rate = self._calculate_generation_success_rate(test_images)
         scores["generation_success"] = success_rate
         
-        # 5. Overall Score (weighted average)
+        # 5. CLIP Character Consistency (0-100) - NEW!
+        clip_score = await self._calculate_clip_consistency(lora_model, test_images)
+        scores["clip_consistency"] = clip_score
+        
+        # 6. Overall Score (weighted average)
         overall_score = (
-            loss_score * 0.3 +
-            completion_score * 0.25 +
-            file_score * 0.2 +
-            success_rate * 0.25
+            loss_score * 0.25 +
+            completion_score * 0.20 +
+            file_score * 0.15 +
+            success_rate * 0.20 +
+            clip_score * 0.20  # CLIP contributes 20%
         )
         scores["overall_score"] = round(overall_score, 2)
         
-        # 6. Quality Grade
+        # 7. Quality Grade
         grade = self._calculate_grade(overall_score)
         scores["grade"] = grade
         
@@ -369,6 +376,112 @@ class QualityAssessor:
         )
         
         return (successful / len(test_images)) * 100.0
+    
+    async def _calculate_clip_consistency(
+        self,
+        lora_model: LoRAModel,
+        test_images: List[Dict[str, Any]],
+    ) -> float:
+        """
+        Calculate CLIP-based character consistency score.
+        
+        Compares generated test images with IP reference images.
+        
+        Args:
+            lora_model: Trained LoRA model
+            test_images: Generated test images
+            
+        Returns:
+            Consistency score (0-100)
+        """
+        # Check if CLIP is available
+        if not self.clip_calculator.is_available():
+            logger.warning("CLIP not available, using default consistency score")
+            return 60.0  # Default moderate score
+        
+        try:
+            # Get IP asset reference images
+            reference_images = await self._get_reference_images(lora_model)
+            
+            if not reference_images:
+                logger.warning("No reference images found, using default score")
+                return 60.0
+            
+            # Get test image paths
+            test_paths = [
+                img["image_path"] for img in test_images
+                if img.get("image_path") and Path(img["image_path"]).exists()
+            ]
+            
+            if not test_paths:
+                logger.warning("No valid test images")
+                return 50.0
+            
+            # Calculate consistency
+            consistency = self.clip_calculator.assess_character_consistency(
+                reference_images=reference_images,
+                test_images=test_paths,
+            )
+            
+            # Convert to 0-100 scale
+            score = consistency["consistency_score"] * 100.0
+            
+            logger.info(f"CLIP consistency score: {score:.2f}/100")
+            
+            return score
+        
+        except Exception as e:
+            logger.error(f"Failed to calculate CLIP consistency: {e}")
+            return 60.0  # Default on error
+    
+    async def _get_reference_images(self, lora_model: LoRAModel) -> List[str]:
+        """
+        Get reference images from IP asset.
+        
+        Args:
+            lora_model: LoRA model
+            
+        Returns:
+            List of reference image paths
+        """
+        try:
+            from app.models.ip_asset import IPAsset
+            from app.config.database import async_session_factory
+            from sqlalchemy import select
+            
+            async with async_session_factory() as session:
+                # Get associated IP asset
+                if not lora_model.ip_asset_id:
+                    return []
+                
+                ip_asset = await session.get(IPAsset, lora_model.ip_asset_id)
+                if not ip_asset:
+                    return []
+                
+                # Get reference images
+                reference_paths = []
+                
+                # Main reference images
+                if ip_asset.reference_images:
+                    for img_info in ip_asset.reference_images:
+                        if isinstance(img_info, dict) and "path" in img_info:
+                            path = Path(img_info["path"])
+                            if path.exists():
+                                reference_paths.append(str(path))
+                
+                # Multi-view images
+                if hasattr(ip_asset, 'multi_views') and ip_asset.multi_views:
+                    for view in ip_asset.multi_views:
+                        if view.get("image_path"):
+                            path = Path(view["image_path"])
+                            if path.exists():
+                                reference_paths.append(str(path))
+                
+                return reference_paths[:10]  # Limit to 10 reference images
+        
+        except Exception as e:
+            logger.error(f"Failed to get reference images: {e}")
+            return []
     
     def _calculate_grade(self, score: float) -> str:
         """Convert numerical score to letter grade."""
