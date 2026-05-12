@@ -173,7 +173,7 @@ async function loadModels() {
     }
   } catch (err) {
     ElMessage.error('Failed to load LoRA models')
-    logger.error('[LoRAModels] Load error:', err)
+    console.error('[LoRAModels] Load error:', err)
   } finally {
     loading.value = false
   }

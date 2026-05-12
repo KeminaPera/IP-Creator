@@ -216,7 +216,7 @@ import { ref, computed, watch, onMounted } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { ElMessage } from 'element-plus'
 import { Check } from '@element-plus/icons-vue'
-import { getTrainingPresets, startTraining } from '../api/lora'
+import { getTrainingPresets, startTraining } from '../../api/lora'
 
 const { t } = useI18n()
 

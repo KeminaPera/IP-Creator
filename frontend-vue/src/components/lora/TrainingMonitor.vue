@@ -99,7 +99,7 @@ import { useI18n } from 'vue-i18n'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Refresh } from '@element-plus/icons-vue'
 import * as echarts from 'echarts'
-import { getTrainingLogs, getTrainingMetrics, cancelTraining } from '../api/lora'
+import { getTrainingLogs, getTrainingMetrics, cancelTraining } from '../../api/lora'
 import StatusBadge from '../common/StatusBadge.vue'
 import { formatTimeOnly } from '../../utils/time'
 
