@@ -122,6 +122,25 @@ class LoRATrainer:
                     )
                     
                     logger.info(f"Completed training for LoRA model: {lora_model.name}")
+                    
+                    # Auto-trigger quality assessment
+                    try:
+                        from app.services.quality_assessor import QualityAssessor
+                        assessor = QualityAssessor()
+                        assessment = await assessor.assess_model_quality(
+                            lora_id=lora_id,
+                            num_test_images=5,
+                        )
+                        logger.info(f"Quality assessment auto-completed: {assessment['overall_score']}/100 ({assessment['grade']})")
+                        
+                        await training_logger.log(
+                            lora_id,
+                            f"Quality assessment: {assessment['overall_score']}/100 ({assessment['grade']})",
+                            level="INFO"
+                        )
+                    except Exception as e:
+                        logger.warning(f"Auto quality assessment failed: {e}")
+                        # Don't fail training if assessment fails
                 else:
                     lora_model.status = "failed"
                     lora_model.error_message = "Training process failed"

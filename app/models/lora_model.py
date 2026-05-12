@@ -68,6 +68,7 @@ class LoRAModel(Base):
     # Relationship
     ip_assets = relationship("IPAsset", back_populates="lora_model")
     dataset = relationship("TrainingDataset", back_populates="lora_models")
+    quality_reports = relationship("QualityReport", back_populates="lora_model", cascade="all, delete-orphan")
     recommended_checkpoint = relationship("TrainingCheckpoint", foreign_keys=[recommended_checkpoint_id])
     
     # Composite Indexes

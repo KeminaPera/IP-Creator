@@ -33,6 +33,7 @@ from app.schemas.training_config import (
 from app.services.training_logger import training_logger
 from app.services.dataset_converter import DatasetConverter
 from app.services.kohya_detector import KohyaDetector
+from app.services.quality_assessor import QualityAssessor
 
 router = APIRouter(prefix="/api/v1/lora", tags=["LoRA Models"])
 
@@ -532,3 +533,104 @@ async def check_kohya_environment(
     except Exception as e:
         logger.error(f"Error checking Kohya environment: {e}")
         raise AppException(status_code=500, error="ServerError", message="Failed to check environment")
+
+
+# ============================================
+# Quality Assessment
+# ============================================
+
+@router.post("/{lora_id}/assess-quality")
+async def assess_model_quality(
+    lora_id: int,
+    request: Optional[dict] = None,
+    current_user: dict = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db_session),
+):
+    """
+    Assess LoRA model quality after training completion.
+    
+    Generates test images, calculates quality scores,
+    and creates comprehensive quality report.
+    """
+    try:
+        # Check if model exists and is completed
+        result = await db.execute(
+            select(LoRAModel).where(LoRAModel.id == lora_id)
+        )
+        lora_model = result.scalar_one_or_none()
+        
+        if not lora_model:
+            raise NotFoundException(f"LoRA model {lora_id} not found")
+        
+        if lora_model.status != "completed":
+            raise BadRequestException(f"Model must be completed before assessment (current: {lora_model.status})")
+        
+        # Get parameters
+        num_images = 5
+        if request:
+            num_images = request.get("num_test_images", 5)
+        
+        # Run quality assessment
+        assessor = QualityAssessor()
+        assessment = await assessor.assess_model_quality(
+            lora_id=lora_id,
+            num_test_images=num_images,
+        )
+        
+        return success_response(
+            data=assessment,
+            message=f"Quality assessment completed: {assessment['overall_score']}/100 ({assessment['grade']})"
+        )
+        
+    except (NotFoundException, BadRequestException):
+        raise
+    except Exception as e:
+        logger.error(f"Error assessing quality: {e}")
+        raise AppException(status_code=500, error="ServerError", message="Failed to assess quality")
+
+
+@router.get("/{lora_id}/quality-report")
+async def get_quality_report(
+    lora_id: int,
+    current_user: dict = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db_session),
+):
+    """
+    Get quality report for a LoRA model.
+    """
+    try:
+        from app.models.quality_report import QualityReport
+        
+        # Get latest report
+        result = await db.execute(
+            select(QualityReport)
+            .where(QualityReport.lora_id == lora_id)
+            .order_by(QualityReport.created_at.desc())
+            .limit(1)
+        )
+        report = result.scalar_one_or_none()
+        
+        if not report:
+            raise NotFoundException(f"No quality report found for LoRA model {lora_id}")
+        
+        return success_response(
+            data={
+                "id": report.id,
+                "overall_score": report.overall_score,
+                "grade": report.grade,
+                "loss_score": report.loss_score,
+                "completion_score": report.completion_score,
+                "file_score": report.file_score,
+                "generation_success": report.generation_success,
+                "test_images": report.test_images,
+                "recommendations": report.recommendations,
+                "created_at": report.created_at.isoformat() if report.created_at else None,
+            },
+            message="Quality report retrieved successfully"
+        )
+        
+    except (NotFoundException, BadRequestException):
+        raise
+    except Exception as e:
+        logger.error(f"Error getting quality report: {e}")
+        raise AppException(status_code=500, error="ServerError", message="Failed to get quality report")
