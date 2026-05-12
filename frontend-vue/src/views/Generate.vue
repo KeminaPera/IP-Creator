@@ -233,9 +233,9 @@ import { ref, onMounted } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
-import { getIPList } from '../api/ip'
-import { getChannelsByCapability } from '../api/llm'
-import { generateStory, generateStoryAsync, generateImage, generateImageAsync, generateVideo, generateVideoAsync } from '../api/generate'
+import { getIPList } from '@/api/ip'
+import { getChannelsByCapability } from '@/api/llm'
+import { generateStory, generateStoryAsync, generateImage, generateImageAsync, generateVideo, generateVideoAsync } from '@/api/generate'
 
 const router = useRouter()
 

@@ -192,24 +192,39 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted, watch } from 'vue'
+import { ref, computed, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { ElMessage } from 'element-plus'
 import { Connection, ArrowDown, Delete } from '@element-plus/icons-vue'
-import { getChannels, registerChannel, updateChannel, deleteChannel } from '../api/llm'
-import { getProviders } from '../api/settings'
+import { getChannels, registerChannel, updateChannel, deleteChannel } from '@/api/llm'
+import { getProviders } from '@/api/settings'
 import { formatTime } from '../utils/time'
-import request from '../api/request'
+import request from '@/api/request'
 import { useDeleteConfirm } from '../composables/useDeleteConfirm'
 import { useDebounce } from '../composables/useDebounce'
+import { useAsyncData } from '@/composables/useAsyncData'
 import DataTable from '../components/common/DataTable.vue'
 
 const { t } = useI18n()
 
-const loading = ref(false)
+// Keep as ref for template reactivity
+const channels = ref([])
+
+// Use useAsyncData for automatic data fetching
+const { loading, execute: loadChannels } = useAsyncData(
+  () => getChannels(),
+  { 
+    errorMessage: 'common.load_failed', 
+    autoLoad: true,
+    onSuccess: (result) => {
+      // Extract data from nested response: result.data.data
+      channels.value = result?.data?.data || result?.data || []
+    }
+  }
+)
+
 const submitting = ref(false)
 const testing = ref({})
-const channels = ref([])
 const providers = ref([])
 const searchText = ref('')
 const debouncedSearchText = ref('')
@@ -366,18 +381,7 @@ function getCapabilityTags(row) {
   })
 }
 
-async function loadChannels() {
-  loading.value = true
-  try {
-    const { data } = await getChannels()
-    // Unified response format
-    channels.value = data.data || []
-  } catch (err) {
-    ElMessage.error('Failed to load channels')
-  } finally {
-    loading.value = false
-  }
-}
+// loadChannels is now provided by useAsyncData
 
 async function loadProviders() {
   try {
@@ -515,10 +519,8 @@ function handlePageChange({ page, size }) {
   localStorage.setItem('llmManagement_pageSize', size.toString())
 }
 
-onMounted(() => {
-  loadChannels()
-  loadProviders()
-})
+// Load providers on mount (useAsyncData auto-loads channels)
+loadProviders()
 
 // Debounce search to reduce filtering computations
 const { debouncedFn: updateSearch } = useDebounce(() => {

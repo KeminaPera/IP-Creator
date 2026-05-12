@@ -119,6 +119,21 @@ async def list_lora_models(
             )
             ip_map = {row[0]: row[1] for row in ip_result.all()}
         
+        # Fetch latest quality reports for each LoRA model
+        from app.models.quality_report import QualityReport
+        quality_map = {}
+        if ip_ids:
+            # Get the latest quality report for each lora_id
+            quality_result = await db.execute(
+                select(QualityReport.lora_id, QualityReport.grade, QualityReport.overall_score)
+                .where(QualityReport.lora_id.in_(ip_ids))
+                .order_by(QualityReport.lora_id, QualityReport.created_at.desc())
+            )
+            # Keep only the latest report for each lora_id
+            for row in quality_result.all():
+                if row[0] not in quality_map:  # First one is the latest due to desc order
+                    quality_map[row[0]] = {"grade": row[1], "score": row[2]}
+        
         # Build response
         model_list = []
         for model in items:
@@ -142,6 +157,8 @@ async def list_lora_models(
                 "description": model.description,
                 "error_message": model.error_message,
                 "ip_name": ip_name,
+                "quality_grade": quality_map.get(model.id, {}).get("grade"),
+                "quality_score": quality_map.get(model.id, {}).get("score"),
                 "created_at": model.created_at.isoformat() if model.created_at else None,
                 "updated_at": model.updated_at.isoformat() if model.updated_at else None,
             })

@@ -156,7 +156,7 @@ const loadIPAsset = async () => {
     const response = await getIPAsset(ipId.value)
     ipAsset.value = response.data
   } catch (error) {
-    ElMessage.error('加载 IP 资产信息失败')
+    ElMessage.error(t('ip.load_failed'))
   } finally {
     loading.value = false
   }

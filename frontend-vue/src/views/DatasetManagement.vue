@@ -188,7 +188,7 @@
 </template>
 
 <script setup>
-import { ref, reactive, onMounted } from 'vue'
+import { ref, reactive } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Plus, ArrowDown, Check, MagicStick, DocumentCopy, Delete } from '@element-plus/icons-vue'
 import DataTable from '@/components/common/DataTable.vue'
@@ -202,16 +202,37 @@ import {
   getDatasetDetail,
 } from '@/api/dataset'
 import { getIPList } from '@/api/ip'
+import { useAsyncList } from '@/composables/useAsyncData'
+import { useI18n } from 'vue-i18n'
 
-// State
-const loading = ref(false)
-const datasets = ref([])
-const total = ref(0)
-const currentPage = ref(1)
-const pageSize = ref(20)
+const { t } = useI18n()
+
+// State - Must be declared before useAsyncList (autoLoad references these)
 const filterIpId = ref(null)
 const filterStatus = ref(null)
 const ipList = ref([])
+
+// Use useAsyncList for automatic data fetching with pagination
+const { 
+  loading, 
+  list: datasets, 
+  total, 
+  pagination,
+  execute: loadDatasets,
+  setPage: handlePageChange,
+  setPageSize: handlePageSizeChange
+} = useAsyncList(
+  (params) => {
+    const requestParams = { ...params }
+    if (filterIpId.value) requestParams.ip_asset_id = filterIpId.value
+    if (filterStatus.value) requestParams.status = filterStatus.value
+    return getDatasetList(requestParams)
+  },
+  { 
+    errorMessage: 'dataset.load_failed',
+    autoLoad: true
+  }
+)
 
 // Create Dialog
 const createDialogVisible = ref(false)
@@ -239,27 +260,7 @@ const augmentForm = reactive({
 })
 const currentAugmentDatasetId = ref(null)
 
-// Methods
-const loadDatasets = async () => {
-  loading.value = true
-  try {
-    const params = {
-      skip: (currentPage.value - 1) * pageSize.value,
-      limit: pageSize.value,
-    }
-    if (filterIpId.value) params.ip_asset_id = filterIpId.value
-    if (filterStatus.value) params.status = filterStatus.value
-
-    const res = await getDatasetList(params)
-    datasets.value = res.data.data || []
-    total.value = res.data.pagination?.total || 0
-  } catch (error) {
-    ElMessage.error('加载数据集失败')
-  } finally {
-    loading.value = false
-  }
-}
-
+// Load IP list
 const loadIpList = async () => {
   try {
     const res = await getIPList({ limit: 100 })
@@ -267,17 +268,6 @@ const loadIpList = async () => {
   } catch (error) {
     console.error('Failed to load IP list:', error)
   }
-}
-
-const handlePageChange = (page) => {
-  currentPage.value = page
-  loadDatasets()
-}
-
-const handlePageSizeChange = (size) => {
-  pageSize.value = size
-  currentPage.value = 1
-  loadDatasets()
 }
 
 const openCreateDialog = () => {
@@ -294,11 +284,11 @@ const handleCreate = async () => {
 
     try {
       await createDataset(createForm)
-      ElMessage.success('数据集创建成功')
+      ElMessage.success(t('dataset.create_success'))
       createDialogVisible.value = false
       loadDatasets()
     } catch (error) {
-      ElMessage.error('创建失败')
+      ElMessage.error(t('dataset.create_failed'))
     }
   })
 }
@@ -309,24 +299,24 @@ const openDetailDialog = async (row) => {
     currentDataset.value = res.data
     detailDialogVisible.value = true
   } catch (error) {
-    ElMessage.error('加载详情失败')
+    ElMessage.error(t('dataset.detail_load_failed'))
   }
 }
 
 const handleValidate = async (row) => {
   try {
-    await ElMessageBox.confirm('确定要验证此数据集吗？', '验证数据集', {
-      confirmButtonText: '确定',
-      cancelButtonText: '取消',
+    await ElMessageBox.confirm(t('dataset.confirm_validate'), t('dataset.validate'), {
+      confirmButtonText: t('common.confirm'),
+      cancelButtonText: t('common.cancel'),
       type: 'info',
     })
 
     const res = await validateDataset(row.id)
-    ElMessage.success(`验证完成，质量评分：${res.data.quality_score}`)
+    ElMessage.success(t('dataset.validate_success', { score: res.data.quality_score }))
     loadDatasets()
   } catch (error) {
     if (error !== 'cancel') {
-      ElMessage.error('验证失败')
+      ElMessage.error(t('dataset.validate_failed'))
     }
   }
 }
@@ -349,7 +339,7 @@ const handleAugmentConfirm = async () => {
     augmentDialogVisible.value = false
     loadDatasets()
   } catch (error) {
-    ElMessage.error('增强失败')
+    ElMessage.error(t('dataset.augment_failed'))
   } finally {
     augmenting.value = false
   }
@@ -424,11 +414,8 @@ const getQualityColor = (score) => {
   return '#F56C6C'
 }
 
-// Lifecycle
-onMounted(() => {
-  loadDatasets()
-  loadIpList()
-})
+// Load IP list on mount (useAsyncList auto-loads datasets)
+loadIpList()
 </script>
 
 <style scoped>

@@ -105,13 +105,15 @@
 </template>
 
 <script setup>
-import { ref, onMounted, onUnmounted, watch } from 'vue'
+import { ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import { ArrowDown, SuccessFilled, WarningFilled, RefreshRight, Delete } from '@element-plus/icons-vue'
-import { getTasks, getTask, retryTask, deleteTask, getTaskContentResult } from '../api/task'
-import { getIPList } from '../api/ip'
+import { getTasks, getTask, retryTask, deleteTask, getTaskContentResult } from '@/api/task'
+import { getIPList } from '@/api/ip'
+import { useAsyncList } from '@/composables/useAsyncData'
+import { useAutoRefresh } from '@/composables/usePolling'
 import { formatTime } from '../utils/time'
 import { useDeleteConfirm } from '../composables/useDeleteConfirm'
 import StatusBadge from '../components/common/StatusBadge.vue'
@@ -120,20 +122,42 @@ import DataTable from '../components/common/DataTable.vue'
 const { t } = useI18n()
 const router = useRouter()
 
-const loading = ref(false)
-const tasks = ref([])
 const ipAssets = ref([])
 const filterIPId = ref(null)
 const detailsDialogVisible = ref(false)
 const selectedTask = ref(null)
-let refreshTimer = null
 
-// Pagination
-const pagination = ref({
-  page: 1,
-  pageSize: parseInt(localStorage.getItem('taskMonitor_pageSize')) || 20,
-})
-const total = ref(0)
+// Use useAsyncList for automatic data fetching with pagination
+const { 
+  loading, 
+  list: tasks, 
+  total, 
+  pagination,
+  execute: loadTasks,
+  setPage,
+  setPageSize
+} = useAsyncList(
+  (params) => {
+    const requestParams = { ...params }
+    if (filterIPId.value) requestParams.ip_asset_id = filterIPId.value
+    return getTasks(requestParams)
+  },
+  { 
+    errorMessage: 'common.load_failed',
+    autoLoad: true,
+    initialPageSize: parseInt(localStorage.getItem('taskMonitor_pageSize')) || 20
+  }
+)
+
+// Use useAutoRefresh for automatic refresh (30s interval)
+const { start: startAutoRefresh, stop: stopAutoRefresh } = useAutoRefresh(
+  () => loadTasks(),
+  { 
+    interval: 30000, // 30 seconds
+    autoStart: true,
+    pauseOnHidden: true // Pause when tab is hidden
+  }
+)
 
 // Watch for pageSize changes and save to localStorage
 watch(
@@ -143,50 +167,9 @@ watch(
   }
 )
 
-async function loadTasks() {
-  loading.value = true
-  try {
-    const params = {
-      skip: (pagination.value.page - 1) * pagination.value.pageSize,
-      limit: pagination.value.pageSize,
-    }
-    if (filterIPId.value) params.ip_asset_id = filterIPId.value
-    const { data } = await getTasks(params)
-    // Unified response format: { success: true, data: [...], pagination: {...} }
-    tasks.value = data.data || []
-    
-    // Debug: Log the response structure
-    console.log('[TaskMonitor] API Response:', {
-      hasData: !!data.data,
-      dataLength: data.data?.length,
-      hasPagination: !!data.pagination,
-      paginationTotal: data.pagination?.total,
-      hasTotal: data.total,
-      isArray: Array.isArray(data),
-      fullData: data
-    })
-    
-    // Update total count from pagination
-    if (data.pagination?.total !== undefined) {
-      total.value = data.pagination.total
-    } else if (data.total !== undefined) {
-      total.value = data.total
-    } else if (Array.isArray(data)) {
-      total.value = data.length
-    }
-    
-    console.log('[TaskMonitor] Final total.value:', total.value)
-  } catch (err) {
-    ElMessage.error(t('common.error'))
-  } finally {
-    loading.value = false
-  }
-}
-
 async function loadIPs() {
   try {
     const { data } = await getIPList({ skip: 0, limit: 100 })
-    // Unified response format
     ipAssets.value = data.data || []
   } catch (err) { /* ignore */ }
 }
@@ -274,41 +257,10 @@ watch(filterIPId, () => {
   loadTasks()
 })
 
-onMounted(() => {
-  loadIPs()
-  loadTasks()
-  
-  // Start auto-refresh with Page Visibility API
-  startPolling()
-  
-  // Listen for visibility changes
-  document.addEventListener('visibilitychange', handleVisibilityChange)
-})
+// Load IP assets on mount (useAsyncList auto-loads tasks)
+loadIPs()
 
-onUnmounted(() => {
-  if (refreshTimer) clearInterval(refreshTimer)
-  document.removeEventListener('visibilitychange', handleVisibilityChange)
-})
-
-// Page Visibility API - only poll when page is visible
-function handleVisibilityChange() {
-  if (document.hidden) {
-    // Page is in background, stop polling
-    if (refreshTimer) {
-      clearInterval(refreshTimer)
-      refreshTimer = null
-    }
-  } else {
-    // Page is visible, restart polling and refresh immediately
-    loadTasks()
-    startPolling()
-  }
-}
-
-function startPolling() {
-  if (refreshTimer) return  // Already polling
-  refreshTimer = setInterval(loadTasks, 30000) // Auto-refresh every 30s (was 10s)
-}
+// useAutoRefresh automatically handles page visibility and cleanup
 </script>
 
 <style scoped>

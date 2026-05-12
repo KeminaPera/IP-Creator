@@ -234,22 +234,37 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted, onUnmounted, watch } from 'vue'
+import { ref, computed, onUnmounted, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { ElMessage } from 'element-plus'
 import { Picture, ArrowDown, Delete } from '@element-plus/icons-vue'
-import { getIPList, createIP, updateIP, deleteIP, uploadFile } from '../api/ip'
-import request from '../api/request'
+import { getIPList, createIP, updateIP, deleteIP, uploadFile } from '@/api/ip'
+import request from '@/api/request'
 import { useDeleteConfirm } from '../composables/useDeleteConfirm'
 import { useDebounce } from '../composables/useDebounce'
+import { useAsyncData } from '@/composables/useAsyncData'
 import { logger } from '../utils/logger'
 import DataTable from '../components/common/DataTable.vue'
 
 const { t } = useI18n()
 
-const loading = ref(false)
-const submitting = ref(false)
+// Keep as ref for template reactivity
 const ipAssets = ref([])
+
+// Use useAsyncData for automatic data fetching
+const { loading, execute: loadIPs } = useAsyncData(
+  () => getIPList({ skip: 0, limit: 100 }),
+  { 
+    errorMessage: 'common.load_failed', 
+    autoLoad: true,
+    onSuccess: (result) => {
+      // Extract data from nested response: result.data.data
+      ipAssets.value = result?.data?.data || result?.data || []
+    }
+  }
+)
+
+const submitting = ref(false)
 const searchText = ref('')
 const debouncedSearchText = ref('')
 const dialogVisible = ref(false)
@@ -402,19 +417,7 @@ function getRefImageUrl(imgPath) {
   }
 }
 
-async function loadIPs() {
-  loading.value = true
-  try {
-    const { data } = await getIPList({ skip: 0, limit: 100 })
-    // Unified response format
-    ipAssets.value = data.data || []
-  } catch (err) {
-    logger.error('[IPAssets] Load error:', err)
-    ElMessage.error('Failed to load IP assets')
-  } finally {
-    loading.value = false
-  }
-}
+// loadIPs is now provided by useAsyncData
 
 function handleFileChange(file, uploadFileList) {
   pendingFiles.value = uploadFileList
@@ -684,7 +687,7 @@ function getImageUrl(filePath) {
   }
 }
 
-onMounted(loadIPs)
+// useAsyncData auto-loads on mount, only clean up polling timer on unmount
 
 onUnmounted(() => {
   // Clean up polling timer when component is destroyed

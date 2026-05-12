@@ -385,8 +385,8 @@
 import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { ElMessage } from 'element-plus'
-import request from '../api/request'
-import { getSystemHealth } from '../api/system'
+import request from '@/api/request'
+import { getSystemHealth } from '@/api/system'
 import { logger } from '../utils/logger'
 import StatusBadge from '../components/common/StatusBadge.vue'
 import { 

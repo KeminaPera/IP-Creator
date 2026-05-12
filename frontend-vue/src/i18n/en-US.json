@@ -61,6 +61,18 @@
     "enable_success": "Enabled successfully",
     "disable_success": "Disabled successfully"
   },
+  "validation": {
+    "required": "This field is required",
+    "required_field": "{field} is required",
+    "length_range": "Length must be between {min} and {max} characters",
+    "min_length": "Length must be at least {min} characters",
+    "max_length": "Length cannot exceed {max} characters",
+    "email_format": "Please enter a valid email address",
+    "url_format": "Please enter a valid URL",
+    "number_range": "Value must be between {min} and {max}",
+    "phone_format": "Please enter a valid phone number",
+    "array_not_empty": "Please select at least one item"
+  },
   "nav": {
     "home": "Home",
     "llm_management": "LLM Management",
@@ -134,7 +146,16 @@
       "load_list_error": "Failed to load dataset list",
       "annotation_failed": "Annotation failed",
       "caption_failed": "Failed to generate captions",
-      "enter_trigger_word": "Please enter trigger word"
+      "enter_trigger_word": "Please enter trigger word",
+      "load_failed": "Failed to load dataset",
+      "create_success": "Dataset created successfully",
+      "create_failed": "Failed to create dataset",
+      "detail_load_failed": "Failed to load details",
+      "validate_success": "Validation completed, quality score: {score}",
+      "validate_failed": "Validation failed",
+      "augment_failed": "Augmentation failed",
+      "confirm_validate": "Are you sure you want to validate this dataset?",
+      "confirm_create_version": "Are you sure you want to create a new version?"
     }
   },
   "status": {
@@ -362,7 +383,9 @@
     "view_side": "Side",
     "view_back": "Back",
     "not_generated": "Not generated",
-    "waiting_generation": "Waiting for generation"
+    "waiting_generation": "Waiting for generation",
+    "load_failed": "Failed to load IP asset information",
+    "detail_title": "IP Asset Detail"
   },
   "generate": {
     "title": "Generation Workbench",
@@ -435,6 +458,7 @@
     "select_model_placeholder": "-- Select a Model --",
     "no_models_available": "No models available for this type",
     "model_badge_text": "Text",
+    "model_badge_chat": "Chat",
     "model_badge_image": "Image",
     "model_badge_video": "Video",
     "model_badge_vision": "Vision",
@@ -516,7 +540,7 @@
     "actions": "Actions",
     "train": "Train",
     "monitor": "Monitor",
-    "cancel": "Cancel Training",
+    "cancel_training": "Cancel Training",
     "validate": "Validate Model",
     "delete": "Delete",
     "delete_confirm": "Are you sure to delete this LoRA model?",
@@ -535,6 +559,13 @@
     "failed": "Failed",
     "not_trained": "Not Trained",
     "custom": "Custom",
+    "name_placeholder": "e.g., My Character LoRA",
+    "description_placeholder": "Optional description",
+    "training_epochs": "Training Epochs",
+    "load_failed": "Failed to load LoRA models",
+    "please_enter_name": "Please enter a name",
+    "create_success": "LoRA model created successfully",
+    "create_failed": "Failed to create LoRA model",
     "training_wizard": {
       "title": "Training Configuration Wizard",
       "step_preset": "Select Preset",
@@ -636,7 +667,7 @@
         "step": "Training Step"
       }
     },
-    "quality": "Quality Score",
+    "quality_score": "Quality Score",
     "quality_report": "Quality Report",
     "quality": {
       "title": "Quality Assessment Report",

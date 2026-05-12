@@ -51,7 +51,7 @@
           </template>
         </el-table-column>
         <el-table-column prop="training_steps" :label="$t('lora.training_steps')" width="120" align="center" />
-        <el-table-column :label="$t('lora.quality')" width="120" align="center">
+        <el-table-column :label="$t('lora.quality_score')" width="120" align="center">
           <template #default="{ row }">
             <el-tag
               v-if="row.quality_grade"
@@ -105,7 +105,7 @@
     <el-dialog v-model="createDialogVisible" :title="$t('lora.create_lora')" width="500px">
       <el-form :model="createForm" label-width="120px">
         <el-form-item :label="$t('lora.name')" required>
-          <el-input v-model="createForm.name" placeholder="e.g., My Character LoRA" />
+          <el-input v-model="createForm.name" :placeholder="$t('lora.name_placeholder')" />
         </el-form-item>
         <el-form-item :label="$t('lora.base_model')" required>
           <el-select v-model="createForm.base_model" style="width: 100%">
@@ -114,9 +114,9 @@
           </el-select>
         </el-form-item>
         <el-form-item :label="$t('lora.description')">
-          <el-input v-model="createForm.description" type="textarea" :rows="3" placeholder="Optional description" />
+          <el-input v-model="createForm.description" type="textarea" :rows="3" :placeholder="$t('lora.description_placeholder')" />
         </el-form-item>
-        <el-form-item label="Training Epochs">
+        <el-form-item :label="$t('lora.training_epochs')">
           <el-input-number v-model="createForm.epochs" :min="1" :max="100" />
         </el-form-item>
       </el-form>
@@ -150,11 +150,14 @@
 </template>
 
 <script setup>
-import { ref, onMounted, onUnmounted } from 'vue'
+import { ref, computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Plus } from '@element-plus/icons-vue'
-import { getLoraList, deleteLora, createLora } from '../api/lora'
+import { getLoraList, deleteLora, createLora } from '@/api/lora'
+import { useAsyncData, useAsyncList } from '@/composables/useAsyncData'
+import { usePolling } from '@/composables/usePolling'
+import { getGradeType } from '@/utils/grade'
 import StatusBadge from '../components/common/StatusBadge.vue'
 import DataTable from '../components/common/DataTable.vue'
 import TrainingWizard from '../components/lora/TrainingWizard.vue'
@@ -163,10 +166,25 @@ import QualityReport from '../components/lora/QualityReport.vue'
 
 const { t } = useI18n()
 
-const loading = ref(false)
-const loraModels = ref([])
-let refreshTimer = null
-let isPolling = false  // Track polling state to prevent race conditions
+// Use useAsyncList for automatic data fetching with pagination
+const { 
+  loading, 
+  list: loraModels, 
+  execute: loadModels 
+} = useAsyncList(
+  (params) => getLoraList({ skip: params.skip, limit: params.limit }),
+  { 
+    errorMessage: 'lora.load_failed',
+    autoLoad: true
+  }
+)
+
+// Use usePolling for automatic refresh during training
+const { start: startPolling, stop: stopPolling, isRunning: isPolling } = usePolling(
+  () => loadModelsWithPolling(),
+  3000, // 3 seconds
+  { autoStart: false }
+)
 
 // Create dialog
 const createDialogVisible = ref(false)
@@ -188,45 +206,21 @@ const monitorVisible = ref(false)
 // Quality report
 const qualityReportRef = ref(null)
 
-async function loadModels() {
-  loading.value = true
-  try {
-    const { data } = await getLoraList({ skip: 0, limit: 50 })
-    // Unified response format
-    loraModels.value = data.data || []
-    
-    // Check if any models are training
-    const hasTraining = loraModels.value.some(m => m.status === 'training')
-    
-    if (hasTraining && !isPolling) {
-      // Start auto-refresh when training
-      startPolling()
-    } else if (!hasTraining && isPolling) {
-      // Stop auto-refresh when no training
-      stopPolling()
-    }
-  } catch (err) {
-    ElMessage.error('Failed to load LoRA models')
-    console.error('[LoRAModels] Load error:', err)
-  } finally {
-    loading.value = false
+// Watch for training status to auto-start polling
+function checkAndTogglePolling() {
+  const hasTraining = loraModels.value.some(m => m.status === 'training')
+  
+  if (hasTraining && !isPolling.value) {
+    startPolling()
+  } else if (!hasTraining && isPolling.value) {
+    stopPolling()
   }
 }
 
-function startPolling() {
-  if (isPolling) return  // Prevent multiple intervals
-  isPolling = true
-  refreshTimer = setInterval(() => {
-    loadModels()
-  }, 3000)
-}
-
-function stopPolling() {
-  if (refreshTimer) {
-    clearInterval(refreshTimer)
-    refreshTimer = null
-  }
-  isPolling = false
+// Wrapped loadModels with polling check
+async function loadModelsWithPolling() {
+  await loadModels()
+  checkAndTogglePolling()
 }
 
 async function handleTrain(row) {
@@ -242,7 +236,7 @@ async function handleTrain(row) {
     )
     await trainLora(row.id)
     ElMessage.success(t('common.success'))
-    loadModels()
+    loadModelsWithPolling()
   } catch (err) {
     if (err !== 'cancel') {
       ElMessage.error(t('common.error'))
@@ -263,7 +257,7 @@ async function handleDelete(row) {
     )
     await deleteLora(row.id)
     ElMessage.success(t('common.success'))
-    loadModels()
+    loadModelsWithPolling()
   } catch (err) {
     if (err !== 'cancel') {
       ElMessage.error(t('common.error'))
@@ -286,24 +280,14 @@ function showQualityReport(row) {
   qualityReportRef.value?.open()
 }
 
-function getGradeType(grade) {
-  const typeMap = {
-    'S': 'success',
-    'A': 'success',
-    'B': '',
-    'C': 'warning',
-    'D': 'danger',
-    'F': 'danger',
-  }
-  return typeMap[grade] || 'info'
-}
+// getGradeType is now imported from @/utils/grade
 
 function handleTrainingStarted() {
-  loadModels()
+  loadModelsWithPolling()
 }
 
 function handleTrainingCancelled() {
-  loadModels()
+  loadModelsWithPolling()
 }
 
 function showCreateDialog() {
@@ -318,32 +302,24 @@ function showCreateDialog() {
 
 async function handleCreate() {
   if (!createForm.value.name) {
-    ElMessage.error('Please enter a name')
+    ElMessage.error(t('lora.please_enter_name'))
     return
   }
 
   creating.value = true
   try {
     await createLora(createForm.value)
-    ElMessage.success('LoRA model created')
+    ElMessage.success(t('lora.create_success'))
     createDialogVisible.value = false
-    loadModels()
+    loadModelsWithPolling()
   } catch (err) {
-    ElMessage.error('Failed to create LoRA model')
+    ElMessage.error(t('lora.create_failed'))
   } finally {
     creating.value = false
   }
 }
 
-onMounted(loadModels)
-
-onUnmounted(() => {
-  // Clean up timer when component is destroyed
-  if (refreshTimer) {
-    clearInterval(refreshTimer)
-    refreshTimer = null
-  }
-})
+// useAsyncList auto-loads on mount, usePolling auto-cleans up on unmount
 </script>
 
 <style scoped>

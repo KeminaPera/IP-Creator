@@ -1,7 +1,7 @@
 <template>
   <el-dialog
     v-model="visible"
-    :title="$t('quality.title')"
+    :title="$t('lora.quality.title')"
     width="900px"
     @close="handleClose"
   >
@@ -19,7 +19,7 @@
         <div class="score-info">
           <h3>{{ getGradeText(report.grade) }}</h3>
           <p class="score-time">
-            {{ $t('quality.assessed_at') }}: {{ formatTime(report.created_at) }}
+            {{ $t('lora.quality.assessed_at') }}: {{ formatTime(report.created_at) }}
           </p>
         </div>
       </div>
@@ -28,7 +28,7 @@
       <el-card class="detail-card">
         <template #header>
           <div class="card-header">
-            <span>{{ $t('quality.detailed_scores') }}</span>
+            <span>{{ $t('lora.quality.detailed_scores') }}</span>
             <el-tag size="small" type="info">5 维度评分</el-tag>
           </div>
         </template>
@@ -36,7 +36,7 @@
         <div class="score-bars">
           <div class="score-bar-item">
             <div class="bar-label">
-              <span>{{ $t('quality.loss_score') }}</span>
+              <span>{{ $t('lora.quality.loss_score') }}</span>
               <span class="bar-value">{{ report.loss_score }}</span>
             </div>
             <el-progress
@@ -48,7 +48,7 @@
 
           <div class="score-bar-item">
             <div class="bar-label">
-              <span>{{ $t('quality.completion_score') }}</span>
+              <span>{{ $t('lora.quality.completion_score') }}</span>
               <span class="bar-value">{{ report.completion_score }}</span>
             </div>
             <el-progress
@@ -60,7 +60,7 @@
 
           <div class="score-bar-item">
             <div class="bar-label">
-              <span>{{ $t('quality.file_score') }}</span>
+              <span>{{ $t('lora.quality.file_score') }}</span>
               <span class="bar-value">{{ report.file_score }}</span>
             </div>
             <el-progress
@@ -72,7 +72,7 @@
 
           <div class="score-bar-item">
             <div class="bar-label">
-              <span>{{ $t('quality.generation_success') }}</span>
+              <span>{{ $t('lora.quality.generation_success') }}</span>
               <span class="bar-value">{{ report.generation_success }}%</span>
             </div>
             <el-progress
@@ -84,7 +84,7 @@
 
           <div class="score-bar-item">
             <div class="bar-label">
-              <span>{{ $t('quality.clip_consistency') }}</span>
+              <span>{{ $t('lora.quality.clip_consistency') }}</span>
               <span class="bar-value">{{ report.clip_consistency }}</span>
             </div>
             <el-progress
@@ -100,7 +100,7 @@
       <el-card v-if="report.test_images && report.test_images.length > 0" class="images-card">
         <template #header>
           <div class="card-header">
-            <span>{{ $t('quality.test_images') }} ({{ report.test_images.length }})</span>
+            <span>{{ $t('lora.quality.test_images') }} ({{ report.test_images.length }})</span>
           </div>
         </template>
 
@@ -130,7 +130,7 @@
       <el-card v-if="report.recommendations && report.recommendations.length > 0" class="recommendations-card">
         <template #header>
           <div class="card-header">
-            <span>{{ $t('quality.recommendations') }}</span>
+            <span>{{ $t('lora.quality.recommendations') }}</span>
           </div>
         </template>
 
@@ -147,7 +147,7 @@
     </div>
 
     <div v-else class="empty-container">
-      <el-empty :description="$t('quality.no_report')" />
+      <el-empty :description="$t('lora.quality.no_report')" />
     </div>
 
     <template #footer>
@@ -157,7 +157,7 @@
         type="primary"
         @click="handleReassess"
       >
-        {{ $t('quality.reassess') }}
+        {{ $t('lora.quality.reassess') }}
       </el-button>
     </template>
   </el-dialog>
@@ -210,7 +210,7 @@ async function loadReport() {
       // 没有报告，正常
       report.value = null
     } else {
-      ElMessage.error(t('quality.load_failed'))
+      ElMessage.error(t('lora.quality.load_failed'))
     }
   } finally {
     loading.value = false
@@ -222,14 +222,14 @@ async function handleReassess() {
   try {
     loading.value = true
     const { data } = await assessQuality(props.loraId, { num_test_images: 5 })
-    ElMessage.success(t('quality.assess_success', {
+    ElMessage.success(t('lora.quality.assess_success', {
       score: data.data.overall_score,
       grade: data.data.grade,
     }))
     await loadReport()
     emit('update')
   } catch (err) {
-    ElMessage.error(t('quality.assess_failed'))
+    ElMessage.error(t('lora.quality.assess_failed'))
   } finally {
     loading.value = false
   }
@@ -253,12 +253,12 @@ function getScoreColor(score) {
 // 获取等级文本
 function getGradeText(grade) {
   const gradeMap = {
-    'S': t('quality.grade_s'),
-    'A': t('quality.grade_a'),
-    'B': t('quality.grade_b'),
-    'C': t('quality.grade_c'),
-    'D': t('quality.grade_d'),
-    'F': t('quality.grade_f'),
+    'S': t('lora.quality.grade_s'),
+    'A': t('lora.quality.grade_a'),
+    'B': t('lora.quality.grade_b'),
+    'C': t('lora.quality.grade_c'),
+    'D': t('lora.quality.grade_d'),
+    'F': t('lora.quality.grade_f'),
   }
   return gradeMap[grade] || grade
 }
