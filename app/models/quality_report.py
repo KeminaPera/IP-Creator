@@ -42,6 +42,9 @@ class QualityReport(Base):
     # Recommendations
     recommendations = Column(JSON, nullable=True, comment="Optimization recommendations: [str]")
     
+    # Training Diagnosis
+    training_diagnosis = Column(JSON, nullable=True, comment="Overfitting/underfitting detection results")
+    
     # Assessment Metadata
     assessment_method = Column(String(50), default="automated", comment="Assessment method: automated, manual, hybrid")
     status = Column(String(20), default="completed", comment="Report status: pending, processing, completed, failed")

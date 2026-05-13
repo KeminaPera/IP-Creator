@@ -20,7 +20,7 @@
     <!-- 数据集信息 -->
     <el-alert
       v-if="datasetInfo"
-      :title="`${t('common.dataset')}: ${datasetInfo.name}`"
+      :title="`${t('common.datasets')}: ${datasetInfo.name}`"
       :description="`${t('dataset.image_count')}: ${datasetInfo.image_count} | ${t('dataset.status')}: ${datasetInfo.status}`"
       type="info"
       :closable="false"
@@ -73,14 +73,14 @@
 
         <!-- 标注信息 -->
         <div class="annotation-info">
-          <el-tag v-if="image.angle" size="small" type="primary">
+          <el-tag v-if="image.angle" size="small" :type="image.angle === 'unknown' ? 'info' : 'primary'">
             {{ getAngleLabel(image.angle) }}
           </el-tag>
-          <el-tag v-if="image.expression" size="small" type="success">
-            {{ image.expression }}
+          <el-tag v-if="image.expression" size="small" :type="image.expression === 'unknown' ? 'info' : 'success'">
+            {{ getExpressionLabel(image.expression) }}
           </el-tag>
-          <el-tag v-if="image.pose" size="small" type="warning">
-            {{ image.pose }}
+          <el-tag v-if="image.pose" size="small" :type="image.pose === 'unknown' ? 'info' : 'warning'">
+            {{ getPoseLabel(image.pose) }}
           </el-tag>
         </div>
 
@@ -317,8 +317,21 @@ const submitCaptionGeneration = async () => {
 
 // 工具函数
 const getAngleLabel = (angle) => {
+  if (!angle || angle === 'unknown') return t('dataset.annotation.unknown')
   const key = `dataset.annotation.${angle}`
   return t(key) || angle
+}
+
+const getExpressionLabel = (expression) => {
+  if (!expression || expression === 'unknown') return t('dataset.annotation.unknown')
+  const key = `dataset.annotation.${expression}`
+  return t(key) || expression
+}
+
+const getPoseLabel = (pose) => {
+  if (!pose || pose === 'unknown') return t('dataset.annotation.unknown')
+  const key = `dataset.annotation.${pose}`
+  return t(key) || pose
 }
 
 const getImageUrl = (path) => {

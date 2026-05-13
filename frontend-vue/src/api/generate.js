@@ -23,3 +23,16 @@ export function generateVideo(data) {
 export function generateVideoAsync(data) {
   return request.post('/generate/video/async', data, { timeout: 30000 })
 }
+
+// IP-Adapter Smart Features
+export function getSmartReferences(data) {
+  return request.post('/generate/smart-references', data)
+}
+
+export function checkConsistency(data) {
+  return request.post('/generate/check-consistency', data)
+}
+
+export function getAdaptiveScale(params) {
+  return request.post('/generate/adaptive-scale', null, { params })
+}

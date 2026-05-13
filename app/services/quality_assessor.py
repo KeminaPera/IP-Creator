@@ -314,6 +314,298 @@ class QualityAssessor:
         else:
             return 30.0
     
+    async def detect_overfitting(self, lora_model: LoRAModel) -> Dict[str, Any]:
+        """
+        Detect overfitting in trained LoRA model.
+        
+        Analyzes:
+        - Loss curve patterns (U-shape indicates overfitting)
+        - Training epochs vs dataset size ratio
+        - Final loss vs minimum loss divergence
+        
+        Args:
+            lora_model: Trained LoRA model
+            
+        Returns:
+            Detection result with severity and recommendations
+        """
+        result = {
+            "is_overfitting": False,
+            "severity": "none",  # none, mild, moderate, severe
+            "confidence": 0.0,
+            "indicators": [],
+            "recommendations": []
+        }
+        
+        try:
+            # Get training metrics (loss curve)
+            from app.services.training_logger import training_logger
+            metrics = await training_logger.get_metrics(lora_model.id)
+            losses = metrics.get("losses", [])
+            
+            # Indicator 1: Loss curve analysis
+            if len(losses) >= 10:
+                # Check for U-shape pattern (loss decreases then increases)
+                min_loss_idx = losses.index(min(losses))
+                min_loss_position = min_loss_idx / len(losses)
+                
+                # If minimum loss occurs in first 60% of training, likely overfitting
+                if min_loss_position < 0.6:
+                    # Calculate how much loss increased after minimum
+                    final_loss = losses[-1]
+                    min_loss = losses[min_loss_idx]
+                    
+                    if min_loss > 0:
+                        loss_increase_ratio = (final_loss - min_loss) / min_loss
+                        
+                        if loss_increase_ratio > 0.5:  # 50% increase
+                            result["is_overfitting"] = True
+                            result["severity"] = "severe"
+                            result["confidence"] = min(loss_increase_ratio / 2.0, 1.0)
+                            result["indicators"].append(
+                                f"Loss increased by {loss_increase_ratio*100:.1f}% after reaching minimum "
+                                f"at epoch {min_loss_idx + 1}"
+                            )
+                            result["recommendations"].append(
+                                "Reduce training epochs by 30-40% to prevent overfitting"
+                            )
+                        elif loss_increase_ratio > 0.2:  # 20% increase
+                            result["is_overfitting"] = True
+                            result["severity"] = "moderate"
+                            result["confidence"] = 0.7
+                            result["indicators"].append(
+                                f"Loss increased by {loss_increase_ratio*100:.1f}% after minimum"
+                            )
+                            result["recommendations"].append(
+                                "Consider reducing epochs or adding regularization"
+                            )
+                        elif loss_increase_ratio > 0.05:  # 5% increase
+                            result["is_overfitting"] = True
+                            result["severity"] = "mild"
+                            result["confidence"] = 0.5
+                            result["indicators"].append(
+                                f"Slight loss increase ({loss_increase_ratio*100:.1f}%) detected"
+                            )
+                            result["recommendations"].append(
+                                "Monitor quality, consider early stopping next time"
+                            )
+            
+            # Indicator 2: Epochs vs dataset size ratio
+            if lora_model.training_steps and lora_model.dataset_id:
+                from app.models.training_dataset import TrainingDataset
+                from app.config.database import async_session_factory
+                from sqlalchemy import select
+                
+                async with async_session_factory() as session:
+                    dataset = await session.get(TrainingDataset, lora_model.dataset_id)
+                    if dataset and dataset.image_count:
+                        # Rule of thumb: 100-200 steps per image is reasonable
+                        steps_per_image = lora_model.training_steps / dataset.image_count
+                        
+                        if steps_per_image > 300:
+                            if not result["is_overfitting"]:
+                                result["is_overfitting"] = True
+                                result["severity"] = "moderate"
+                                result["confidence"] = 0.6
+                            result["indicators"].append(
+                                f"High training ratio: {steps_per_image:.0f} steps/image "
+                                f"(recommended: 100-200)"
+                            )
+                            result["recommendations"].append(
+                                f"Reduce training steps or add more images "
+                                f"(current: {dataset.image_count} images)"
+                            )
+            
+            # Indicator 3: Very low final loss with poor quality
+            if lora_model.final_loss is not None and lora_model.final_loss < 0.005:
+                result["indicators"].append(
+                    f"Very low final loss ({lora_model.final_loss:.5f}) may indicate memorization"
+                )
+                if not result["is_overfitting"]:
+                    result["is_overfitting"] = True
+                    result["severity"] = "mild"
+                    result["confidence"] = 0.4
+                result["recommendations"].append(
+                    "Very low loss can mean memorization. Check generated images for diversity"
+                )
+            
+            logger.info(
+                f"Overfitting detection for LoRA {lora_model.id}: "
+                f"overfitting={result['is_overfitting']}, severity={result['severity']}"
+            )
+            
+        except Exception as e:
+            logger.error(f"Failed to detect overfitting: {e}")
+            result["error"] = str(e)
+        
+        return result
+    
+    async def detect_underfitting(self, lora_model: LoRAModel) -> Dict[str, Any]:
+        """
+        Detect underfitting in trained LoRA model.
+        
+        Analyzes:
+        - Loss convergence (loss barely decreases)
+        - Training completion (too few epochs/steps)
+        - Quality score correlation
+        
+        Args:
+            lora_model: Trained LoRA model
+            
+        Returns:
+            Detection result with severity and recommendations
+        """
+        result = {
+            "is_underfitting": False,
+            "severity": "none",  # none, mild, moderate, severe
+            "confidence": 0.0,
+            "indicators": [],
+            "recommendations": []
+        }
+        
+        try:
+            # Get training metrics
+            from app.services.training_logger import training_logger
+            metrics = await training_logger.get_metrics(lora_model.id)
+            losses = metrics.get("losses", [])
+            
+            # Indicator 1: Loss barely decreases
+            if len(losses) >= 5:
+                initial_loss = losses[0]
+                final_loss = losses[-1]
+                
+                if initial_loss > 0:
+                    loss_reduction_ratio = (initial_loss - final_loss) / initial_loss
+                    
+                    if loss_reduction_ratio < 0.3:  # Less than 30% reduction
+                        result["is_underfitting"] = True
+                        result["severity"] = "severe"
+                        result["confidence"] = 0.8
+                        result["indicators"].append(
+                            f"Loss only reduced by {loss_reduction_ratio*100:.1f}% "
+                            f"(from {initial_loss:.4f} to {final_loss:.4f})"
+                        )
+                        result["recommendations"].append(
+                            "Increase training epochs significantly (2-3x current)"
+                        )
+                    elif loss_reduction_ratio < 0.5:  # Less than 50% reduction
+                        result["is_underfitting"] = True
+                        result["severity"] = "moderate"
+                        result["confidence"] = 0.6
+                        result["indicators"].append(
+                            f"Limited loss reduction: {loss_reduction_ratio*100:.1f}%"
+                        )
+                        result["recommendations"].append(
+                            "Increase training epochs by 50-100%"
+                        )
+            
+            # Indicator 2: Too few training steps
+            if lora_model.training_steps:
+                if lora_model.training_steps < 500:
+                    if not result["is_underfitting"]:
+                        result["is_underfitting"] = True
+                        result["severity"] = "moderate"
+                        result["confidence"] = 0.7
+                    result["indicators"].append(
+                        f"Very few training steps: {lora_model.training_steps} "
+                        f"(recommended: 1000+)"
+                    )
+                    result["recommendations"].append(
+                        "Train for at least 1000-2000 steps for acceptable quality"
+                    )
+                elif lora_model.training_steps < 1000:
+                    result["indicators"].append(
+                        f"Low training steps: {lora_model.training_steps}"
+                    )
+                    if not result["is_underfitting"]:
+                        result["is_underfitting"] = True
+                        result["severity"] = "mild"
+                        result["confidence"] = 0.5
+                    result["recommendations"].append(
+                        "Consider training for 1000+ steps"
+                    )
+            
+            # Indicator 3: High final loss
+            if lora_model.final_loss is not None and lora_model.final_loss > 0.15:
+                result["indicators"].append(
+                    f"High final loss: {lora_model.final_loss:.4f}"
+                )
+                if not result["is_underfitting"]:
+                    result["is_underfitting"] = True
+                    result["severity"] = "moderate"
+                    result["confidence"] = 0.6
+                result["recommendations"].append(
+                    "High loss indicates incomplete training. Increase epochs or check dataset quality"
+                )
+            
+            logger.info(
+                f"Underfitting detection for LoRA {lora_model.id}: "
+                f"underfitting={result['is_underfitting']}, severity={result['severity']}"
+            )
+            
+        except Exception as e:
+            logger.error(f"Failed to detect underfitting: {e}")
+            result["error"] = str(e)
+        
+        return result
+    
+    async def generate_training_diagnosis(self, lora_model: LoRAModel) -> Dict[str, Any]:
+        """
+        Generate comprehensive training diagnosis.
+        
+        Combines overfitting and underfitting detection
+        with actionable recommendations.
+        
+        Args:
+            lora_model: Trained LoRA model
+            
+        Returns:
+            Complete diagnosis report
+        """
+        overfitting = await self.detect_overfitting(lora_model)
+        underfitting = await self.detect_underfitting(lora_model)
+        
+        # Determine overall status
+        if overfitting["is_overfitting"] and underfitting["is_underfitting"]:
+            # Both detected - usually means inconsistent training
+            overall_status = "inconsistent"
+            primary_issue = "overfitting" if overfitting["confidence"] > underfitting["confidence"] else "underfitting"
+        elif overfitting["is_overfitting"]:
+            overall_status = "overfitting"
+            primary_issue = "overfitting"
+        elif underfitting["is_underfitting"]:
+            overall_status = "underfitting"
+            primary_issue = "underfitting"
+        else:
+            overall_status = "healthy"
+            primary_issue = "none"
+        
+        # Combine recommendations
+        all_recommendations = []
+        if overfitting["recommendations"]:
+            all_recommendations.extend(overfitting["recommendations"])
+        if underfitting["recommendations"]:
+            all_recommendations.extend(underfitting["recommendations"])
+        
+        if overall_status == "healthy" and lora_model.final_loss is not None:
+            if lora_model.final_loss < 0.05:
+                all_recommendations.append("Training looks good! Model is ready to use.")
+            else:
+                all_recommendations.append("Model is acceptable but could benefit from more training.")
+        
+        return {
+            "overall_status": overall_status,
+            "primary_issue": primary_issue,
+            "overfitting": overfitting,
+            "underfitting": underfitting,
+            "recommendations": all_recommendations,
+            "can_use_model": overall_status == "healthy" or (
+                overall_status in ["overfitting", "underfitting"] and 
+                overfitting.get("severity") in ["none", "mild"] and
+                underfitting.get("severity") in ["none", "mild"]
+            ),
+        }
+    
     def _analyze_training_completion(self, lora_model: LoRAModel) -> float:
         """Analyze training completion metrics."""
         score = 50.0  # Base score
@@ -520,6 +812,13 @@ class QualityAssessor:
             if not lora_model:
                 raise ValueError(f"LoRA model {lora_id} not found")
             
+            # Generate training diagnosis (overfitting/underfitting detection)
+            diagnosis = await self.generate_training_diagnosis(lora_model)
+            
+            # Combine recommendations
+            base_recommendations = self._generate_recommendations(quality_scores, lora_model)
+            all_recommendations = base_recommendations + diagnosis["recommendations"]
+            
             # Create quality report
             report = QualityReport(
                 lora_id=lora_id,
@@ -529,8 +828,10 @@ class QualityAssessor:
                 completion_score=quality_scores["completion_score"],
                 file_score=quality_scores["file_score"],
                 generation_success=quality_scores["generation_success"],
+                clip_consistency=quality_scores.get("clip_consistency", 0),
                 test_images=test_images,
-                recommendations=self._generate_recommendations(quality_scores, lora_model),
+                recommendations=all_recommendations,
+                training_diagnosis=diagnosis,
                 status="completed",
             )
             
@@ -538,7 +839,11 @@ class QualityAssessor:
             await session.commit()
             await session.refresh(report)
             
-            logger.info(f"Quality report created for LoRA {lora_id}: {quality_scores['overall_score']}/100 ({quality_scores['grade']})")
+            logger.info(
+                f"Quality report created for LoRA {lora_id}: "
+                f"{quality_scores['overall_score']}/100 ({quality_scores['grade']}), "
+                f"diagnosis={diagnosis['overall_status']}"
+            )
             
             return report
     

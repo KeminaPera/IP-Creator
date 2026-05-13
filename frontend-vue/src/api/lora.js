@@ -4,6 +4,10 @@ export function getLoraList(params) {
   return request.get('/lora/list', { params })
 }
 
+export function getLoRADetail(id) {
+  return request.get(`/lora/${id}`)
+}
+
 export function createLora(data) {
   return request.post('/lora/create', data)
 }

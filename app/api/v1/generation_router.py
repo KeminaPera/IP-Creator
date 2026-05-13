@@ -23,6 +23,9 @@ from app.core.exceptions import (
 from app.utils.response import success_response, list_response, created_response, updated_response, deleted_response, message_response
 from app.utils.logger import logger
 from app.services.storage_service import storage_service
+from app.services.ip_adapter_service import ip_adapter_service
+from app.models.ip_asset import IPAsset
+from sqlalchemy import select
 
 router = APIRouter(prefix="/api/v1/generate", tags=["Generation"])
 
@@ -625,4 +628,181 @@ async def generate_video_async(
             status_code=500,
             error="TaskCreationError",
             message="Failed to create async video task"
+        )
+
+
+# ============================================
+# IP-Adapter Smart Features
+# ============================================
+
+
+class SmartReferenceRequest(BaseModel):
+    """Request model for smart reference selection."""
+    ip_asset_id: int = Field(..., description="IP asset ID")
+    prompt: str = Field(..., description="Generation prompt")
+    max_images: int = Field(default=3, ge=1, le=5, description="Maximum number of reference images")
+
+
+class ConsistencyCheckRequest(BaseModel):
+    """Request model for consistency check."""
+    generated_image_path: str = Field(..., description="Path to generated image")
+    reference_images: List[str] = Field(..., description="List of reference image paths")
+    threshold: float = Field(default=0.75, ge=0.0, le=1.0, description="Consistency threshold")
+
+
+@router.post("/smart-references")
+async def get_smart_references(
+    request: SmartReferenceRequest,
+    current_user: dict = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db_session),
+):
+    """
+    Intelligently select reference images based on prompt analysis.
+    
+    Analyzes the prompt for angle, expression, and pose attributes,
+    then selects the best matching reference images from the IP asset.
+    """
+    try:
+        logger.info(f"Smart reference selection for IP asset {request.ip_asset_id}")
+        
+        # Fetch IP asset
+        result = await db.execute(select(IPAsset).where(IPAsset.id == request.ip_asset_id))
+        ip_asset = result.scalar_one_or_none()
+        
+        if not ip_asset:
+            raise NotFoundException(f"IP asset {request.ip_asset_id} not found")
+        
+        # Extract reference images
+        reference_images = ip_asset.reference_images or []
+        if not reference_images:
+            raise BadRequestException("IP asset has no reference images")
+        
+        # Convert string paths to dict format if needed
+        if isinstance(reference_images[0], str):
+            reference_images = [{"path": path} for path in reference_images]
+        
+        # Select best references
+        selected = ip_adapter_service.select_best_reference_images(
+            reference_images=reference_images,
+            prompt=request.prompt,
+            max_images=request.max_images,
+        )
+        
+        # Calculate adaptive scale
+        use_lora = ip_asset.lora_model_id is not None
+        adaptive_scale = ip_adapter_service.calculate_adaptive_scale(
+            prompt=request.prompt,
+            use_lora=use_lora,
+        )
+        
+        # Analyze prompt
+        prompt_analysis = ip_adapter_service.analyze_prompt(request.prompt)
+        
+        return success_response(
+            data={
+                "selected_references": selected,
+                "adaptive_scale": adaptive_scale,
+                "prompt_analysis": prompt_analysis,
+                "total_available": len(reference_images),
+            },
+            message=f"Selected {len(selected)} reference images"
+        )
+        
+    except (NotFoundException, BadRequestException):
+        raise
+    except Exception as e:
+        logger.error(f"Smart reference selection error: {e}")
+        raise AppException(
+            status_code=500,
+            error="ServerError",
+            message="Failed to select reference images"
+        )
+
+
+@router.post("/check-consistency")
+async def check_generation_consistency(
+    request: ConsistencyCheckRequest,
+    current_user: dict = Depends(get_current_user),
+):
+    """
+    Check consistency between generated image and reference images.
+    
+    Uses CLIP similarity to measure character consistency.
+    Returns score, pass/fail status, and recommendations.
+    """
+    try:
+        logger.info(f"Consistency check for generated image")
+        
+        result = await ip_adapter_service.check_generated_consistency(
+            generated_image_path=request.generated_image_path,
+            reference_images=request.reference_images,
+            threshold=request.threshold,
+        )
+        
+        return success_response(
+            data=result,
+            message="Consistency check completed"
+        )
+        
+    except Exception as e:
+        logger.error(f"Consistency check error: {e}")
+        raise AppException(
+            status_code=500,
+            error="ServerError",
+            message="Failed to check consistency"
+        )
+
+
+@router.post("/adaptive-scale")
+async def calculate_adaptive_scale(
+    prompt: str,
+    ip_asset_id: Optional[int] = None,
+    use_lora: bool = False,
+    current_user: dict = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db_session),
+):
+    """
+    Calculate optimal IP-Adapter scale based on prompt analysis.
+    
+    Automatically adjusts scale based on:
+    - Prompt context (character vs scene vs action)
+    - LoRA usage (reduce to avoid overfitting)
+    - Environment (indoor vs outdoor)
+    """
+    try:
+        logger.info(f"Adaptive scale calculation for prompt")
+        
+        # If IP asset ID provided, check if LoRA is associated
+        if ip_asset_id and not use_lora:
+            result = await db.execute(select(IPAsset).where(IPAsset.id == ip_asset_id))
+            ip_asset = result.scalar_one_or_none()
+            if ip_asset:
+                use_lora = ip_asset.lora_model_id is not None
+            else:
+                logger.warning(f"IP asset {ip_asset_id} not found, cannot determine LoRA usage")
+        
+        # Calculate adaptive scale
+        scale = ip_adapter_service.calculate_adaptive_scale(
+            prompt=prompt,
+            use_lora=use_lora,
+        )
+        
+        # Analyze prompt to explain the scale
+        prompt_analysis = ip_adapter_service.analyze_prompt(prompt)
+        
+        return success_response(
+            data={
+                "scale": scale,
+                "prompt_analysis": prompt_analysis,
+                "use_lora": use_lora,
+            },
+            message=f"Adaptive scale: {scale}"
+        )
+        
+    except Exception as e:
+        logger.error(f"Adaptive scale calculation error: {e}")
+        raise AppException(
+            status_code=500,
+            error="ServerError",
+            message="Failed to calculate adaptive scale"
         )

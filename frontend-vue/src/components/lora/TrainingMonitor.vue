@@ -145,12 +145,18 @@ const logContainerRef = ref(null)
 let lossChart = null
 let lrChart = null
 let refreshTimer = null
+let wsConnection = null
+let wsReconnectTimer = null
+const wsReconnectDelay = ref(3000) // Start with 3 seconds
+const maxReconnectDelay = 30000 // Max 30 seconds
 
 watch(() => props.modelValue, (newVal) => {
   if (newVal) {
     loadTrainingData()
-    startPolling()
+    // Try WebSocket first, fallback to polling
+    connectWebSocket()
   } else {
+    disconnectWebSocket()
     stopPolling()
   }
 })
@@ -181,21 +187,149 @@ async function loadMetrics() {
     const { data } = await getTrainingMetrics(props.loraId)
     const metrics = data.data || {}
     
-    status.value = metrics.status || 'training'
-    progress.value = metrics.progress || 0
-    currentEpoch.value = metrics.current_epoch || 0
-    totalEpochs.value = metrics.total_epochs || 10
-    currentLoss.value = metrics.current_loss
-    learningRate.value = metrics.learning_rate
-    elapsedTime.value = metrics.elapsed_time || 0
-    estimatedRemaining.value = metrics.estimated_remaining || 0
-    currentStep.value = metrics.current_step || 0
-    totalSteps.value = metrics.total_steps || 0
-    
-    updateCharts(metrics)
+    updateMetricsData(metrics)
   } catch (err) {
     ElMessage.error(t('lora.training_monitor.load_metrics_error'))
   }
+}
+
+function updateMetricsData(metrics) {
+  status.value = metrics.status || 'training'
+  progress.value = metrics.progress || 0
+  currentEpoch.value = metrics.current_epoch || 0
+  totalEpochs.value = metrics.total_epochs || 10
+  currentLoss.value = metrics.current_loss
+  learningRate.value = metrics.learning_rate
+  elapsedTime.value = metrics.elapsed_time || 0
+  estimatedRemaining.value = metrics.estimated_remaining || 0
+  currentStep.value = metrics.current_step || 0
+  totalSteps.value = metrics.total_steps || 0
+  
+  updateCharts(metrics)
+}
+
+// ============================================
+// WebSocket Integration
+// ============================================
+
+function connectWebSocket() {
+  if (wsConnection) {
+    return // Already connected
+  }
+  
+  const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
+  const wsUrl = `${protocol}//${window.location.host}/api/v1/ws/training/${props.loraId}`
+  
+  console.log(`[WebSocket] Connecting to ${wsUrl}`)
+  
+  try {
+    wsConnection = new WebSocket(wsUrl)
+    
+    wsConnection.onopen = () => {
+      console.log('[WebSocket] Connected')
+      wsReconnectDelay.value = 3000 // Reset reconnect delay
+      
+      // Stop polling when WebSocket is active
+      stopPolling()
+      
+      // Request metrics after connection
+      wsConnection.send('get_metrics')
+    }
+    
+    wsConnection.onmessage = (event) => {
+      try {
+        const data = JSON.parse(event.data)
+        handleWebSocketMessage(data)
+      } catch (err) {
+        console.error('[WebSocket] Failed to parse message:', err)
+      }
+    }
+    
+    wsConnection.onerror = (error) => {
+      console.error('[WebSocket] Error:', error)
+    }
+    
+    wsConnection.onclose = () => {
+      console.log('[WebSocket] Disconnected')
+      wsConnection = null
+      
+      // Try to reconnect with exponential backoff
+      scheduleReconnect()
+      
+      // Fallback to polling if WebSocket fails
+      startPolling()
+    }
+  } catch (err) {
+    console.error('[WebSocket] Connection failed:', err)
+    scheduleReconnect()
+    startPolling() // Fallback to polling
+  }
+}
+
+function handleWebSocketMessage(data) {
+  // Handle different message types
+  switch (data.type) {
+    case 'log':
+      // New log entry
+      logs.value.push(data)
+      if (autoScroll.value) {
+        nextTick(() => scrollToBottom())
+      }
+      break
+      
+    case 'metrics':
+      // Training metrics update
+      if (data.data) {
+        updateMetricsData(data.data)
+      }
+      break
+      
+    case 'progress':
+      // Progress update
+      progress.value = data.progress || 0
+      currentEpoch.value = data.current_epoch || currentEpoch.value
+      currentLoss.value = data.current_loss ?? currentLoss.value
+      break
+      
+    case 'pong':
+      // Heartbeat response (ignore)
+      break
+      
+    default:
+      console.log('[WebSocket] Unknown message type:', data.type)
+  }
+}
+
+function disconnectWebSocket() {
+  if (wsConnection) {
+    console.log('[WebSocket] Disconnecting')
+    wsConnection.close()
+    wsConnection = null
+  }
+  
+  if (wsReconnectTimer) {
+    clearTimeout(wsReconnectTimer)
+    wsReconnectTimer = null
+  }
+}
+
+function scheduleReconnect() {
+  if (wsReconnectTimer || !props.modelValue) {
+    return // Already scheduled or dialog closed
+  }
+  
+  console.log(`[WebSocket] Reconnecting in ${wsReconnectDelay.value / 1000}s`)
+  
+  wsReconnectTimer = setTimeout(() => {
+    wsReconnectTimer = null
+    connectWebSocket()
+    
+    // Exponential backoff (max 30 seconds)
+    wsReconnectDelay.value = Math.min(
+      wsReconnectDelay.value * 1.5,
+      maxReconnectDelay
+    )
+  }, wsReconnectDelay.value)
 }
 
 function updateCharts(metrics) {
@@ -400,12 +534,19 @@ onMounted(() => {
   if (props.modelValue) {
     initCharts()
     loadTrainingData()
-    startPolling()
+    // Try WebSocket first, fallback to polling
+    connectWebSocket()
   }
 })
 
 onUnmounted(() => {
+  // Clean up WebSocket
+  disconnectWebSocket()
+  
+  // Clean up polling
   stopPolling()
+  
+  // Clean up charts
   if (lossChart) {
     lossChart.dispose()
   }

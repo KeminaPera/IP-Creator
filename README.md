@@ -440,8 +440,32 @@ Once the backend is running, access:
 - Set style templates (3D cartoon, blind box, healing, anime)
 - Associate with LoRA models
 - Multi-angle image upload
+- IP Feature Library for managing outfits, expressions, and poses
 
-### 3. Content Generation
+### 2.5. Training Dataset Management
+
+- **Dataset Creation**: Upload and organize training images for LoRA training
+- **Image Annotation**: Label images with angle, expression, and pose metadata
+- **Batch Caption Generation**: Auto-generate training captions from annotations
+- **Data Augmentation**: Increase dataset size with flips, rotations, and color adjustments
+- **Kohya Format Conversion**: Automatic conversion to Kohya-ss training format
+- **Quality Validation**: Check image resolution, format, and dataset completeness
+
+### 3. LoRA Training & Quality Assessment
+
+- **Kohya-ss Integration**: Real LoRA training with environment detection
+- **Training Presets**: Beginner, Standard, and Expert configuration templates
+- **Real-time Monitoring**: WebSocket-based live progress updates
+- **Training Metrics**: Loss curves, learning rates, and GPU utilization
+- **Quality Assessment**: Automatic post-training quality evaluation
+  - CLIP character consistency scoring
+  - Training loss analysis
+  - Generation success rate
+  - Overfitting/underfitting detection
+- **Quality Reports**: Visual reports with scores, recommendations, and test images
+- **Training Diagnosis**: Automatic detection of training issues with actionable advice
+
+### 4. Content Generation
 
 **Story Generation:**
 - Async generation via LLM
@@ -460,7 +484,7 @@ Once the backend is running, access:
 - Temporal consistency
 - Fallback animation mode
 
-### 4. Content Library
+### 5. Content Library
 
 - Browse all generated content
 - Filter by type, status, IP asset, tags
@@ -470,7 +494,7 @@ Once the backend is running, access:
 - Download generated files
 - Automatic thumbnail generation
 
-### 5. Task Monitoring
+### 6. Task Monitoring
 
 - Real-time progress tracking
 - Task status (pending, running, completed, failed)
@@ -479,7 +503,7 @@ Once the backend is running, access:
 - Filter by IP asset and task type
 - Pagination support for large task lists
 
-### 6. System Health Dashboard
+### 7. System Health Dashboard
 
 - **Comprehensive Checks**:
   - Redis connectivity

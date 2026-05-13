@@ -229,13 +229,13 @@
 </template>
 
 <script setup>
-import { ref, onMounted } from 'vue'
+import { ref, onMounted, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import { getIPList } from '@/api/ip'
 import { getChannelsByCapability } from '@/api/llm'
-import { generateStory, generateStoryAsync, generateImage, generateImageAsync, generateVideo, generateVideoAsync } from '@/api/generate'
+import { generateStory, generateStoryAsync, generateImage, generateImageAsync, generateVideo, generateVideoAsync, getSmartReferences, getAdaptiveScale } from '@/api/generate'
 
 const router = useRouter()
 
@@ -279,6 +279,12 @@ const imageSeed = ref(-1)
 const imageLoading = ref(false)
 const imageAsyncLoading = ref(false)
 const imageResult = ref('')
+
+// Smart IP-Adapter features
+const smartReferences = ref([])
+const adaptiveScale = ref(0.7)
+const promptAnalysis = ref(null)
+const autoSelectRefs = ref(true) // Auto-select reference images
 
 // Video form
 const videoChannelId = ref(null)
@@ -364,6 +370,47 @@ function onIPChange(ipId) {
   }
 }
 
+// Smart reference selection with debounce
+let smartRefDebounceTimer = null
+
+async function loadSmartReferences() {
+  if (!selectedIPId.value || !imagePrompt.value) {
+    return
+  }
+  
+  try {
+    const { data } = await getSmartReferences({
+      ip_asset_id: selectedIPId.value,
+      prompt: imagePrompt.value,
+      max_images: 3,
+    })
+    
+    const result = data.data || {}
+    smartReferences.value = result.selected_references || []
+    adaptiveScale.value = result.adaptive_scale || 0.7
+    promptAnalysis.value = result.prompt_analysis || null
+  } catch (err) {
+    console.error('Failed to load smart references:', err)
+    // Fallback to empty array, will use manual selection
+    smartReferences.value = []
+  }
+}
+
+// Watch for prompt changes to auto-update smart references with debounce
+watch([imagePrompt, selectedIPId], () => {
+  if (autoSelectRefs.value && ipAdapterEnabled.value) {
+    // Clear previous timer
+    if (smartRefDebounceTimer) {
+      clearTimeout(smartRefDebounceTimer)
+    }
+    
+    // Set new timer (500ms debounce)
+    smartRefDebounceTimer = setTimeout(async () => {
+      await loadSmartReferences()
+    }, 500)
+  }
+})
+
 async function handleGenerateStory() {
   if (!storyPrompt.value) { ElMessage.warning(t('generate.validation_error')); return }
   storyLoading.value = true
@@ -413,7 +460,25 @@ async function handleGenerateImage() {
   if (!imagePrompt.value) { ElMessage.warning(t('generate.validation_error')); return }
   imageLoading.value = true
   imageResult.value = ''
+  
   try {
+    // Use smart references if already loaded
+    let selectedRefs = []
+    let scale = adaptiveScale.value
+    
+    // If smart references haven't been loaded yet, load them now
+    if (autoSelectRefs.value && ipAdapterEnabled.value && selectedIPId.value && smartReferences.value.length === 0) {
+      try {
+        await loadSmartReferences()
+        selectedRefs = smartReferences.value.map(r => r.path)
+      } catch (err) {
+        console.warn('Failed to load smart references, using manual selection:', err)
+      }
+    } else if (smartReferences.value.length > 0) {
+      // Use already-loaded references
+      selectedRefs = smartReferences.value.map(r => r.path)
+    }
+    
     const { data } = await generateImage({
       prompt: imagePrompt.value,
       negative_prompt: imageNegativePrompt.value,
@@ -427,6 +492,8 @@ async function handleGenerateImage() {
       use_lora: loraEnabled.value,
       lora_weight: loraWeight.value,
       use_ip_adapter: ipAdapterEnabled.value,
+      ip_adapter_scale: scale,
+      reference_images: selectedRefs.length > 0 ? selectedRefs : undefined,
     })
     // Unified response format: { success: true, data: {...}, message: "..." }
     imageResult.value = data.data?.image_url || data.data?.url || data.data?.result
@@ -442,7 +509,25 @@ async function handleGenerateImageAsync() {
   if (!imagePrompt.value) { ElMessage.warning(t('generate.validation_error')); return }
   imageAsyncLoading.value = true
   imageResult.value = ''
+  
   try {
+    // Use smart references if already loaded
+    let selectedRefs = []
+    let scale = adaptiveScale.value
+    
+    // If smart references haven't been loaded yet, load them now
+    if (autoSelectRefs.value && ipAdapterEnabled.value && selectedIPId.value && smartReferences.value.length === 0) {
+      try {
+        await loadSmartReferences()
+        selectedRefs = smartReferences.value.map(r => r.path)
+      } catch (err) {
+        console.warn('Failed to load smart references, using manual selection:', err)
+      }
+    } else if (smartReferences.value.length > 0) {
+      // Use already-loaded references
+      selectedRefs = smartReferences.value.map(r => r.path)
+    }
+    
     const { data } = await generateImageAsync({
       prompt: imagePrompt.value,
       negative_prompt: imageNegativePrompt.value,
@@ -456,7 +541,8 @@ async function handleGenerateImageAsync() {
       use_lora: loraEnabled.value,
       lora_weight: loraWeight.value,
       use_ip_adapter: ipAdapterEnabled.value,
-      ip_adapter_scale: 0.7,
+      ip_adapter_scale: scale,
+      reference_images: selectedRefs.length > 0 ? selectedRefs : undefined,
     })
     ElMessage.success(t('common.async_submit_success'))
     // Redirect to task monitor page

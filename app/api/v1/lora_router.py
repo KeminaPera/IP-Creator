@@ -642,6 +642,7 @@ async def get_quality_report(
                 "clip_consistency": report.clip_consistency,
                 "test_images": report.test_images,
                 "recommendations": report.recommendations,
+                "training_diagnosis": report.training_diagnosis,
                 "created_at": report.created_at.isoformat() if report.created_at else None,
             },
             message="Quality report retrieved successfully"

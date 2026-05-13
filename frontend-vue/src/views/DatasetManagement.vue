@@ -103,7 +103,23 @@
     </DataTable>
 
     <!-- Create Dataset Dialog -->
-    <el-dialog v-model="createDialogVisible" title="创建训练数据集" width="600px">
+    <el-dialog v-model="createDialogVisible" title="创建训练数据集" width="700px">
+      <el-alert
+        title="数据集创建流程"
+        type="info"
+        :closable="false"
+        style="margin-bottom: 20px;"
+      >
+        <template #default>
+          <div style="font-size: 13px; line-height: 1.6;">
+            <strong>步骤 1:</strong> 填写数据集基本信息<br/>
+            <strong>步骤 2:</strong> 上传 15-30 张训练图片<br/>
+            <strong>步骤 3:</strong> 标注图片（角度、表情、姿势）<br/>
+            <strong>步骤 4:</strong> 验证数据集质量
+          </div>
+        </template>
+      </el-alert>
+
       <el-form ref="createFormRef" :model="createForm" :rules="createRules" label-width="120px">
         <el-form-item label="IP资产" prop="ip_asset_id">
           <el-select v-model="createForm.ip_asset_id" placeholder="选择IP资产" style="width:100%">
@@ -121,10 +137,53 @@
             placeholder="数据集描述（可选）"
           />
         </el-form-item>
+
+        <el-divider>图片上传</el-divider>
+
+        <el-form-item label="训练图片">
+          <el-upload
+            ref="uploadRef"
+            :auto-upload="false"
+            :multiple="true"
+            :limit="50"
+            accept="image/jpeg,image/png,image/webp"
+            list-type="picture-card"
+            v-model:file-list="uploadFileList"
+            :on-change="handleFileChange"
+            :on-remove="handleFileRemove"
+          >
+            <el-icon><Plus /></el-icon>
+            <template #tip>
+              <div class="el-upload__tip">
+                支持 JPG/PNG/WEBP 格式，最多上传 50 张图片<br/>
+                建议：15-30 张高质量图片，包含不同角度、表情和姿势
+              </div>
+            </template>
+          </el-upload>
+          
+          <div v-if="uploadFileList.length > 0" style="margin-top: 12px; padding: 12px; background: #f0f9ff; border-radius: 4px;">
+            <el-icon style="color: #409eff; vertical-align: middle;"><InfoFilled /></el-icon>
+            <span style="margin-left: 8px; color: #606266;">
+              已选择 <strong style="color: #409eff;">{{ uploadFileList.length }}</strong> 张图片
+              <span v-if="uploadFileList.length < 15" style="color: #E6A23C; margin-left: 8px;">
+                （建议至少 15 张）
+              </span>
+              <span v-else-if="uploadFileList.length >= 15 && uploadFileList.length <= 30" style="color: #67C23A; margin-left: 8px;">
+                ✓ 数量合适
+              </span>
+              <span v-else style="color: #F56C6C; margin-left: 8px;">
+                （超过 30 张，可能训练较慢）
+              </span>
+            </span>
+          </div>
+        </el-form-item>
       </el-form>
+
       <template #footer>
         <el-button @click="createDialogVisible = false">取消</el-button>
-        <el-button type="primary" @click="handleCreate">创建</el-button>
+        <el-button type="primary" @click="handleCreate" :loading="creating">
+          创建并上传图片
+        </el-button>
       </template>
     </el-dialog>
 
@@ -189,8 +248,9 @@
 
 <script setup>
 import { ref, reactive } from 'vue'
+import { useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { Plus, ArrowDown, Check, MagicStick, DocumentCopy, Delete } from '@element-plus/icons-vue'
+import { Plus, ArrowDown, Check, MagicStick, DocumentCopy, Delete, InfoFilled } from '@element-plus/icons-vue'
 import DataTable from '@/components/common/DataTable.vue'
 import {
   getDatasetList,
@@ -200,11 +260,13 @@ import {
   augmentDataset,
   createDatasetVersion,
   getDatasetDetail,
+  uploadDatasetImages,
 } from '@/api/dataset'
 import { getIPList } from '@/api/ip'
 import { useAsyncList } from '@/composables/useAsyncData'
 import { useI18n } from 'vue-i18n'
 
+const router = useRouter()
 const { t } = useI18n()
 
 // State - Must be declared before useAsyncList (autoLoad references these)
@@ -237,6 +299,9 @@ const {
 // Create Dialog
 const createDialogVisible = ref(false)
 const createFormRef = ref(null)
+const uploadRef = ref(null)
+const creating = ref(false)
+const uploadFileList = ref([])
 const createForm = reactive({
   ip_asset_id: null,
   name: '',
@@ -275,6 +340,15 @@ const openCreateDialog = () => {
   createForm.ip_asset_id = null
   createForm.name = ''
   createForm.description = ''
+  uploadFileList.value = []
+}
+
+const handleFileChange = (file, fileList) => {
+  uploadFileList.value = fileList
+}
+
+const handleFileRemove = (file, fileList) => {
+  uploadFileList.value = fileList
 }
 
 const handleCreate = async () => {
@@ -282,13 +356,52 @@ const handleCreate = async () => {
   await createFormRef.value.validate(async (valid) => {
     if (!valid) return
 
+    if (uploadFileList.value.length === 0) {
+      ElMessage.warning('请至少上传一张图片')
+      return
+    }
+
+    creating.value = true
     try {
-      await createDataset(createForm)
-      ElMessage.success(t('dataset.create_success'))
+      // Step 1: Create dataset
+      const res = await createDataset(createForm)
+      const datasetId = res.data.id || res.data.data?.id
+      
+      ElMessage.success('数据集创建成功，正在上传图片...')
+      
+      // Step 2: Upload images
+      if (uploadFileList.value.length > 0) {
+        const files = uploadFileList.value.map(f => f.raw).filter(Boolean)
+        await uploadDatasetImages(datasetId, files)
+        ElMessage.success(`成功上传 ${files.length} 张图片`)
+      }
+      
       createDialogVisible.value = false
       loadDatasets()
+      
+      // Step 3: Redirect to annotation page
+      ElMessageBox.confirm(
+        '图片上传成功！是否前往标注页面为图片添加标注信息（角度、表情、姿势）？',
+        '前往标注',
+        {
+          confirmButtonText: '去标注',
+          cancelButtonText: '稍后标注',
+          type: 'success',
+        }
+      ).then(() => {
+        router.push({
+          path: '/datasets/annotate',
+          query: { dataset_id: datasetId }
+        })
+      }).catch(() => {
+        // User chose to annotate later
+      })
+      
     } catch (error) {
-      ElMessage.error(t('dataset.create_failed'))
+      console.error('Create dataset error:', error)
+      ElMessage.error(error.message || t('dataset.create_failed'))
+    } finally {
+      creating.value = false
     }
   })
 }
@@ -438,5 +551,21 @@ loadIpList()
   display: flex;
   flex-wrap: wrap;
   gap: 8px;
+}
+
+:deep(.el-upload-list--picture-card) {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+:deep(.el-upload--picture-card) {
+  width: 100px;
+  height: 100px;
+}
+
+:deep(.el-upload-list__item) {
+  width: 100px;
+  height: 100px;
 }
 </style>

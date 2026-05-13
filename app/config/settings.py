@@ -31,6 +31,14 @@ class Settings(BaseSettings):
     CELERY_BROKER_URL: str = "redis://localhost:6379/1"
     CELERY_RESULT_BACKEND: str = "redis://localhost:6379/2"
     
+    # File Upload Settings
+    MAX_UPLOAD_SIZE: int = 10 * 1024 * 1024  # 10MB per file
+    MAX_UPLOAD_FILES: int = 50  # Maximum files per upload request
+    ALLOWED_IMAGE_TYPES: set = {'.jpg', '.jpeg', '.png', '.webp'}
+    ALLOWED_MIME_TYPES: set = {'image/jpeg', 'image/png', 'image/webp'}
+    MIN_IMAGE_DIMENSION: int = 256  # Minimum width/height in pixels
+    MAX_IMAGE_DIMENSION: int = 4096  # Maximum width/height in pixels
+    
     # File Storage Paths
     STORAGE_PATH: str = "./data"
     IP_ASSETS_PATH: str = "./data/ip_assets"

@@ -73,6 +73,18 @@ const routes = [
     component: () => import('../views/DatasetAnnotation.vue'),
     meta: { requiresAuth: true },
   },
+  {
+    path: '/lora/:loraId/quality-report',
+    name: 'QualityReport',
+    component: () => import('../views/QualityReport.vue'),
+    meta: { requiresAuth: true },
+  },
+  {
+    path: '/lora/:loraId/training-monitor',
+    name: 'TrainingMonitor',
+    component: () => import('../views/TrainingMonitor.vue'),
+    meta: { requiresAuth: true },
+  },
 ]
 
 const router = createRouter({

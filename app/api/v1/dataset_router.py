@@ -34,6 +34,7 @@ from app.utils.caption_generator import generate_caption_from_annotation, genera
 from app.config.feature_types import FEATURE_TYPE_CONFIG
 from app.services.dataset_generator import DatasetGenerator
 from app.services.dataset_converter import DatasetConverter
+from app.services.data_augmentation import DataAugmentation
 
 router = APIRouter(prefix="/api/v1/datasets", tags=["Training Datasets"])
 
@@ -147,6 +148,219 @@ async def add_image(
         data=DatasetImageResponse.model_validate(image),
         message="Image added to dataset successfully"
     )
+
+
+@router.post("/{dataset_id}/upload-images", status_code=201)
+async def upload_images(
+    dataset_id: int,
+    files: List[UploadFile] = File(...),
+    current_user: dict = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db_session),
+):
+    """
+    Upload multiple images to dataset.
+    
+    Args:
+        dataset_id: Dataset ID
+        files: List of image files to upload
+    
+    Returns:
+        Upload result with image count and paths
+    """
+    from pathlib import Path
+    from app.config.settings import settings
+    from PIL import Image
+    import io
+    import uuid
+    import re
+    
+    try:
+        # Check if dataset exists
+        result = await db.execute(
+            select(TrainingDataset).where(TrainingDataset.id == dataset_id)
+        )
+        dataset = result.scalar_one_or_none()
+        
+        if not dataset:
+            raise NotFoundException(f"Dataset {dataset_id} not found")
+        
+        # Validate file count
+        if len(files) > settings.MAX_UPLOAD_FILES:
+            raise BadRequestException(
+                f"Too many files: {len(files)}. Maximum allowed: {settings.MAX_UPLOAD_FILES}"
+            )
+        
+        # Create upload directory
+        upload_dir = Path(settings.STORAGE_PATH) / "datasets" / f"dataset_{dataset_id}"
+        upload_dir.mkdir(parents=True, exist_ok=True)
+        
+        uploaded_images = []
+        skipped_count = 0
+        saved_files = []  # Track saved files for cleanup on failure
+        failed_files = []  # Track detailed failure information
+        
+        # Process each file
+        for file in files:
+            file_path = None
+            try:
+                # Check MIME type
+                if not file.content_type or file.content_type not in settings.ALLOWED_MIME_TYPES:
+                    logger.warning(f"Skipping file with invalid MIME type: {file.filename} ({file.content_type})")
+                    failed_files.append({
+                        "filename": file.filename,
+                        "error": f"Invalid file type: {file.content_type or 'unknown'}"
+                    })
+                    skipped_count += 1
+                    continue
+                
+                # Sanitize and validate file extension
+                if file.filename:
+                    file_extension = Path(file.filename).suffix.lower()
+                    # Validate extension is safe
+                    if not re.match(r'^\.(jpg|jpeg|png|webp)$', file_extension):
+                        file_extension = '.jpg'
+                else:
+                    file_extension = '.jpg'
+                
+                # Generate unique filename
+                unique_filename = f"{uuid.uuid4().hex}{file_extension}"
+                file_path = upload_dir / unique_filename
+                
+                # Read file content
+                content = await file.read()
+                
+                # Check file size BEFORE saving
+                if len(content) > settings.MAX_UPLOAD_SIZE:
+                    logger.warning(f"File {file.filename} exceeds size limit: {len(content)} bytes")
+                    failed_files.append({
+                        "filename": file.filename,
+                        "error": f"File too large: {len(content) / 1024 / 1024:.1f}MB (max: {settings.MAX_UPLOAD_SIZE / 1024 / 1024:.0f}MB)"
+                    })
+                    skipped_count += 1
+                    continue
+                
+                # Validate actual image content (not just MIME type)
+                try:
+                    img = Image.open(io.BytesIO(content))
+                    img.verify()  # Verify it's a valid, non-corrupted image
+                    
+                    # Re-open after verify() as it closes the image
+                    img = Image.open(io.BytesIO(content))
+                    width, height = img.size
+                    
+                    # Validate dimensions
+                    if width < settings.MIN_IMAGE_DIMENSION or height < settings.MIN_IMAGE_DIMENSION:
+                        logger.warning(f"Image {file.filename} too small: {width}x{height}")
+                        failed_files.append({
+                            "filename": file.filename,
+                            "error": f"Image too small: {width}x{height} (min: {settings.MIN_IMAGE_DIMENSION}px)"
+                        })
+                        skipped_count += 1
+                        continue
+                    
+                    if width > settings.MAX_IMAGE_DIMENSION or height > settings.MAX_IMAGE_DIMENSION:
+                        logger.warning(f"Image {file.filename} too large: {width}x{height}")
+                        failed_files.append({
+                            "filename": file.filename,
+                            "error": f"Image too large: {width}x{height} (max: {settings.MAX_IMAGE_DIMENSION}px)"
+                        })
+                        skipped_count += 1
+                        continue
+                        
+                except Exception as img_error:
+                    logger.warning(f"Invalid or corrupted image file {file.filename}: {img_error}")
+                    failed_files.append({
+                        "filename": file.filename,
+                        "error": f"Invalid image file: {str(img_error)}"
+                    })
+                    skipped_count += 1
+                    continue
+                
+                # Save file to disk
+                with open(file_path, 'wb') as f:
+                    f.write(content)
+                saved_files.append(file_path)  # Track for potential cleanup
+                
+                # Create dataset image record with correct schema fields
+                dataset_image = DatasetImage(
+                    dataset_id=dataset_id,
+                    file_path=str(file_path),
+                    width=width,
+                    height=height,
+                    file_size_kb=len(content) // 1024,
+                    angle="unknown",
+                    expression="unknown",
+                    pose="unknown",
+                )
+                
+                db.add(dataset_image)
+                uploaded_images.append({
+                    "filename": file.filename,
+                    "path": str(file_path),
+                    "size": len(content),
+                    "width": width,
+                    "height": height,
+                })
+                
+            except BadRequestException:
+                # Re-raise validation errors
+                raise
+            except Exception as e:
+                logger.error(f"Failed to upload file {file.filename}: {e}")
+                failed_files.append({
+                    "filename": file.filename,
+                    "error": str(e)
+                })
+                skipped_count += 1
+                # Clean up this specific file if it was saved
+                if file_path and file_path.exists():
+                    try:
+                        file_path.unlink()
+                        saved_files.remove(file_path)
+                        logger.info(f"Cleaned up failed file: {file_path}")
+                    except Exception as cleanup_error:
+                        logger.error(f"Failed to cleanup file {file_path}: {cleanup_error}")
+                continue
+        
+        # Check if any files were successfully uploaded
+        if len(uploaded_images) == 0:
+            raise BadRequestException(
+                f"No valid images were uploaded. All {len(files)} files failed validation."
+            )
+        
+        # Update dataset image count (add to existing count, not replace)
+        dataset.image_count = (dataset.image_count or 0) + len(uploaded_images)
+        
+        # Commit to database
+        await db.commit()
+        
+        return created_response(
+            data={
+                "uploaded_count": len(uploaded_images),
+                "skipped_count": skipped_count,
+                "images": uploaded_images,
+                "failed_files": failed_files if failed_files else None,
+            },
+            message=f"Successfully uploaded {len(uploaded_images)} images"
+        )
+        
+    except (NotFoundException, BadRequestException):
+        raise
+    except Exception as e:
+        # Rollback database changes
+        await db.rollback()
+        
+        # Clean up all saved files to prevent orphans
+        for saved_file in saved_files:
+            if saved_file.exists():
+                try:
+                    saved_file.unlink()
+                    logger.warning(f"Cleaned up orphaned file during rollback: {saved_file}")
+                except Exception as cleanup_error:
+                    logger.error(f"Failed to cleanup orphaned file {saved_file}: {cleanup_error}")
+        
+        logger.error(f"Error uploading images: {e}")
+        raise BadRequestException(f"Failed to upload images: {str(e)}")
 
 
 @router.post("/{dataset_id}/validate", response_model=DatasetValidationReport)
@@ -542,4 +756,206 @@ async def validate_kohya_dataset(
     except Exception as e:
         logger.error(f"Error validating dataset: {e}")
         raise BadRequestException(f"Failed to validate: {str(e)}")
+
+
+# ============================================
+# Data Augmentation
+# ============================================
+
+@router.post("/{dataset_id}/augment")
+async def apply_data_augmentation(
+    dataset_id: int,
+    request: dict,
+    current_user: dict = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db_session),
+):
+    """
+    Augment dataset images to increase training data size.
+    
+    Supports:
+    - Horizontal flip
+    - Rotation (±15 degrees)
+    - Color jitter (brightness, contrast, saturation)
+    - Combined augmentations
+    
+    Request body:
+    {
+        "augmentation_types": ["flip", "rotation", "color_jitter"],
+        "multiplier": 2,
+        "create_version": true
+    }
+    """
+    try:
+        # Check if dataset exists
+        result = await db.execute(
+            select(TrainingDataset).where(TrainingDataset.id == dataset_id)
+        )
+        dataset = result.scalar_one_or_none()
+        
+        if not dataset:
+            raise NotFoundException(f"Dataset {dataset_id} not found")
+        
+        # Get dataset images
+        images_result = await db.execute(
+            select(DatasetImage).where(DatasetImage.dataset_id == dataset_id)
+        )
+        dataset_images = images_result.scalars().all()
+        
+        if not dataset_images:
+            raise BadRequestException("Dataset has no images to augment")
+        
+        # Prepare image paths
+        original_images = [
+            {"path": img.file_path, "id": img.id}
+            for img in dataset_images
+            if img.file_path
+        ]
+        
+        if not original_images:
+            raise BadRequestException("No valid image paths found in dataset")
+        
+        # Extract augmentation parameters
+        augmentation_types = request.get("augmentation_types", ["flip", "rotation", "color_jitter"])
+        multiplier = request.get("multiplier", 2)
+        create_version = request.get("create_version", False)
+        
+        # Perform augmentation
+        augmenter = DataAugmentation()
+        aug_result = await augmenter.augment_dataset(
+            dataset_id=dataset_id,
+            original_images=original_images,
+            augmentation_types=augmentation_types,
+            multiplier=multiplier,
+        )
+        
+        # Generate report
+        report = await augmenter.generate_augmentation_report(
+            dataset_id=dataset_id,
+            original_count=len(original_images),
+            augmented_count=aug_result["augmented_count"],
+            augmentation_types=augmentation_types,
+        )
+        
+        response_data = {
+            "dataset_id": dataset_id,
+            "original_count": aug_result["original_count"],
+            "augmented_count": aug_result["augmented_count"],
+            "output_directory": aug_result["output_directory"],
+            "augmentation_types": augmentation_types,
+            "report": report,
+        }
+        
+        return success_response(
+            data=response_data,
+            message=f"Dataset augmented: {aug_result['augmented_count']} images created"
+        )
+        
+    except (NotFoundException, BadRequestException):
+        raise
+    except Exception as e:
+        logger.error(f"Error augmenting dataset: {e}")
+        raise BadRequestException(f"Failed to augment dataset: {str(e)}")
+
+
+@router.post("/{dataset_id}/augment/validate")
+async def validate_augmentation_safety(
+    dataset_id: int,
+    request: dict,
+    current_user: dict = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db_session),
+):
+    """
+    Validate if augmentation is safe for dataset images.
+    
+    Request body:
+    {
+        "image_id": 123,
+        "augmentation_type": "flip"
+    }
+    """
+    try:
+        # Get image
+        image_id = request.get("image_id")
+        aug_type = request.get("augmentation_type", "flip")
+        
+        if not image_id:
+            raise BadRequestException("image_id is required")
+        
+        result = await db.execute(
+            select(DatasetImage).where(DatasetImage.id == image_id)
+        )
+        dataset_image = result.scalar_one_or_none()
+        
+        if not dataset_image:
+            raise NotFoundException(f"Dataset image {image_id} not found")
+        
+        if not dataset_image.file_path:
+            raise BadRequestException("Image has no file path")
+        
+        # Validate safety
+        augmenter = DataAugmentation()
+        safety_result = augmenter.validate_augmentation_safety(
+            image_path=dataset_image.file_path,
+            aug_type=aug_type,
+        )
+        
+        return success_response(
+            data=safety_result,
+            message="Augmentation safety validation completed"
+        )
+        
+    except (NotFoundException, BadRequestException):
+        raise
+    except Exception as e:
+        logger.error(f"Error validating augmentation safety: {e}")
+        raise BadRequestException(f"Failed to validate: {str(e)}")
+
+
+@router.get("/{dataset_id}/augment/report")
+async def get_augmentation_report(
+    dataset_id: int,
+    current_user: dict = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db_session),
+):
+    """
+    Get augmentation report for a dataset.
+    """
+    try:
+        # Check if dataset exists
+        result = await db.execute(
+            select(TrainingDataset).where(TrainingDataset.id == dataset_id)
+        )
+        dataset = result.scalar_one_or_none()
+        
+        if not dataset:
+            raise NotFoundException(f"Dataset {dataset_id} not found")
+        
+        # Get image counts
+        images_result = await db.execute(
+            select(DatasetImage).where(DatasetImage.dataset_id == dataset_id)
+        )
+        all_images = images_result.scalars().all()
+        
+        original_count = sum(1 for img in all_images if not img.file_path or "aug_" not in img.file_path)
+        augmented_count = sum(1 for img in all_images if img.file_path and "aug_" in img.file_path)
+        
+        # Generate report
+        augmenter = DataAugmentation()
+        report = await augmenter.generate_augmentation_report(
+            dataset_id=dataset_id,
+            original_count=original_count,
+            augmented_count=augmented_count,
+            augmentation_types=["flip", "rotation", "color_jitter"],
+        )
+        
+        return success_response(
+            data=report,
+            message="Augmentation report generated"
+        )
+        
+    except (NotFoundException, BadRequestException):
+        raise
+    except Exception as e:
+        logger.error(f"Error generating augmentation report: {e}")
+        raise BadRequestException(f"Failed to generate report: {str(e)}")
 
