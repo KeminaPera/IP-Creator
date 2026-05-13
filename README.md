@@ -157,8 +157,15 @@ python -m uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
 
 **Terminal 2 - Celery Worker:**
 ```bash
-celery -A celery_worker.celery_app worker --loglevel=info --pool=solo
+# Linux / macOS (推荐: 自动从 celery_worker.py 读取队列列表并携带 -Q)
+./start_celery.sh
+
+# Windows / 手动启动 (必须显式带 -Q, 否则任务会堆积在 Redis 中无人消费)
+celery -A celery_worker.celery_app worker --loglevel=info --pool=solo \
+  -Q celery,story_generation,image_generation,video_generation,training
 ```
+
+> ⚠️ **重要**: `celery_worker.py` 中 `task_routes` 将生成任务路由到 `story_generation/image_generation/video_generation` 等自定义队列；worker 默认只监听 `celery` 队列，必须通过 `-Q` 参数显式声明。
 
 **Terminal 3 - Frontend:**
 ```bash

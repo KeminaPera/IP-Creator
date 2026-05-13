@@ -378,7 +378,7 @@ async def get_file(
         file_path = storage_service.get_file_path(directory, filename)
         
         if not file_path:
-            raise NotFoundException(message="File not found")
+            raise NotFoundException(resource="File")
         
         return FileResponse(str(file_path))
     

@@ -261,6 +261,52 @@
                     <span>图像/视频生成速度将非常慢，建议使用GPU加速</span>
                   </div>
                 </div>
+
+                <!-- Show Celery Worker detailed information -->
+                <div v-if="item.key === 'celery_worker' && item.celeryInfo" class="detail-celery-info">
+                  <el-divider style="margin: 12px 0;">
+                    <span style="color: #909399; font-size: 12px;">Celery Worker 信息</span>
+                  </el-divider>
+                  <div class="gpu-info-row">
+                    <span class="gpu-label">状态:</span>
+                    <el-tag :type="item.celeryInfo.active ? 'success' : 'warning'" size="small">
+                      {{ item.celeryInfo.active ? '在线' : '未检测到' }}
+                    </el-tag>
+                  </div>
+                  <div class="gpu-info-row">
+                    <span class="gpu-label">Worker 数量:</span>
+                    <span class="gpu-value">{{ item.celeryInfo.workers.length }}</span>
+                  </div>
+                  <div v-if="item.celeryInfo.workers.length > 0" class="gpu-info-row" style="align-items:flex-start;">
+                    <span class="gpu-label">节点名:</span>
+                    <div class="gpu-value" style="display:flex;flex-direction:column;gap:4px;">
+                      <el-tag
+                        v-for="w in item.celeryInfo.workers"
+                        :key="w"
+                        size="small"
+                        type="info"
+                        style="font-family:monospace;"
+                      >{{ w }}</el-tag>
+                    </div>
+                  </div>
+                  <div v-if="item.celeryInfo.method" class="gpu-info-row">
+                    <span class="gpu-label">探测方式:</span>
+                    <el-tag
+                      size="small"
+                      :type="item.celeryInfo.method === 'control.ping' ? 'success' : 'warning'"
+                    >
+                      {{ item.celeryInfo.method === 'control.ping' ? 'Ping (即时响应)' : 'Broker 绑定回退 (忙碌中)' }}
+                    </el-tag>
+                  </div>
+                  <div v-if="item.celeryInfo.method === 'broker-binding-fallback'" class="gpu-warning">
+                    <el-icon><Warning /></el-icon>
+                    <span>Worker 未响应 ping，可能正在执行长任务 (solo pool 会阻塞控制信号)</span>
+                  </div>
+                  <div v-if="!item.celeryInfo.active" class="gpu-warning">
+                    <el-icon><Warning /></el-icon>
+                    <span>异步任务无人消费，请执行 <code>./start_celery.sh</code> 启动 Worker</span>
+                  </div>
+                </div>
                 
                 <!-- Show LLM models list with status grouping -->
                 <div v-if="item.key === 'llm_configs' && (item.activeReady || item.activePending || item.inactive)" class="detail-llm-list">
@@ -520,6 +566,13 @@ const healthItems = computed(() => {
         name: check.name,
         count: check.count,
         memory_gb: check.memory_gb
+      } : null,
+
+      // Celery worker detailed information
+      celeryInfo: config.key === 'celery_worker' ? {
+        active: check.active,
+        workers: check.workers || [],
+        method: check.method || null
       } : null,
       
       // LLM models grouped by status
