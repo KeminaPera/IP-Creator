@@ -552,6 +552,7 @@ const highlightedContentId = ref(null)
 
 const filters = ref({
   content_type: '',
+  task_id: '',  // Add task_id filter
   status: 'completed',
   search: '',
   ip_asset_id: '',
@@ -611,6 +612,7 @@ async function loadContents() {
       page: pagination.value.page,
       page_size: pagination.value.pageSize,
       content_type: filters.value.content_type || undefined,
+      task_id: filters.value.task_id || undefined,
       status: filters.value.status || undefined,
       search: filters.value.search || undefined,
       ip_asset_id: filters.value.ip_asset_id || undefined,
@@ -621,10 +623,10 @@ async function loadContents() {
     }
     
     const { data } = await request.get('/contents', { params })
-    // Unified response format: { success: true, data: [...], pagination: {...} }
     contents.value = data.data || []
     total.value = data.pagination?.total || 0
   } catch (err) {
+    console.error('[ContentLibrary] Error loading contents:', err)
     ElMessage.error(t('common.error'))
   } finally {
     loading.value = false
@@ -835,12 +837,14 @@ async function deleteContent(item) {
 onMounted(async () => {
   const highlightId = route.query.highlight
   const resetFilters = route.query.reset_filters
+  const taskIdFilter = route.query.task_id
   
   // Reset filters if requested
   if (resetFilters === 'true') {
     filters.value = {
       content_type: '',
-      status: '',
+      task_id: taskIdFilter || '',
+      status: 'completed',
       search: '',
       ip_asset_id: null,
       start_date: '',
@@ -849,6 +853,8 @@ onMounted(async () => {
       tags: [],
     }
     pagination.value.page = 1
+  } else if (taskIdFilter) {
+    filters.value.task_id = taskIdFilter
   }
   
   // Load data first

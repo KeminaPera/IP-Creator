@@ -350,30 +350,41 @@ async def get_task_content_result(
     db: AsyncSession = Depends(get_db_session),
 ):
     """
-    Get generated content associated with a task.
+    Get all generated content associated with a task.
     
-    Returns content information if the task produced generated content
+    Returns all content items if the task produced generated content
     (image, video, story). Returns has_content=False for tasks like LoRA training.
+    
+    Supports both database ID and Celery task ID (UUID).
     """
     try:
-        # Get the task by Celery task_id (UUID)
-        task_result = await db.execute(
-            select(TaskRecord).where(TaskRecord.task_id == task_id)
-        )
-        task = task_result.scalar_one_or_none()
+        # Support both database ID (integer) and Celery task ID (UUID)
+        # Same logic as get_task endpoint
+        task = None
+        if task_id.isdigit():
+            result = await db.execute(
+                select(TaskRecord).where(TaskRecord.id == int(task_id))
+            )
+            task = result.scalar_one_or_none()
+        if task is None:
+            result = await db.execute(
+                select(TaskRecord).where(TaskRecord.task_id == task_id)
+            )
+            task = result.scalar_one_or_none()
         
         if not task:
             raise NotFoundException(resource="Task", identifier=task_id)
         
         logger.info(f"Looking for content with task_id: {task.task_id} (task type: {task.task_type}, status: {task.status})")
         
-        # Query generated content by task_id (Celery task ID)
+        # Query ALL generated content by task_id (Celery task ID)
+        # A single task may produce multiple content items (story + images + video)
         content_result = await db.execute(
             select(GeneratedContent).where(GeneratedContent.task_id == task.task_id)
         )
-        content = content_result.scalar_one_or_none()
+        contents = content_result.scalars().all()
         
-        if not content:
+        if not contents:
             logger.warning(f"No content found for task_id: {task.task_id}")
             return success_response(
                 data={
@@ -382,19 +393,34 @@ async def get_task_content_result(
                 }
             )
         
-        logger.info(f"Found content: {content.content_type} - {content.title} (ID: {content.id})")
+        logger.info(f"Found {len(contents)} content items for task_id: {task.task_id}")
         
-        # Return content information
-        return success_response(
-            data={
-                "has_content": True,
+        # Return all content items
+        content_list = []
+        for content in contents:
+            content_list.append({
                 "content_id": content.id,
-                "content_type": content.content_type,
+                "content_type": content.content_type,  # story, image, video
                 "title": content.title,
+                "description": content.description,
                 "file_path": content.file_path,
                 "thumbnail_path": content.thumbnail_path,
                 "file_size": content.file_size,
+                "duration_seconds": content.duration_seconds,
+                "resolution": content.resolution,
+                "word_count": content.word_count,
                 "status": content.status,
+                "is_favorite": content.is_favorite,
+                "created_at": content.created_at.isoformat() if content.created_at else None,
+            })
+        
+        return success_response(
+            data={
+                "has_content": True,
+                "task_id": task.task_id,
+                "task_type": task.task_type,
+                "content_count": len(content_list),
+                "contents": content_list,
             }
         )
         

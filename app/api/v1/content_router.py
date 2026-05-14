@@ -31,6 +31,7 @@ router = APIRouter(prefix="/api/v1/contents", tags=["Content Library"])
 @router.get("")
 async def list_contents(
     content_type: Optional[str] = Query(None, description="Filter by content type: story, image, video"),
+    task_id: Optional[str] = Query(None, description="Filter by Celery task ID (UUID)"),
     ip_asset_id: Optional[int] = Query(None, description="Filter by IP asset ID"),
     status: Optional[str] = Query("completed", description="Filter by status"),
     is_favorite: Optional[bool] = Query(None, description="Filter by favorite status"),
@@ -53,6 +54,10 @@ async def list_contents(
         if content_type:
             query = query.where(GeneratedContent.content_type == content_type)
             count_query = count_query.where(GeneratedContent.content_type == content_type)
+        
+        if task_id:
+            query = query.where(GeneratedContent.task_id == task_id)
+            count_query = count_query.where(GeneratedContent.task_id == task_id)
         
         if ip_asset_id:
             query = query.where(GeneratedContent.ip_asset_id == ip_asset_id)

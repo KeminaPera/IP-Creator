@@ -101,6 +101,13 @@
         </el-descriptions-item>
       </el-descriptions>
     </el-dialog>
+
+    <!-- Task Result Dialog -->
+    <TaskResultDialog
+      v-model="resultDialogVisible"
+      :task-id="selectedTaskId"
+      @navigate="handleNavigate"
+    />
   </div>
 </template>
 
@@ -108,9 +115,10 @@
 import { ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useRouter } from 'vue-router'
-import { ElMessage } from 'element-plus'
+import { ElMessage, ElMessageBox } from 'element-plus'
 import { ArrowDown, SuccessFilled, WarningFilled, RefreshRight, Delete } from '@element-plus/icons-vue'
-import { getTasks, getTask, retryTask, deleteTask, getTaskContentResult } from '@/api/task'
+import { getTasks, getTask, retryTask, deleteTask } from '@/api/task'
+import TaskResultDialog from '@/components/TaskResultDialog.vue'
 import { getIPList } from '@/api/ip'
 import { useAsyncList } from '@/composables/useAsyncData'
 import { useAutoRefresh } from '@/composables/usePolling'
@@ -126,6 +134,10 @@ const ipAssets = ref([])
 const filterIPId = ref(null)
 const detailsDialogVisible = ref(false)
 const selectedTask = ref(null)
+
+// Result dialog
+const resultDialogVisible = ref(false)
+const selectedTaskId = ref('')
 
 // Use useAsyncList for automatic data fetching with pagination
 const { 
@@ -196,30 +208,33 @@ async function handleView(row) {
 }
 
 async function handleViewResult(row) {
-  try {
-    const response = await getTaskContentResult(row.id)
-    const { data } = response
-    
-    if (!data.has_content) {
-      ElMessage.info(t('tasks.no_content_result'))
-      return
-    }
-    
-    // Navigate to Content Library with content ID highlight
-    // Clear all filters by using state parameter
+  // Open result dialog with task UUID
+  selectedTaskId.value = row.task_id
+  resultDialogVisible.value = true
+}
+
+function handleNavigate(contentId, taskId = null) {
+  if (contentId) {
+    // Navigate to specific content
     router.push({
-      path: '/content-library',
+      path: '/contents',  // Fixed: Use correct route path
       query: { 
-        highlight: data.content_id,
-        reset_filters: 'true'  // Signal to reset filters
+        highlight: contentId,
+        reset_filters: 'true'
       }
     })
-    
-    ElMessage.success(t('tasks.navigating_to_content'))
-  } catch (err) {
-    console.error('[TaskMonitor] Error in handleViewResult:', err)
-    ElMessage.error(t('tasks.view_result') + ' ' + t('common.error'))
+  } else if (taskId) {
+    // Navigate with task_id filter
+    router.push({
+      path: '/contents',  // Fixed: Use correct route path
+      query: { 
+        task_id: taskId,
+        reset_filters: 'true'
+      }
+    })
   }
+  
+  ElMessage.success(t('tasks.navigating_to_content'))
 }
 
 // Delete task with confirmation

@@ -5,6 +5,7 @@ from app.models.ip_multi_view import IPMultiView
 from app.models.ip_feature_library import IPFeatureLibrary
 from app.models.ip_feature_image import IPFeatureImage
 from app.models.lora_model import LoRAModel
+from app.models.quality_report import QualityReport
 from app.models.task import TaskRecord
 from app.models.user import User
 from app.models.generated_content import GeneratedContent
@@ -21,6 +22,7 @@ __all__ = [
     "IPFeatureLibrary",
     "IPFeatureImage",
     "LoRAModel",
+    "QualityReport",
     "TaskRecord",
     "User",
     "GeneratedContent",

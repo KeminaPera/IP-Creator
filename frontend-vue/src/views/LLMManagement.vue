@@ -490,12 +490,12 @@ async function testConnection(row) {
     
     if (health.health_status === 'healthy') {
       ElMessage.success({
-        message: `✅ ${t('llm.connection_success')} - ${t('llm.response_time_label')}: ${health.response_time_ms?.toFixed(0) || 0}ms`,
+        message: `${t('llm.connection_success')} - ${t('llm.response_time_label')}: ${health.response_time_ms?.toFixed(0) || 0}ms`,
         duration: 3000
       })
     } else {
       ElMessage.error({
-        message: `❌ ${t('llm.connection_failed')}: ${health.error_message || 'Unknown error'}`,
+        message: `${t('llm.connection_failed')}: ${health.error_message || t('common.unknown')}`,
         duration: 5000
       })
     }
