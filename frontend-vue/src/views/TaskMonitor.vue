@@ -157,7 +157,13 @@ const {
   { 
     errorMessage: 'common.load_failed',
     autoLoad: true,
-    initialPageSize: parseInt(localStorage.getItem('taskMonitor_pageSize')) || 20
+    initialPageSize: (() => {
+      try {
+        return parseInt(localStorage.getItem('taskMonitor_pageSize')) || 20
+      } catch {
+        return 20
+      }
+    })()
   }
 )
 
@@ -175,7 +181,11 @@ const { start: startAutoRefresh, stop: stopAutoRefresh } = useAutoRefresh(
 watch(
   () => pagination.value.pageSize,
   (newSize) => {
-    localStorage.setItem('taskMonitor_pageSize', newSize.toString())
+    try {
+      localStorage.setItem('taskMonitor_pageSize', newSize.toString())
+    } catch {
+      // Ignore storage errors
+    }
   }
 )
 

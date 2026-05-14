@@ -39,6 +39,30 @@ class StorageService:
         unique_id = str(uuid.uuid4())[:8]
         return f"{prefix}{unique_id}{ext}"
     
+    def _validate_path(self, file_path: Path, allowed_base: Path) -> bool:
+        """
+        Validate that file_path is within allowed_base directory.
+        Prevents path traversal attacks.
+        
+        Args:
+            file_path: Path to validate
+            allowed_base: Base directory that should contain the file
+            
+        Returns:
+            True if path is safe
+            
+        Raises:
+            ValueError: If path is outside allowed base
+        """
+        resolved_path = file_path.resolve()
+        resolved_base = allowed_base.resolve()
+        
+        if not str(resolved_path).startswith(str(resolved_base)):
+            raise ValueError(
+                f"Path traversal detected: {file_path} is outside allowed directory {allowed_base}"
+            )
+        return True
+    
     async def save_upload_file(
         self, 
         upload_file: UploadFile, 

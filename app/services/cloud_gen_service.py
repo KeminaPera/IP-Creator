@@ -247,8 +247,8 @@ class CloudGenService:
             error_detail = ""
             try:
                 error_detail = e.response.text
-            except Exception:
-                pass
+            except (AttributeError, ValueError):
+                error_detail = "No error detail available"
             logger.error(f"Zhipu API HTTP error: {e.response.status_code} - {error_detail}")
             return {"status": "failed", "error": f"Zhipu API error ({e.response.status_code}): {error_detail}"}
         except Exception as e:
@@ -329,8 +329,8 @@ class CloudGenService:
             error_detail = ""
             try:
                 error_detail = e.response.text
-            except Exception:
-                pass
+            except (AttributeError, ValueError):
+                error_detail = "No error detail available"
             logger.error(f"Image API HTTP error: {e.response.status_code} - {error_detail}")
             return {"status": "failed", "error": f"Image API error ({e.response.status_code}): {error_detail}"}
         except Exception as e:
@@ -395,8 +395,8 @@ class CloudGenService:
             error_detail = ""
             try:
                 error_detail = e.response.text
-            except Exception:
-                pass
+            except (AttributeError, ValueError):
+                error_detail = "No error detail available"
             logger.error(f"Dashscope API HTTP error: {e.response.status_code} - {error_detail}")
             return {"status": "failed", "error": f"Dashscope API error ({e.response.status_code}): {error_detail}"}
         except Exception as e:
@@ -481,8 +481,8 @@ class CloudGenService:
             error_detail = ""
             try:
                 error_detail = e.response.text
-            except Exception:
-                pass
+            except (AttributeError, ValueError):
+                error_detail = "No error detail available"
             logger.error(f"Zhipu Video API HTTP error: {e.response.status_code} - {error_detail}")
             return {"status": "failed", "error": f"Zhipu Video API error ({e.response.status_code}): {error_detail}"}
         except Exception as e:
@@ -535,8 +535,8 @@ class CloudGenService:
             error_detail = ""
             try:
                 error_detail = e.response.text
-            except Exception:
-                pass
+            except (AttributeError, ValueError):
+                error_detail = "No error detail available"
             logger.error(f"Dashscope Video API HTTP error: {e.response.status_code} - {error_detail}")
             return {"status": "failed", "error": f"Dashscope Video API error ({e.response.status_code}): {error_detail}"}
         except Exception as e:

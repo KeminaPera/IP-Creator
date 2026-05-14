@@ -38,6 +38,18 @@ async def lifespan(app: FastAPI):
     # Startup
     logger.info("Starting IP Creator application...")
     
+    # Security check: validate keys
+    security_warnings = settings.validate_security_keys()
+    if security_warnings:
+        for warning in security_warnings:
+            logger.warning(warning)
+        if not settings.DEBUG:
+            logger.error(
+                "SECURITY ERROR: Running with default security keys in non-debug mode! "
+                "Please configure proper keys in .env file."
+            )
+            raise RuntimeError("Default security keys detected in production mode")
+    
     # Ensure storage directories exist
     settings.ensure_directories()
     

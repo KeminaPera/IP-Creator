@@ -205,8 +205,6 @@ async def create_provider(
             message="Provider created successfully"
         )
     
-    except Exception:
-        raise
     except Exception as e:
         await db.rollback()
         logger.error(f"Error creating provider: {e}")
@@ -249,8 +247,6 @@ async def update_provider(
             message="Provider updated successfully"
         )
     
-    except Exception:
-        raise
     except Exception as e:
         await db.rollback()
         logger.error(f"Error updating provider: {e}")
@@ -280,8 +276,6 @@ async def delete_provider(
         
         return message_response(message="Provider deleted successfully")
     
-    except Exception:
-        raise
     except Exception as e:
         await db.rollback()
         logger.error(f"Error deleting provider: {e}")
@@ -397,8 +391,6 @@ async def create_model(
             message="Model created successfully"
         )
     
-    except Exception:
-        raise
     except Exception as e:
         await db.rollback()
         logger.error(f"Error creating model: {e}")
@@ -437,8 +429,6 @@ async def update_model(
             message="Model updated successfully"
         )
     
-    except Exception:
-        raise
     except Exception as e:
         await db.rollback()
         logger.error(f"Error updating model: {e}")
@@ -468,8 +458,6 @@ async def delete_model(
         
         return message_response(message="Model deleted successfully")
     
-    except Exception:
-        raise
     except Exception as e:
         await db.rollback()
         logger.error(f"Error deleting model: {e}")

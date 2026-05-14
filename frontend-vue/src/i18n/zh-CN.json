@@ -62,7 +62,8 @@
     "delete_success": "删除成功",
     "delete_failed": "删除失败",
     "enable_success": "启用成功",
-    "disable_success": "禁用成功"
+    "disable_success": "禁用成功",
+    "request_failed": "请求失败"
   },
   "validation": {
     "required": "此项为必填项",
@@ -576,6 +577,7 @@
     "copy_failed": "复制失败",
     "video_not_supported": "您的浏览器不支持视频播放",
     "video_preview": "视频预览",
+    "video_load_failed": "视频加载失败",
     "total": "共 {total} 条",
     "goto": "前往",
     "items_per_page": "条/页"

@@ -566,11 +566,23 @@ const filters = ref({
 
 const pagination = ref({
   page: 1,
-  pageSize: parseInt(localStorage.getItem('contentLibrary_pageSize')) || 20,
+  pageSize: (() => {
+    try {
+      return parseInt(localStorage.getItem('contentLibrary_pageSize')) || 20
+    } catch {
+      return 20
+    }
+  })(),
 })
 
 // View mode state
-const viewMode = ref(localStorage.getItem('contentLibrary_viewMode') || 'card')
+const viewMode = ref(() => {
+  try {
+    return localStorage.getItem('contentLibrary_viewMode') || 'card'
+  } catch {
+    return 'card'
+  }
+})()
 const sortConfig = ref({
   field: 'created_at',
   order: 'descending'
@@ -590,7 +602,11 @@ const visibleColumns = ref({
 watch(
   () => viewMode.value,
   (newMode) => {
-    localStorage.setItem('contentLibrary_viewMode', newMode)
+    try {
+      localStorage.setItem('contentLibrary_viewMode', newMode)
+    } catch {
+      // Ignore storage errors
+    }
   }
 )
 
@@ -598,7 +614,11 @@ watch(
 watch(
   () => pagination.value.pageSize,
   (newSize) => {
-    localStorage.setItem('contentLibrary_pageSize', newSize.toString())
+    try {
+      localStorage.setItem('contentLibrary_pageSize', newSize.toString())
+    } catch {
+      // Ignore storage errors
+    }
   }
 )
 

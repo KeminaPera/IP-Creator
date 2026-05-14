@@ -223,8 +223,8 @@ class HealthChecker:
                 # Try to create
                 try:
                     p.mkdir(parents=True, exist_ok=True)
-                except:
-                    pass
+                except Exception as e:
+                    logger.warning(f"Failed to create directory {name}: {e}")
         
         if missing:
             return {

@@ -29,7 +29,8 @@ class EncryptionService:
         Create Fernet instance from encryption key.
         
         Derives a proper Fernet key from the application's
-        ENCRYPTION_KEY using PBKDF2 if needed.
+        ENCRYPTION_KEY using PBKDF2 with a deterministic salt
+        derived from the key itself.
         """
         key = settings.ENCRYPTION_KEY.encode()
         
@@ -38,11 +39,15 @@ class EncryptionService:
             try:
                 base64.urlsafe_b64decode(key)
                 return Fernet(key)
-            except Exception:
-                pass
+            except Exception as e:
+                # Log but continue with key derivation
+                from app.utils.logger import logger
+                logger.warning(f"Invalid Fernet key format, will derive: {e}")
         
-        # Otherwise, derive key using PBKDF2
-        salt = b"ip-creator-fixed-salt"  # In production, use random salt and store it
+        # Derive key using PBKDF2 with deterministic salt from key hash
+        # This ensures same key always produces same derived key
+        import hashlib
+        salt = hashlib.sha256(key).digest()[:16]  # Use first 16 bytes of key hash as salt
         kdf = PBKDF2HMAC(
             algorithm=hashes.SHA256(),
             length=32,

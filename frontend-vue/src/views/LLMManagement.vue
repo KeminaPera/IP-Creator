@@ -43,7 +43,7 @@
         <el-table-column prop="name" :label="$t('llm.channel')" min-width="280">
           <template #default="{ row }">
             <div style="display:flex;align-items:center;gap:8px;position:relative;">
-              <img v-if="row.provider_icon_url" :src="row.provider_icon_url" loading="lazy" style="width:20px;height:20px;" />
+              <img v-if="row.provider_icon_url" :src="row.provider_icon_url" :alt="row.provider" loading="lazy" style="width:20px;height:20px;" />
               <div style="flex:1;">
                 <div style="display:flex;align-items:center;gap:8px;">
                   <span style="font-weight:500;">{{ row.name }}</span>
@@ -145,7 +145,7 @@
           <el-select v-model="channelForm.provider" :placeholder="$t('llm.select_provider')" @change="onProviderChange" :disabled="isEdit" style="width:100%">
             <el-option v-for="p in providers" :key="p.code" :label="p.name || p.name_cn || p.name_en || p.code" :value="p.code">
               <div style="display:flex;align-items:center;gap:8px;">
-                <img v-if="p.icon_url" :src="p.icon_url" loading="lazy" style="width:18px;height:18px;" />
+                <img v-if="p.icon_url" :src="p.icon_url" :alt="p.name || p.name_cn || p.name_en || p.code" loading="lazy" style="width:18px;height:18px;" />
                 <span>{{ p.name || p.name_cn || p.name_en || p.code }}</span>
               </div>
             </el-option>
@@ -235,7 +235,13 @@ const channelFormRef = ref(null)
 // Pagination
 const pagination = ref({
   page: 1,
-  pageSize: parseInt(localStorage.getItem('llmManagement_pageSize')) || 20,
+  pageSize: (() => {
+    try {
+      return parseInt(localStorage.getItem('llmManagement_pageSize')) || 20
+    } catch {
+      return 20
+    }
+  })(),
 })
 const total = ref(0)
 
@@ -516,7 +522,11 @@ const handleDelete = useDeleteConfirm(loadChannels, 'llm.delete_success')
 function handlePageChange({ page, size }) {
   pagination.value.page = page
   pagination.value.pageSize = size
-  localStorage.setItem('llmManagement_pageSize', size.toString())
+  try {
+    localStorage.setItem('llmManagement_pageSize', size.toString())
+  } catch {
+    // Ignore storage errors (private mode, etc.)
+  }
 }
 
 // Load providers on mount (useAsyncData auto-loads channels)

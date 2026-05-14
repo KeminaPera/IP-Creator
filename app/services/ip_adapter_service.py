@@ -184,8 +184,8 @@ class IPAdapterService:
             # Set IP-Adapter scale
             try:
                 pipe.set_ip_adapter_scale(ip_adapter_scale)
-            except:
-                logger.warning("Could not set IP-Adapter scale")
+            except Exception as e:
+                logger.warning(f"Could not set IP-Adapter scale: {e}")
             
             # Set generator for reproducibility
             generator = None
@@ -303,8 +303,8 @@ class IPAdapterService:
             # Set IP-Adapter scale
             try:
                 pipe.set_ip_adapter_scale(ip_adapter_scale)
-            except:
-                pass
+            except Exception as e:
+                logger.warning(f"Failed to set IP-Adapter scale: {e}")
             
             generator = None
             if seed is not None:
@@ -335,8 +335,8 @@ class IPAdapterService:
             if lora_path and Path(lora_path).exists():
                 try:
                     pipe.unload_lora_weights()
-                except:
-                    pass
+                except Exception as e:
+                    logger.warning(f"Failed to unload LoRA weights: {e}")
             
             logger.info("LoRA + IP-Adapter generation successful")
             

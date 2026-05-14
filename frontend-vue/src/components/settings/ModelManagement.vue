@@ -11,7 +11,7 @@
             :value="provider.id"
           >
             <div style="display:flex;align-items:center;gap:8px;">
-              <img v-if="provider.icon_url" :src="provider.icon_url" loading="lazy" style="width:18px;height:18px;" />
+              <img v-if="provider.icon_url" :src="provider.icon_url" :alt="provider.name_cn || provider.name_en || provider.code" loading="lazy" style="width:18px;height:18px;" />
               <span>{{ provider.name_cn || provider.name_en || provider.code }}</span>
             </div>
           </el-option>

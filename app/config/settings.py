@@ -34,8 +34,8 @@ class Settings(BaseSettings):
     # File Upload Settings
     MAX_UPLOAD_SIZE: int = 10 * 1024 * 1024  # 10MB per file
     MAX_UPLOAD_FILES: int = 50  # Maximum files per upload request
-    ALLOWED_IMAGE_TYPES: set = {'.jpg', '.jpeg', '.png', '.webp'}
-    ALLOWED_MIME_TYPES: set = {'image/jpeg', 'image/png', 'image/webp'}
+    ALLOWED_IMAGE_TYPES: set = Field(default_factory=lambda: {'.jpg', '.jpeg', '.png', '.webp'})
+    ALLOWED_MIME_TYPES: set = Field(default_factory=lambda: {'image/jpeg', 'image/png', 'image/webp'})
     MIN_IMAGE_DIMENSION: int = 256  # Minimum width/height in pixels
     MAX_IMAGE_DIMENSION: int = 4096  # Maximum width/height in pixels
     
@@ -85,6 +85,50 @@ class Settings(BaseSettings):
         ]
         for directory in directories:
             Path(directory).mkdir(parents=True, exist_ok=True)
+    
+    def validate_security_keys(self) -> list[str]:
+        """
+        Validate that security-sensitive keys are not using default values.
+        
+        Returns:
+            List of warning messages for insecure configurations.
+        """
+        warnings = []
+        
+        # Check SECRET_KEY
+        if self.SECRET_KEY in [
+            "change-this-to-a-secure-key",
+            "your-secret-key-change-in-production",
+            "secret",
+            "key",
+        ]:
+            warnings.append(
+                "SECURITY WARNING: SECRET_KEY is using default value. "
+                "Please set a strong random key in production!"
+            )
+        
+        # Check ENCRYPTION_KEY
+        if self.ENCRYPTION_KEY in [
+            "change-this-encryption-key",
+            "your-encryption-key-change-in-production",
+        ]:
+            warnings.append(
+                "SECURITY WARNING: ENCRYPTION_KEY is using default value. "
+                "API keys will be encrypted with weak key!"
+            )
+        
+        # Check JWT_SECRET_KEY
+        if self.JWT_SECRET_KEY in [
+            "change-this-jwt-secret",
+            "your-jwt-secret-key",
+            "jwt-secret",
+        ]:
+            warnings.append(
+                "SECURITY WARNING: JWT_SECRET_KEY is using default value. "
+                "Authentication tokens can be forged!"
+            )
+        
+        return warnings
 
 
 # Global settings instance

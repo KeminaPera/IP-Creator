@@ -5,7 +5,7 @@
       <el-table-column :label="$t('settings.provider')" min-width="200">
         <template #default="{ row }">
           <div style="display: flex; align-items: center; gap: 8px;">
-            <img v-if="row.icon_url" :src="row.icon_url" loading="lazy" style="width: 24px; height: 24px;" />
+            <img v-if="row.icon_url" :src="row.icon_url" :alt="row.name_cn || row.name_en" loading="lazy" style="width: 24px; height: 24px;" />
             <span>{{ row.name_cn || row.name_en }}</span>
           </div>
         </template>

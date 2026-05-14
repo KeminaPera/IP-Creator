@@ -109,9 +109,9 @@ Return the response in JSON format with the following structure:
                 story_data = json.loads(story_text)
                 title = story_data.get('title', '')
                 description = story_data.get('description', '')
-            except:
+            except json.JSONDecodeError as e:
                 # If not JSON, use default values
-                pass
+                logger.debug(f"Story text is not JSON: {e}")
             
             # Generate title if empty
             if not title:

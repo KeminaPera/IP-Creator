@@ -58,7 +58,8 @@ request.interceptors.response.use(
       ElMessage.error(i18nGlobal.t('common.session_expired'))
     } else {
       // Fallback for old error format
-      const errorMsg = error.response?.data?.detail || error.message || 'Request failed'
+      const i18nGlobal = i18n.global
+      const errorMsg = error.response?.data?.detail || error.message || i18nGlobal.t('common.request_failed')
       ElMessage.error(errorMsg)
     }
     

@@ -281,8 +281,6 @@ async def get_lora_model(
         }
         )
         
-    except Exception:
-        raise
     except Exception as e:
         logger.error(f"Error getting LoRA model: {e}")
         raise AppException(status_code=500, error="ServerError", message=f"Failed to get LoRA model: {str(e)}")
@@ -305,8 +303,6 @@ async def cancel_training(
         else:
             raise BadRequestException(message="Cannot cancel training")
             
-    except Exception:
-        raise
     except Exception as e:
         logger.error(f"Error cancelling training: {e}")
         raise AppException(status_code=500, error="ServerError", message="Failed to cancel training")
@@ -339,8 +335,6 @@ async def delete_lora_model(
             message="LoRA model deleted"
         )
         
-    except Exception:
-        raise
     except Exception as e:
         logger.error(f"Error deleting LoRA model: {e}")
         raise AppException(status_code=500, error="ServerError", message=f"Failed to delete LoRA model: {str(e)}")

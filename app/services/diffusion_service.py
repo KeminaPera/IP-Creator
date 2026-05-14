@@ -63,8 +63,8 @@ class DiffusionService:
                 if hasattr(self._image_pipe, "enable_xformers_memory_efficient_attention"):
                     try:
                         self._image_pipe.enable_xformers_memory_efficient_attention()
-                    except:
-                        pass
+                    except Exception as e:
+                        logger.warning(f"Failed to enable xformers: {e}")
                 
                 # Enable CPU offloading for low VRAM
                 if self.device == "cuda":
@@ -149,8 +149,8 @@ class DiffusionService:
             if lora_path and Path(lora_path).exists():
                 try:
                     pipe.unload_lora_weights()
-                except:
-                    pass
+                except Exception as e:
+                    logger.warning(f"Failed to unload LoRA weights: {e}")
             
             logger.info("Image generated successfully")
             

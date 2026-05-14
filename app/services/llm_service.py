@@ -236,8 +236,9 @@ class OpenAICompatibleClient(BaseLLMClient):
                     "response_time_ms": response_time,
                     "model": self.model_name,
                 }
-            except Exception:
+            except Exception as e:
                 # Method 1 failed, try Method 2
+                logger.debug(f"Health check method 1 failed for {self.model_name}: {e}")
                 pass
             
             # Method 2: Try a minimal chat completion (for chat models)
@@ -253,8 +254,9 @@ class OpenAICompatibleClient(BaseLLMClient):
                     "response_time_ms": response_time,
                     "model": self.model_name,
                 }
-            except Exception:
+            except Exception as e:
                 # Method 2 failed, try Method 3
+                logger.debug(f"Health check method 2 failed for {self.model_name}: {e}")
                 pass
             
             # Method 3: Simple HTTP connectivity test to base URL

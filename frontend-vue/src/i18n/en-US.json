@@ -62,7 +62,8 @@
     "delete_success": "Deleted successfully",
     "delete_failed": "Delete failed",
     "enable_success": "Enabled successfully",
-    "disable_success": "Disabled successfully"
+    "disable_success": "Disabled successfully",
+    "request_failed": "Request failed"
   },
   "validation": {
     "required": "This field is required",
@@ -582,6 +583,7 @@
     "copy_failed": "Failed to copy",
     "video_not_supported": "Your browser does not support video playback",
     "video_preview": "Video Preview",
+    "video_load_failed": "Video load failed",
     "total": "Total {total}",
     "goto": "Go to",
     "items_per_page": "items/page"

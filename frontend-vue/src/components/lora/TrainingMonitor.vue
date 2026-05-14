@@ -220,13 +220,17 @@ function connectWebSocket() {
   const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
   const wsUrl = `${protocol}//${window.location.host}/api/v1/ws/training/${props.loraId}`
   
-  console.log(`[WebSocket] Connecting to ${wsUrl}`)
+  if (import.meta.env.DEV) {
+    console.log(`[WebSocket] Connecting to ${wsUrl}`)
+  }
   
   try {
     wsConnection = new WebSocket(wsUrl)
     
     wsConnection.onopen = () => {
-      console.log('[WebSocket] Connected')
+      if (import.meta.env.DEV) {
+        console.log('[WebSocket] Connected')
+      }
       wsReconnectDelay.value = 3000 // Reset reconnect delay
       
       // Stop polling when WebSocket is active
@@ -250,7 +254,9 @@ function connectWebSocket() {
     }
     
     wsConnection.onclose = () => {
-      console.log('[WebSocket] Disconnected')
+      if (import.meta.env.DEV) {
+        console.log('[WebSocket] Disconnected')
+      }
       wsConnection = null
       
       // Try to reconnect with exponential backoff
@@ -296,13 +302,17 @@ function handleWebSocketMessage(data) {
       break
       
     default:
-      console.log('[WebSocket] Unknown message type:', data.type)
+      if (import.meta.env.DEV) {
+        console.log('[WebSocket] Unknown message type:', data.type)
+      }
   }
 }
 
 function disconnectWebSocket() {
   if (wsConnection) {
-    console.log('[WebSocket] Disconnecting')
+    if (import.meta.env.DEV) {
+      console.log('[WebSocket] Disconnecting')
+    }
     wsConnection.close()
     wsConnection = null
   }
@@ -318,7 +328,9 @@ function scheduleReconnect() {
     return // Already scheduled or dialog closed
   }
   
-  console.log(`[WebSocket] Reconnecting in ${wsReconnectDelay.value / 1000}s`)
+  if (import.meta.env.DEV) {
+    console.log(`[WebSocket] Reconnecting in ${wsReconnectDelay.value / 1000}s`)
+  }
   
   wsReconnectTimer = setTimeout(() => {
     wsReconnectTimer = null

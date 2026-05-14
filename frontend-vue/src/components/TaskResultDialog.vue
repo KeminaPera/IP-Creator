@@ -16,7 +16,8 @@
 
     <div v-else class="content-list">
       <!-- Story Content -->
-      <div v-for="(content, index) in storyContents" :key="'story-' + index" class="content-item">
+      <div v-if="storyContents.length > 0" class="content-section">
+        <div v-for="(content, index) in storyContents" :key="'story-' + index" class="content-item">
         <div class="content-header">
           <el-icon class="content-icon"><Document /></el-icon>
           <h3>{{ content.title }}</h3>
@@ -56,6 +57,7 @@
             </el-button>
           </div>
         </div>
+      </div>
       </div>
 
       <!-- Image Content -->
@@ -105,7 +107,8 @@
       </div>
 
       <!-- Video Content -->
-      <div v-for="(content, index) in videoContents" :key="'video-' + index" class="content-item">
+      <div v-if="videoContents.length > 0" class="content-section">
+        <div v-for="(content, index) in videoContents" :key="'video-' + index" class="content-item">
         <div class="content-header">
           <el-icon class="content-icon"><VideoCamera /></el-icon>
           <h3>{{ content.title }}</h3>
@@ -115,16 +118,17 @@
         <div class="content-body">
           <div class="video-preview">
             <video
-              v-if="content.file_path"
+              v-if="content.file_path && !videoError[content.content_id]"
               :src="getFileUrl(content.file_path)"
               controls
               class="video-player"
+              @error="handleVideoError(content.content_id)"
             >
               {{ $t('tasks.video_not_supported') }}
             </video>
             <div v-else class="video-placeholder">
               <el-icon><VideoCamera /></el-icon>
-              <p>{{ $t('tasks.video_preview') }}</p>
+              <p>{{ videoError[content.content_id] ? $t('tasks.video_load_failed') : $t('tasks.video_preview') }}</p>
             </div>
           </div>
           
@@ -152,6 +156,7 @@
             </el-button>
           </div>
         </div>
+      </div>
       </div>
     </div>
 
@@ -236,6 +241,9 @@ const currentImage = ref(null)
 const storyDetailVisible = ref(false)
 const currentStory = ref(null)
 
+// Video error tracking
+const videoError = ref({})
+
 // Computed properties for different content types
 const storyContents = computed(() => 
   contents.value.filter(c => c.content_type === 'story')
@@ -310,7 +318,9 @@ function formatFileSize(bytes) {
   const kb = bytes / 1024
   if (kb < 1024) return `${kb.toFixed(2)} KB`
   const mb = kb / 1024
-  return `${mb.toFixed(2)} MB`
+  if (mb < 1024) return `${mb.toFixed(2)} MB`
+  const gb = mb / 1024
+  return `${gb.toFixed(2)} GB`
 }
 
 function getStatusLabel(status) {
@@ -333,6 +343,13 @@ function getFileUrl(filePath) {
 function openImagePreview(image) {
   currentImage.value = image
   imagePreviewVisible.value = true
+}
+
+function handleVideoError(contentId) {
+  videoError.value[contentId] = true
+  if (import.meta.env.DEV) {
+    console.error(`[TaskResultDialog] Video load failed for content ${contentId}`)
+  }
 }
 
 function viewStoryDetail(content) {
