@@ -141,6 +141,7 @@ async def list_tasks(
         for task in items:
             task_list.append({
                 "id": task.id,
+                "task_id": task.task_id,
                 "task_type": task.task_type,
                 "status": task.status,
                 "progress": task.progress,
@@ -193,14 +194,26 @@ async def get_task(
     db: AsyncSession = Depends(get_db_session),
 ):
     """
-    Get a specific task by Celery task ID (UUID).
+    Get a specific task by Celery task ID (UUID) or database primary key.
+
+    同时兼容两种调用:
+    - /tasks/<celery-uuid>  -> 按 TaskRecord.task_id 查
+    - /tasks/<integer-id>   -> 按 TaskRecord.id   查 (供前端列表中 row.id 使用)
     """
     try:
-        result = await db.execute(
-            select(TaskRecord).where(TaskRecord.task_id == task_id)
-        )
-        task = result.scalar_one_or_none()
-        
+        # 纯数字优先按主键查; 未命中再回退按 Celery task_id 查
+        task = None
+        if task_id.isdigit():
+            result = await db.execute(
+                select(TaskRecord).where(TaskRecord.id == int(task_id))
+            )
+            task = result.scalar_one_or_none()
+        if task is None:
+            result = await db.execute(
+                select(TaskRecord).where(TaskRecord.task_id == task_id)
+            )
+            task = result.scalar_one_or_none()
+
         if not task:
             raise NotFoundException(resource="Task", identifier=task_id)
         
@@ -217,6 +230,7 @@ async def get_task(
         return success_response(
             data={
                 "id": task.id,
+                "task_id": task.task_id,
                 "task_type": task.task_type,
                 "status": task.status,
                 "progress": task.progress,

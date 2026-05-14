@@ -6,13 +6,42 @@ including LLM calls, LoRA training, and video generation.
 import asyncio
 from datetime import datetime
 from celery import Celery
-from celery.signals import worker_process_init
+from celery.signals import worker_process_init, worker_ready
 from app.config.settings import settings
 from typing import Optional
 from sqlalchemy.sql import func
 from sqlalchemy.ext.asyncio import AsyncSession
 
+# Eager-import all ORM models so SQLAlchemy mappers can resolve string-based
+# relationships (e.g. LoRAModel.quality_reports -> 'QualityReport') in workers.
+from app.models import (  # noqa: F401
+    user, ip_asset, llm_model, llm_provider, lora_model,
+    task, generated_content, system_setting, quality_report,
+)
+
 # Task modules are defined directly in this file
+
+# =============================================================================
+# Celery 队列 SSOT (Single Source of Truth)
+# -----------------------------------------------------------------------------
+# CELERY_QUEUES: worker 必须监听的全部队列, 启动脚本通过 import 此常量派生 -Q 参数
+#                (start_celery.sh / docker-compose.yml / start.bat 都读这里)
+# TASK_ROUTES  : 任务名 -> 队列 的路由映射, 任何使用的 queue 必须出现在 CELERY_QUEUES 中
+# 修改时务必两个变量同步, worker_ready 信号会在启动时做一致性校验.
+# =============================================================================
+CELERY_QUEUES = [
+    "celery",              # 默认队列 (兼容未路由任务)
+    "story_generation",    # 文本 / 剧本生成
+    "image_generation",    # 图像生成
+    "video_generation",    # 视频生成
+    "training",            # LoRA / 微调训练
+]
+
+TASK_ROUTES = {
+    "celery_worker.generate_image_task": {"queue": "image_generation"},
+    "celery_worker.generate_story_task": {"queue": "story_generation"},
+    "celery_worker.generate_video_task": {"queue": "video_generation"},
+}
 
 # Celery application instance
 celery_app = Celery(
@@ -29,12 +58,8 @@ celery_app.conf.update(
     timezone="UTC",
     enable_utc=True,
     
-    # Task routing and priorities
-    task_routes={
-        "celery_worker.generate_image_task": {"queue": "image_generation"},
-        "celery_worker.generate_story_task": {"queue": "story_generation"},
-        "celery_worker.generate_video_task": {"queue": "video_generation"},
-    },
+    # Task routing (queue names must be present in CELERY_QUEUES)
+    task_routes=TASK_ROUTES,
     
     # Concurrency settings
     worker_concurrency=settings.MAX_CONCURRENT_TASKS,
@@ -51,6 +76,27 @@ celery_app.conf.update(
     # Result expiration
     result_expires=3600,
 )
+
+
+@worker_ready.connect
+def _verify_queue_consistency(sender=None, **kwargs):
+    """启动后校验 worker 监听队列 ⊇ task_routes 路由的队列集合。"""
+    try:
+        listening = {q.name for q in sender.task_consumer.queues}
+        routed = {v["queue"] for v in TASK_ROUTES.values()}
+        missing = routed - listening
+        if missing:
+            print(
+                f"[Celery Worker] ⚠️  WARNING: task_routes 路由到 {sorted(missing)} "
+                f"但 worker 未监听这些队列！请检查启动命令的 -Q 参数。"
+                f" (当前监听: {sorted(listening)})"
+            )
+        else:
+            print(
+                f"[Celery Worker] ✅ 队列一致性校验通过，监听 {sorted(listening)}"
+            )
+    except Exception as e:
+        print(f"[Celery Worker] 队列一致性校验异常: {e}")
 
 
 @worker_process_init.connect

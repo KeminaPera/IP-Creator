@@ -61,7 +61,7 @@ echo ============================================================
 echo   Starting Celery Worker
 echo ============================================================
 echo.
-start "IP-Creator Celery" cmd /k "call venv\Scripts\activate.bat && celery -A celery_worker.celery_app worker --loglevel=info --pool=solo"
+start "IP-Creator Celery" cmd /k "call venv\Scripts\activate.bat && celery -A celery_worker.celery_app worker --loglevel=info --pool=solo -Q celery,story_generation,image_generation,video_generation,training"
 
 timeout /t 3 /nobreak >nul
 

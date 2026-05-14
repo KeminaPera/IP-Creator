@@ -299,51 +299,56 @@ class HealthChecker:
     
     @staticmethod
     def check_celery_worker() -> Dict:
-        """Check if Celery worker is running with fast fail."""
+        """Check if Celery worker is running.
+
+        主探测: celery_app.control.ping() 准确但 solo pool 执行任务时不响应;
+        回退探测: 检查 CELERY_BROKER_URL 中的 _kombu.binding.celery* (worker 注册证据).
+        原实现用错 REDIS_URL 和 "celery*" 前缀，导致永远误报，现一并修正。
+        """
         try:
-            import redis
-            # Set aggressive timeouts for health check
-            r = redis.from_url(
-                settings.REDIS_URL,
-                socket_connect_timeout=2,  # 2 seconds connection timeout
-                socket_timeout=3           # 3 seconds operation timeout
-            )
-            
-            # Check for Celery worker keys
-            worker_keys = list(r.scan_iter("celery*"))
-            
-            if worker_keys:
+            from celery_worker import celery_app
+            # 主探测: 官方 ping API
+            replies = celery_app.control.ping(timeout=1.0)
+            if replies:
+                workers = []
+                for reply in replies:
+                    if isinstance(reply, dict):
+                        workers.extend(reply.keys())
                 return {
                     "status": "ok",
-                    "message": "Celery worker detected",
-                    "active": True
+                    "message": f"Celery worker(s) detected: {len(workers)}",
+                    "active": True,
+                    "workers": workers,
+                    "method": "control.ping",
                 }
-            else:
+
+            # 回退探测: solo pool 任务执行中不会响应 ping，但 broker 中仍保留 worker 绑定信息
+            import redis
+            r = redis.from_url(
+                settings.CELERY_BROKER_URL,
+                socket_connect_timeout=2,
+                socket_timeout=3,
+            )
+            worker_bindings = list(r.scan_iter("_kombu.binding.celery*"))
+            if worker_bindings:
                 return {
-                    "status": "warning",
-                    "message": "No Celery worker detected",
-                    "active": False,
-                    "impact": "Async tasks (generation, training) will not execute"
+                    "status": "ok",
+                    "message": "Celery worker registered (likely busy executing tasks)",
+                    "active": True,
+                    "method": "broker-binding-fallback",
                 }
-        except redis.exceptions.ConnectionError as e:
             return {
-                "status": "error",
-                "message": f"Failed to check Celery: Redis connection refused or timeout (2s)",
+                "status": "warning",
+                "message": "No Celery worker detected",
                 "active": False,
-                "impact": "Cannot determine Celery status without Redis"
-            }
-        except redis.exceptions.TimeoutError as e:
-            return {
-                "status": "error",
-                "message": f"Failed to check Celery: Redis timeout after 3 seconds",
-                "active": False,
-                "impact": "Cannot determine Celery status without Redis"
+                "impact": "Async tasks (generation, training) will not execute",
             }
         except Exception as e:
+            logger.error(f"Celery health check failed: {e}")
             return {
                 "status": "error",
                 "message": f"Failed to check Celery: {str(e)}",
-                "active": False
+                "active": False,
             }
     
     @staticmethod

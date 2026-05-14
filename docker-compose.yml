@@ -36,7 +36,7 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
-    command: celery -A celery_worker.celery_app worker --loglevel=info --pool=solo
+    command: celery -A celery_worker.celery_app worker --loglevel=info --pool=solo -Q celery,story_generation,image_generation,video_generation,training
     environment:
       - DATABASE_URL=sqlite+aiosqlite:///./data/ip_creator.db
       - REDIS_URL=redis://redis:6379/0

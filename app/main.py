@@ -155,7 +155,6 @@ async def serve_spa(path: str):
     """Serve Vue SPA - return index.html for all non-API routes."""
     # Exclude all /api/ paths - they should be handled by API routers
     if path.startswith("api/") or path == "api":
-        from fastapi.responses import JSONResponse
         return JSONResponse(
             {"error": f"API endpoint not found: /{path}"}, 
             status_code=404
