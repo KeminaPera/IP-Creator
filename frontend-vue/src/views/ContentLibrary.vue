@@ -576,13 +576,13 @@ const pagination = ref({
 })
 
 // View mode state
-const viewMode = ref(() => {
+const viewMode = ref((() => {
   try {
     return localStorage.getItem('contentLibrary_viewMode') || 'card'
   } catch {
     return 'card'
   }
-})()
+})())
 const sortConfig = ref({
   field: 'created_at',
   order: 'descending'

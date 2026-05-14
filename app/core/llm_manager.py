@@ -250,10 +250,16 @@ class LLMManager:
                 except Exception as e:
                     logger.error(f"Failed to initialize model {model.name}: {e}")
             
-            # If no default model, activate the first one
-            if self.registry.get_active_model_id() is None and models:
-                self.registry.set_active_model(models[0].id)
-                logger.info(f"Activated first model as default: {models[0].name}")
+            # If no default model, activate the first successfully registered one
+            if self.registry.get_active_model_id() is None:
+                # Get all registered model IDs
+                registered_ids = list(self.registry._clients.keys())
+                if registered_ids:
+                    first_id = registered_ids[0]
+                    self.registry.set_active_model(first_id)
+                    logger.info(f"Activated first registered model as default: {first_id}")
+                else:
+                    logger.warning("No LLM models successfully initialized")
     
     async def register_model(self, model_config: LLMConfig) -> bool:
         """
