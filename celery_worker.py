@@ -41,6 +41,7 @@ TASK_ROUTES = {
     "celery_worker.generate_image_task": {"queue": "image_generation"},
     "celery_worker.generate_story_task": {"queue": "story_generation"},
     "celery_worker.generate_video_task": {"queue": "video_generation"},
+    "celery_worker.download_model_task": {"queue": "default"},  # 下载任务走默认队列
 }
 
 # Celery application instance
@@ -100,14 +101,15 @@ def _verify_queue_consistency(sender=None, **kwargs):
 
 
 @worker_process_init.connect
-def init_llm_manager(**kwargs):
-    """Initialize LLM manager when Celery worker process starts."""
+def init_worker_process(**kwargs):
+    """Initialize worker process: event loop + LLM manager."""
     try:
-        from app.core.llm_manager import llm_manager
+        # 创建全局事件循环（所有任务复用）
         loop = asyncio.new_event_loop()
         asyncio.set_event_loop(loop)
+        
+        from app.core.llm_manager import llm_manager
         loop.run_until_complete(llm_manager.initialize_models())
-        loop.close()
         print(f"[Celery Worker] LLM manager initialized, active model: {llm_manager.registry.get_active_model_id()}")
     except Exception as e:
         print(f"[Celery Worker] Failed to initialize LLM manager: {e}")
@@ -314,8 +316,8 @@ def generate_story_task(self, prompt: str, ip_name: Optional[str] = None, ip_ass
         conn.commit()
         conn.close()
         
-        loop = asyncio.new_event_loop()
-        asyncio.set_event_loop(loop)
+        # 复用 worker_process_init 中创建的全局事件循环
+        loop = asyncio.get_event_loop()
         result = loop.run_until_complete(
             video_generator.generate_story(
                 prompt=prompt,
@@ -330,7 +332,10 @@ def generate_story_task(self, prompt: str, ip_name: Optional[str] = None, ip_ass
             # Update task status to failed
             conn = sqlite3.connect(db_path)
             cursor = conn.cursor()
-            cursor.execute(f"UPDATE task_records SET status='failed', progress=0 WHERE task_id='{self.request.id}'")
+            cursor.execute(
+                "UPDATE task_records SET status='failed', progress=0 WHERE task_id=?",
+                (self.request.id,)
+            )
             conn.commit()
             conn.close()
             raise Exception(result.get("error", "Story generation failed"))
@@ -377,7 +382,10 @@ def generate_story_task(self, prompt: str, ip_name: Optional[str] = None, ip_ass
         try:
             conn = sqlite3.connect(db_path)
             cursor = conn.cursor()
-            cursor.execute(f"UPDATE task_records SET status='failed', progress=0 WHERE task_id='{self.request.id}'")
+            cursor.execute(
+                "UPDATE task_records SET status='failed', progress=0 WHERE task_id=?",
+                (self.request.id,)
+            )
             conn.commit()
             conn.close()
         except:
@@ -409,8 +417,8 @@ def generate_image_task(self, prompt: str, ip_asset_id: int = 0, **kwargs) -> di
         conn.commit()
         conn.close()
         
-        loop = asyncio.new_event_loop()
-        asyncio.set_event_loop(loop)
+        # 复用全局事件循环
+        loop = asyncio.get_event_loop()
         result = loop.run_until_complete(
             video_generator.generate_image(
                 prompt=prompt,
@@ -531,8 +539,8 @@ def generate_video_task(self, prompt: str, image_path: str, ip_asset_id: int = 0
         conn.commit()
         conn.close()
         
-        loop = asyncio.new_event_loop()
-        asyncio.set_event_loop(loop)
+        # 复用全局事件循环
+        loop = asyncio.get_event_loop()
         result = loop.run_until_complete(
             video_generator.generate_video(
                 prompt=prompt,
@@ -626,6 +634,8 @@ def generate_video_task(self, prompt: str, image_path: str, ip_asset_id: int = 0
             
             from app.utils.logger import logger
             logger.error(f"Task {self.request.id} failed after {self.max_retries} retries: {error_msg}")
+            # 必须 return，否则 Celery 认为任务成功
+            return {"status": "failed", "error": error_msg}
 
 
 @celery_app.task(bind=True, max_retries=0)
@@ -743,13 +753,10 @@ def _mock_training(self, lora_id: int, training_params: dict) -> dict:
 def _real_training(self, lora_id: int, training_params: dict) -> dict:
     """Real LoRA training task with Kohya-sd (to be implemented when GPU is available)."""
     try:
-        import asyncio
         from app.core.lora_trainer import lora_trainer
         
-        loop = asyncio.new_event_loop()
-        asyncio.set_event_loop(loop)
-        
-        # Start real training
+        # 复用全局事件循环
+        loop = asyncio.get_event_loop()
         result = loop.run_until_complete(
             lora_trainer.start_training(lora_id)
         )
@@ -764,12 +771,10 @@ def _real_training(self, lora_id: int, training_params: dict) -> dict:
 def post_process_video_task(self, video_path: str, operations: list) -> dict:
     """Async video post-processing task."""
     try:
-        import asyncio
         from app.core.post_processor import post_processor
         
-        loop = asyncio.new_event_loop()
-        asyncio.set_event_loop(loop)
-        
+        # 复用全局事件循环
+        loop = asyncio.get_event_loop()
         result = loop.run_until_complete(
             post_processor.process_video(video_path, operations)
         )
@@ -786,6 +791,7 @@ def download_model_task(self, model_id: str, mirror: str = "huggingface") -> dic
     Asynchronously download diffusion model.
     
     This task runs in the background and reports progress via Celery's update_state.
+    Progress is estimated by monitoring the cache directory size growth.
     
     Args:
         model_id: Model identifier (stable_diffusion or ip_adapter)
@@ -796,17 +802,115 @@ def download_model_task(self, model_id: str, mirror: str = "huggingface") -> dic
     """
     from app.services.model_downloader import model_downloader
     from app.utils.logger import logger
+    from pathlib import Path
+    import threading
     import time
     
     logger.info(f"Starting model download task: {model_id} (mirror: {mirror})")
     
+    model_config = model_downloader.MODELS.get(model_id, {})
+    expected_size_mb = model_config.get("size_gb", 4.0) * 1024
+    
+    # huggingface_hub 实际缓存路径: ~/.cache/huggingface/hub/
+    # cache_dir 参数指定的目录会包含 models--{repo} 子目录
+    import os
+    hf_cache = Path(os.path.expanduser("~/.cache/huggingface/hub"))
+    
+    # 后台线程：监控缓存目录大小增长，定期报告进度
+    stop_monitor = threading.Event()
+    
+    def _monitor_progress():
+        """Background thread: poll cache dir size and call self.update_state()."""
+        # 计算该模型相关目录的初始大小
+        model_prefix = model_config.get("repo", "").replace("/", "--")
+        
+        # ✅ 修复：使用与 model_downloader 相同的路径逻辑
+        from app.config.settings import settings
+        
+        # 优先检查自定义目录
+        custom_models_dir = Path(settings.MODELS_PATH)
+        custom_model_dir = custom_models_dir / f"models--{model_prefix}"
+        
+        if custom_model_dir.exists():
+            model_cache_dir = custom_model_dir
+        else:
+            # fallback 到 huggingface 默认缓存
+            hf_cache = Path(os.path.expanduser("~/.cache/huggingface/hub"))
+            model_cache_dir = hf_cache / f"models--{model_prefix}" if model_prefix else hf_cache
+        
+        start_size = 0
+        start_time = time.time()
+        last_size = 0
+        
+        if model_cache_dir.exists():
+            try:
+                start_size = sum(f.stat().st_size for f in model_cache_dir.rglob('*') if f.is_file()) / (1024 * 1024)
+                last_size = start_size
+            except Exception:
+                pass
+        
+        last_reported = 0
+        
+        while not stop_monitor.is_set():
+            try:
+                current_size = 0
+                if model_cache_dir.exists():
+                    current_size = sum(f.stat().st_size for f in model_cache_dir.rglob('*') if f.is_file()) / (1024 * 1024)
+                
+                downloaded_mb = current_size - start_size
+                elapsed = time.time() - start_time
+                
+                # ✅ 修复：即使目录不存在，也显示"准备中"状态
+                if current_size == 0 and elapsed < 60:
+                    progress = 0
+                    status_msg = "Preparing download..."
+                else:
+                    progress = min(int((downloaded_mb / expected_size_mb) * 100), 99)  # cap at 99% until done
+                    status_msg = "Downloading..."
+                
+                # ✅ 修复：计算实时速度
+                speed_mbps = (current_size - last_size) / 10.0  # 10秒间隔
+                
+                # ✅ 修复：即使进度没变化也定期更新（证明任务活着）
+                # 注意：在后台线程中调用self.update_state()需要确保self有效
+                try:
+                    self.update_state(
+                        state='PROGRESS',
+                        meta={
+                            'progress': progress,
+                            'downloaded_mb': round(downloaded_mb, 1),
+                            'total_mb': round(expected_size_mb, 1),
+                            'speed_mbps': round(speed_mbps, 1),
+                            'eta_seconds': round((expected_size_mb - downloaded_mb) / max(0.1, speed_mbps), 0) if speed_mbps > 0.1 else 0,
+                            'status_msg': status_msg
+                        }
+                    )
+                except Exception as update_err:
+                    logger.debug(f"Failed to update state: {update_err}")
+                
+                last_reported = progress
+                last_size = current_size
+                
+            except Exception as e:
+                logger.debug(f"Progress monitoring error: {e}")  # Ignore monitoring errors
+            
+            stop_monitor.wait(10)  # Poll every 10 seconds
+    
+    # 启动监控线程
+    monitor_thread = threading.Thread(target=_monitor_progress, daemon=True)
+    monitor_thread.start()
+    
     try:
-        # Download with progress tracking
+        # 执行下载（阻塞调用）
         result = model_downloader.download_model(
             model_id=model_id,
             mirror=mirror,
-            progress_callback=None  # Could add progress updates here if needed
+            progress_callback=None
         )
+        
+        # 停止监控并报告完成
+        stop_monitor.set()
+        monitor_thread.join(timeout=3)
         
         logger.info(f"Model download completed: {model_id}")
         
@@ -820,6 +924,8 @@ def download_model_task(self, model_id: str, mirror: str = "huggingface") -> dic
         }
         
     except Exception as exc:
+        stop_monitor.set()  # 确保监控线程退出
+        monitor_thread.join(timeout=3)
         logger.error(f"Model download failed: {model_id} - {exc}")
         return {
             "success": False,

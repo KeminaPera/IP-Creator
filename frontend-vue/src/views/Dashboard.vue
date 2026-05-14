@@ -165,10 +165,10 @@
                     <div class="model-info-header">
                       <span class="model-name">{{ model.name }}</span>
                       <el-tag 
-                        :type="model.status === 'installed' ? 'success' : 'info'" 
+                        :type="getModelStatusType(model.status)" 
                         size="small"
                       >
-                        {{ model.status === 'installed' ? $t('dashboard.model_installed') : $t('dashboard.model_missing') }}
+                        {{ getModelStatusText(model.status) }}
                       </el-tag>
                     </div>
                     
@@ -177,17 +177,31 @@
                       <span class="model-size">{{ model.size_gb }} GB</span>
                     </div>
                     
-                    <!-- Download button (only for missing models) -->
+                    <!-- Show integrity info for incomplete models -->
+                    <div v-if="model.status === 'incomplete'" class="model-integrity-warning">
+                      <el-icon :size="14" style="color: #E6A23C;"><Warning /></el-icon>
+                      <span class="integrity-text">
+                        模型文件不完整，建议重新下载
+                      </span>
+                    </div>
+                    
+                    <!-- Download button (for missing or incomplete models) -->
                     <el-button
-                      v-if="model.status === 'missing'"
+                      v-if="model.status === 'missing' || model.status === 'incomplete'"
                       type="primary"
                       size="small"
-                      :loading="downloadingModels.includes(model.repo)"
+                      :loading="downloadingModels.includes(model.model_id)"
                       @click="downloadModel(model)"
                     >
                       <el-icon><Download /></el-icon>
-                      {{ $t('dashboard.model_download') }}
+                      {{ model.status === 'incomplete' ? '重新下载' : $t('dashboard.model_download') }}
                     </el-button>
+                    
+                    <!-- Downloading indicator -->
+                    <div v-if="model.status === 'downloading'" class="model-downloading-indicator">
+                      <el-icon class="is-loading" :size="16"><Refresh /></el-icon>
+                      <span>下载中...</span>
+                    </div>
                   </div>
                   
                   <!-- Download progress section -->
@@ -210,6 +224,7 @@
                         <span>{{ download.downloadedMB }} / {{ download.totalMB }} MB</span>
                         <span v-if="download.speed">{{ download.speed }} MB/s</span>
                         <span v-if="download.eta">{{ $t('dashboard.download_eta', { seconds: download.eta }) }}</span>
+                        <span v-if="download.statusMsg" class="download-status-msg">{{ download.statusMsg }}</span>
                       </div>
                     </div>
                   </div>
@@ -630,13 +645,16 @@ async function pollDownloadStatus(taskId, modelRepo) {
       // Update progress
       const downloadIndex = activeDownloads.value.findIndex(d => d.taskId === taskId)
       if (downloadIndex >= 0) {
+        const existing = activeDownloads.value[downloadIndex]
         activeDownloads.value[downloadIndex] = {
-          ...activeDownloads.value[downloadIndex],
-          progress: Math.round(downloadData.progress || 0),
-          downloadedMB: Math.round(downloadData.downloaded_mb || 0),
-          totalMB: Math.round(downloadData.total_mb || 0),
-          speed: downloadData.speed_mbps ? downloadData.speed_mbps.toFixed(1) : null,
-          eta: downloadData.eta_seconds ? Math.round(downloadData.eta_seconds) : null
+          ...existing,
+          // ✅ 修复：只在后端有值时才更新，保留前端初始值
+          progress: downloadData.progress !== undefined ? Math.round(downloadData.progress) : existing.progress,
+          downloadedMB: downloadData.downloaded_mb !== undefined ? Math.round(downloadData.downloaded_mb) : existing.downloadedMB,
+          totalMB: existing.totalMB,  // ✅ 保持初始值，不被后端覆盖
+          speed: downloadData.speed_mbps !== undefined ? downloadData.speed_mbps.toFixed(1) : existing.speed,
+          eta: downloadData.eta_seconds !== undefined ? Math.round(downloadData.eta_seconds) : existing.eta,
+          statusMsg: downloadData.status_msg || existing.statusMsg || ''
         }
       }
       
@@ -645,8 +663,8 @@ async function pollDownloadStatus(taskId, modelRepo) {
         clearInterval(pollInterval)
         delete downloadPollingIntervals.value[taskId]
         
-        // Remove from downloading list
-        downloadingModels.value = downloadingModels.value.filter(repo => repo !== modelRepo)
+        // ✅ 修复：使用 modelId 而不是 model.modelId（model未定义）
+        downloadingModels.value = downloadingModels.value.filter(id => id !== activeDownloads.value[downloadIndex]?.modelId)
         activeDownloads.value = activeDownloads.value.filter(d => d.taskId !== taskId)
         
         // Refresh health check to show new status
@@ -670,17 +688,17 @@ async function downloadModel(model) {
   try {
     // Start async download
     const { data } = await request.post('/system/models/download', {
-      model_id: model.repo,
+      model_id: model.model_id || model.repo,  // 优先用 model_id，fallback 用 repo
       mirror: 'modelscope'  // Use China mirror by default
     })
     
     const taskId = data.data.task_id
     
     // Add to downloading list
-    downloadingModels.value.push(model.repo)
+    downloadingModels.value.push(model.model_id)
     activeDownloads.value.push({
       taskId,
-      modelId: model.repo,
+      modelId: model.model_id,
       modelName: model.name,
       progress: 0,
       downloadedMB: 0,
@@ -703,6 +721,28 @@ async function downloadModel(model) {
 function openModelDownload(model) {
   // Open model download link in new tab
   window.open(model.download_url, '_blank')
+}
+
+// Helper function to get status tag type
+function getModelStatusType(status) {
+  const typeMap = {
+    'installed': 'success',
+    'downloading': 'warning',
+    'incomplete': 'danger',
+    'missing': 'info'
+  }
+  return typeMap[status] || 'info'
+}
+
+// Helper function to get status text
+function getModelStatusText(status) {
+  const textMap = {
+    'installed': t('dashboard.model_installed'),
+    'downloading': '下载中',
+    'incomplete': '不完整',
+    'missing': t('dashboard.model_missing')
+  }
+  return textMap[status] || status
 }
 
 onMounted(async () => {
@@ -1259,7 +1299,36 @@ function formatLastCheck(isoTime) {
 .model-size {
   font-weight: 500;
   color: #909399;
-  margin-left: 12px;
+}
+
+/* Model integrity warning */
+.model-integrity-warning {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 10px;
+  background: #fdf6ec;
+  border-radius: 6px;
+  margin-bottom: 8px;
+  font-size: 12px;
+}
+
+.integrity-text {
+  color: #e6a23c;
+  font-weight: 500;
+}
+
+/* Model downloading indicator */
+.model-downloading-indicator {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  background: #ecf5ff;
+  border-radius: 6px;
+  color: #409eff;
+  font-size: 13px;
+  font-weight: 500;
 }
 
 /* Download progress styles */
@@ -1305,5 +1374,12 @@ function formatLastCheck(isoTime) {
   font-size: 12px;
   color: #606266;
   margin-top: 6px;
+  flex-wrap: wrap;
+}
+
+.download-status-msg {
+  color: #409eff;
+  font-weight: 500;
+  font-style: italic;
 }
 </style>

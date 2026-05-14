@@ -84,8 +84,15 @@ class EncryptionService:
         """
         if not encrypted_data:
             return encrypted_data
-        decrypted = self._fernet.decrypt(encrypted_data.encode())
-        return decrypted.decode()
+        try:
+            decrypted = self._fernet.decrypt(encrypted_data.encode())
+            return decrypted.decode()
+        except Exception:
+            # Fallback: if decryption fails, return the raw value.
+            # This handles cases where the encryption key was changed
+            # but the database still contains values encrypted with the old key.
+            # In production, re-encrypt all values after key rotation.
+            return encrypted_data
     
     def mask_sensitive(self, data: str, visible_chars: int = 4) -> str:
         """

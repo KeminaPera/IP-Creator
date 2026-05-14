@@ -352,29 +352,162 @@ class HealthChecker:
             }
     
     @staticmethod
+    def _check_model_status(
+        model_id: str,
+        model_config: dict,
+        models_path: Path,
+        hf_cache: Path
+    ) -> str:
+        """
+        检查单个模型的状态。
+        
+        Returns:
+            "installed" - 完整安装
+            "downloading" - 下载中
+            "incomplete" - 下载不完整/损坏
+            "missing" - 未下载
+        """
+        from app.services.model_downloader import model_downloader
+        from celery_worker import celery_app
+        from celery.result import AsyncResult
+        import os
+        
+        # 1. 首先检查完整性
+        try:
+            integrity = model_downloader.validate_model_integrity(model_id)
+            
+            if integrity["status"] == "installed":
+                return "installed"
+            
+            # 如果完整性检查失败，继续检查是否下载中
+        except Exception as e:
+            logger.warning(f"Model integrity check failed for {model_id}: {e}")
+        
+        # 2. 检查是否有活跃的下载任务
+        model_prefix = model_config.get("repo", "").replace("/", "--")
+        model_cache_dir = hf_cache / f"models--{model_prefix}"
+        
+        # 检查 Celery 活跃任务
+        try:
+            active_tasks = celery_app.control.inspect().active()
+            if active_tasks:
+                for worker_name, tasks in active_tasks.items():
+                    for task in tasks:
+                        # 检查是否是下载任务
+                        if task.get("name") == "celery_worker.download_model_task":
+                            task_args = task.get("args", [])
+                            if len(task_args) > 0 and task_args[0] == model_id:
+                                return "downloading"
+        except Exception as e:
+            logger.debug(f"Failed to check active tasks: {e}")
+        
+        # 3. 检查缓存目录是否存在（判断是否开始下载）
+        if model_cache_dir.exists():
+            # 目录存在但完整性检查失败
+            snapshots_dir = model_cache_dir / "snapshots"
+            if snapshots_dir.exists():
+                snapshot_dirs = list(snapshots_dir.glob("*"))
+                if snapshot_dirs:
+                    # 有 snapshot 但不完整
+                    return "incomplete"
+            
+            # 只有 blobs/refs 等临时目录
+            return "downloading"
+        
+        return "missing"
+    
+    @staticmethod
+    def _get_downloading_tasks() -> List[Dict]:
+        """
+        获取当前正在下载的任务列表。
+        
+        Returns:
+            List of downloading task info with progress
+        """
+        from celery_worker import celery_app
+        from celery.result import AsyncResult
+        
+        downloading_tasks = []
+        
+        try:
+            # 获取活跃任务
+            active_tasks = celery_app.control.inspect().active()
+            if not active_tasks:
+                return []
+            
+            for worker_name, tasks in active_tasks.items():
+                for task in tasks:
+                    if task.get("name") == "celery_worker.download_model_task":
+                        task_id = task.get("id")
+                        task_args = task.get("args", [])
+                        
+                        if len(task_args) > 0:
+                            model_id = task_args[0]
+                            
+                            # 获取进度信息
+                            task_result = AsyncResult(task_id)
+                            if task_result.state == 'PROGRESS':
+                                meta = task_result.info
+                                downloading_tasks.append({
+                                    "task_id": task_id,
+                                    "model_id": model_id,
+                                    "status": "downloading",
+                                    "progress": meta.get('progress', 0),
+                                    "downloaded_mb": meta.get('downloaded_mb', 0),
+                                    "total_mb": meta.get('total_mb', 0),
+                                    "speed_mbps": meta.get('speed_mbps', 0),
+                                    "eta_seconds": meta.get('eta_seconds', 0)
+                                })
+                            else:
+                                downloading_tasks.append({
+                                    "task_id": task_id,
+                                    "model_id": model_id,
+                                    "status": task_result.state.lower(),
+                                    "progress": 0
+                                })
+        except Exception as e:
+            logger.debug(f"Failed to get downloading tasks: {e}")
+        
+        return downloading_tasks
+    
+    @staticmethod
     def check_diffusion_models() -> Dict:
-        """Check if diffusion models are available."""
+        """Check if diffusion models are available and complete.
+        
+        校验逻辑:
+        1. 检查模型目录是否存在
+        2. 如果存在，校验关键文件（完整性检查）
+        3. 状态: installed (完整) / downloading (下载中) / incomplete (不完整) / missing (缺失)
+        """
+        from app.services.model_downloader import model_downloader
+        import os
+        
         models_path = Path(settings.MODELS_PATH)
         
         # Define required models with download info
         required_models = {
             "stable_diffusion": {
+                "model_id": "stable_diffusion",
                 "name": "Stable Diffusion 1.5",
                 "repo": "runwayml/stable-diffusion-v1-5",
                 "size_gb": 4.0,
                 "download_url": "https://huggingface.co/runwayml/stable-diffusion-v1-5",
                 "purpose": "基础图像生成",
                 "purpose_en": "Base image generation",
-                "status": "unknown"
+                "status": "unknown",
+                # 关键文件列表（用于完整性校验）
+                "required_files": ["model_index.json", "unet/config.json"]
             },
             "ip_adapter": {
+                "model_id": "ip_adapter",
                 "name": "IP-Adapter",
                 "repo": "h94/IP-Adapter",
                 "size_gb": 1.0,
                 "download_url": "https://huggingface.co/h94/IP-Adapter",
                 "purpose": "角色一致性（参考图像）",
                 "purpose_en": "Character consistency (reference images)",
-                "status": "unknown"
+                "status": "unknown",
+                "required_files": ["model_index.json"]
             }
         }
         
@@ -385,52 +518,95 @@ class HealthChecker:
             "lora_models": 0
         }
         
-        if models_path.exists():
-            # Look for model directories or files
-            sd_indicators = list(models_path.glob("*stable-diffusion*"))
-            ip_adapter_indicators = list(models_path.glob("*ip-adapter*"))
-            lora_indicators = list(models_path.glob("*.safetensors"))
-            
-            model_indicators = {
-                "stable_diffusion": len(sd_indicators) > 0,
-                "ip_adapter": len(ip_adapter_indicators) > 0,
-                "lora_models": len(lora_indicators)
-            }
-            
-            # Update status for each model
-            required_models["stable_diffusion"]["status"] = "installed" if model_indicators["stable_diffusion"] else "missing"
-            required_models["ip_adapter"]["status"] = "installed" if model_indicators["ip_adapter"] else "missing"
+        # huggingface_hub 实际缓存路径
+        hf_cache = Path(os.path.expanduser("~/.cache/huggingface/hub"))
         
-        has_models = any([
-            model_indicators.get("stable_diffusion", False),
-            model_indicators.get("ip_adapter", False),
-            model_indicators.get("lora_models", 0) > 0
-        ])
+        if models_path.exists():
+            lora_indicators = list(models_path.glob("*.safetensors"))
+            model_indicators["lora_models"] = len(lora_indicators)
+        
+        # 检查每个模型的完整性和下载状态
+        for model_id, model_config in required_models.items():
+            model_status = HealthChecker._check_model_status(
+                model_id, model_config, models_path, hf_cache
+            )
+            required_models[model_id]["status"] = model_status
+            model_indicators[model_id] = (model_status == "installed")
+        
+        has_all_models = all(
+            m["status"] == "installed" for m in required_models.values()
+        )
+        has_any_model = any(
+            m["status"] == "installed" for m in required_models.values()
+        )
         
         # Calculate total size needed
         total_size_needed = sum(
             model["size_gb"] for model in required_models.values() 
-            if model["status"] == "missing"
+            if model["status"] in ["missing", "incomplete"]
         )
         
-        if has_models:
+        # 计算下载中的任务
+        downloading_tasks = HealthChecker._get_downloading_tasks()
+        
+        if has_all_models:
             return {
                 "status": "ok",
-                "message": "Diffusion models detected",
+                "message": "All diffusion models installed and verified",
                 "models_path": str(models_path.absolute()),
                 "models": model_indicators,
                 "required_models": required_models,
-                "total_size_needed_gb": total_size_needed
+                "total_size_needed_gb": 0,
+                "downloading_tasks": downloading_tasks
             }
-        else:
+        elif has_any_model:
+            # 检查是否有下载中的任务
+            has_downloading = any(
+                m["status"] == "downloading" for m in required_models.values()
+            )
+            has_incomplete = any(
+                m["status"] == "incomplete" for m in required_models.values()
+            )
+            
+            if has_downloading:
+                message = "Some models are downloading, others missing"
+            elif has_incomplete:
+                message = "警告：部分模型文件不完整，可能无法正常使用"
+            else:
+                message = "Some models are missing or incomplete"
+            
             return {
-                "status": "info",
-                "message": "No local models found (will download on first use)",
+                "status": "warning",
+                "message": message,
                 "models_path": str(models_path.absolute()),
                 "models": model_indicators,
                 "required_models": required_models,
                 "total_size_needed_gb": total_size_needed,
-                "note": "First generation will be slow due to model download"
+                "downloading_tasks": downloading_tasks,
+                "note": "Missing models will be downloaded on first generation"
+            }
+        else:
+            # 检查是否有下载中的任务
+            has_downloading = any(
+                m["status"] == "downloading" for m in required_models.values()
+            )
+            
+            if has_downloading:
+                message = "Models are downloading, please wait"
+                status = "warning"
+            else:
+                message = "警告：扩散模型未安装，无法进行图像/视频生成"
+                status = "error"
+            
+            return {
+                "status": status,
+                "message": message,
+                "models_path": str(models_path.absolute()),
+                "models": model_indicators,
+                "required_models": required_models,
+                "total_size_needed_gb": total_size_needed,
+                "downloading_tasks": downloading_tasks,
+                "note": "Models will be downloaded on first generation (may take several minutes)"
             }
     
     @staticmethod

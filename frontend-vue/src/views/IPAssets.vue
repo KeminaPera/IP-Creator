@@ -557,7 +557,7 @@ function openThreeViewsDialog(row) {
 
 async function generateThreeViews() {
   if (!currentIP.value || !hasReferenceImages.value) {
-    ElMessage.warning($t('ip.upload_ref_images_first'))
+    ElMessage.warning(t('ip.upload_ref_images_first'))
     return
   }
 
@@ -569,10 +569,10 @@ async function generateThreeViews() {
     const { data } = await request.post(`/ip/${currentIP.value.id}/generate-three-views`)
     
     if (!data.success) {
-      throw new Error(data.message || $t('common.generation_failed'))
+      throw new Error(data.message || t('common.generation_failed'))
     }
     
-    ElMessage.success($t('ip.three_views_generated'))
+    ElMessage.success(t('ip.three_views_generated'))
     
     // Store task IDs
     viewTaskIds.value = data.data.task_ids
@@ -581,7 +581,7 @@ async function generateThreeViews() {
     pollTaskStatus(data.data.task_ids)
     
   } catch (err) {
-    ElMessage.error(err.response?.data?.message || err.message || $t('common.generation_failed'))
+    ElMessage.error(err.response?.data?.message || err.message || t('common.generation_failed'))
     generating.value = false
   }
 }
@@ -592,7 +592,7 @@ async function pollTaskStatus(taskIds) {
   
   const poll = async () => {
     if (attempts >= maxAttempts) {
-      ElMessage.warning($t('common.generation_failed'))
+      ElMessage.warning(t('common.generation_failed'))
       generating.value = false
       return
     }
@@ -618,16 +618,16 @@ async function pollTaskStatus(taskIds) {
           if (task.status === 'completed') {
             // Update image
             viewImages.value[viewName] = getImageUrl(task.result_path)
-            viewStatus.value[viewName] = { text: $t('status.completed'), type: 'success' }
+            viewStatus.value[viewName] = { text: t('status.completed'), type: 'success' }
             viewProgress.value[viewName] = 100
           } else if (task.status === 'failed') {
-            viewStatus.value[viewName] = { text: $t('status.failed'), type: 'danger' }
+            viewStatus.value[viewName] = { text: t('status.failed'), type: 'danger' }
             viewProgress.value[viewName] = 0
           } else if (task.status === 'running') {
-            viewStatus.value[viewName] = { text: $t('common.generating'), type: 'warning' }
+            viewStatus.value[viewName] = { text: t('common.generating'), type: 'warning' }
             viewProgress.value[viewName] = task.progress || 10
           } else {
-            viewStatus.value[viewName] = { text: $t('status.pending'), type: 'info' }
+            viewStatus.value[viewName] = { text: t('status.pending'), type: 'info' }
             viewProgress.value[viewName] = 0
           }
         }
@@ -635,7 +635,7 @@ async function pollTaskStatus(taskIds) {
         // Task not found yet - might be creating, just log and continue polling
         if (err.response?.data?.error?.error === 'NotFoundError') {
           logger.debug(`[ThreeViews] Task ${taskId} not ready yet, will retry...`)
-          viewStatus.value[viewName] = { text: $t('status.pending'), type: 'info' }
+          viewStatus.value[viewName] = { text: t('status.pending'), type: 'info' }
           viewProgress.value[viewName] = 0
         } else {
           console.error(`[ThreeViews] Failed to poll task ${taskId}:`, err)
@@ -648,7 +648,7 @@ async function pollTaskStatus(taskIds) {
     if (completeCount === 3) {
       generationComplete.value = true
       generating.value = false
-      ElMessage.success($t('ip.three_views_generated'))
+      ElMessage.success(t('ip.three_views_generated'))
       return
     }
     

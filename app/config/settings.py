@@ -49,6 +49,9 @@ class Settings(BaseSettings):
     # Encryption
     ENCRYPTION_KEY: str = "change-this-encryption-key"
     
+    # Hugging Face Endpoint (for China mirror, e.g. https://hf-mirror.com)
+    HF_ENDPOINT: Optional[str] = None
+    
     # JWT Authentication
     JWT_SECRET_KEY: str = "change-this-jwt-secret"
     JWT_ALGORITHM: str = "HS256"

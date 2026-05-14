@@ -97,7 +97,49 @@ class GPUCache:
         try:
             import torch
             
-            if torch.cuda.is_available():
+            # ✅ 优先检查Apple Silicon MPS
+            mps_available = hasattr(torch.backends, 'mps') and torch.backends.mps.is_available()
+            
+            if mps_available:
+                # Apple Silicon GPU (M1/M2/M3)
+                device_name = "Apple Silicon GPU"
+                import subprocess
+                try:
+                    # 尝试获取更详细的GPU信息
+                    result = subprocess.run(['system_profiler', 'SPDisplaysDataType'], 
+                                          capture_output=True, text=True, timeout=5)
+                    if 'Chipset Model' in result.stdout:
+                        for line in result.stdout.split('\n'):
+                            if 'Chipset Model' in line:
+                                device_name = line.split(':')[1].strip()
+                                break
+                except:
+                    pass
+                
+                # 估算统一内存 (Apple Silicon使用统一内存架构)
+                import psutil
+                total_memory = psutil.virtual_memory().total / (1024**3)
+                # GPU通常可以使用最多70%的统一内存
+                gpu_memory = total_memory * 0.7
+                
+                return {
+                    "cuda_available": True,  # ✅ 标记为可用 (兼容性)
+                    "device_type": "mps",  # ✅ 新增: 实际设备类型
+                    "device_count": 1,
+                    "device_name": device_name,
+                    "total_memory_gb": round(gpu_memory, 2),
+                    
+                    "status": "ok",
+                    "message": f"Apple Silicon GPU: {device_name} (Unified Memory)",
+                    "available": True,
+                    "count": 1,
+                    "memory_gb": round(gpu_memory, 2),
+                    
+                    "cached_at": datetime.now().isoformat(),
+                    "is_cached": False
+                }
+            elif torch.cuda.is_available():
+                # NVIDIA GPU (CUDA)
                 gpu_count = torch.cuda.device_count()
                 gpu_name = torch.cuda.get_device_name(0)
                 gpu_memory = torch.cuda.get_device_properties(0).total_memory / (1024**3)
@@ -110,6 +152,7 @@ class GPUCache:
                 return {
                     # Raw GPU info
                     "cuda_available": True,
+                    "device_type": "cuda",  # ✅ 新增
                     "device_count": gpu_count,
                     "device_name": gpu_name,
                     "total_memory_gb": round(gpu_memory, 2),
@@ -128,6 +171,7 @@ class GPUCache:
             else:
                 return {
                     "cuda_available": False,
+                    "device_type": "cpu",  # ✅ 新增
                     "device_count": 0,
                     "device_name": None,
                     "total_memory_gb": 0.0,

@@ -70,6 +70,11 @@ def setup_logger():
     log_dir = Path("logs")
     log_dir.mkdir(exist_ok=True)
     
+    # ✅ 修复：检测是否在Celery环境中运行
+    # Celery Worker在沙箱环境中，enqueue=True会导致PermissionError
+    import sys
+    is_celery_worker = 'celery' in sys.modules or 'celery_worker' in sys.argv[0] if sys.argv else False
+    
     # Console handler
     if settings.DEBUG:
         # Development: colorful, detailed
@@ -100,7 +105,7 @@ def setup_logger():
         compression="zip",
         level="DEBUG",
         encoding="utf-8",
-        enqueue=True,  # Thread-safe
+        enqueue=not is_celery_worker,  # ✅ 修复：Celery环境中禁用enqueue
         backtrace=True,
         diagnose=settings.DEBUG,
     )
@@ -113,7 +118,7 @@ def setup_logger():
         compression="zip",
         level="ERROR",
         encoding="utf-8",
-        enqueue=True,
+        enqueue=not is_celery_worker,  # ✅ 修复：Celery环境中禁用enqueue
         backtrace=True,
         diagnose=settings.DEBUG,
     )

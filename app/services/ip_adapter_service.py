@@ -33,8 +33,19 @@ class IPAdapterService:
         """Initialize IP-Adapter service."""
         # Use cached GPU info to avoid redundant torch.cuda.is_available() checks
         gpu_info = gpu_cache.get_info()
-        self.device = "cuda" if gpu_info["cuda_available"] else "cpu"
-        self.dtype = torch.float16 if gpu_info["cuda_available"] else torch.float32
+        
+        # ✅ 支持Apple Silicon MPS
+        device_type = gpu_info.get("device_type", "cpu")
+        if device_type == "mps":
+            self.device = "mps"
+            self.dtype = torch.float16  # MPS支持float16
+        elif gpu_info["cuda_available"]:
+            self.device = "cuda"
+            self.dtype = torch.float16
+        else:
+            self.device = "cpu"
+            self.dtype = torch.float32
+        
         self._ip_adapter_pipe = None
         self._image_encoder = None
         self.models_path = Path(settings.MODELS_PATH)
@@ -71,20 +82,67 @@ class IPAdapterService:
                 
                 # Load IP-Adapter
                 try:
-                    self._ip_adapter_pipe.load_ip_adapter(
-                        ip_adapter_repo,
-                        subfolder=ip_adapter_subfolder,
-                        weight_name=ip_adapter_filename,
-                    )
+                    # ✅ 优先使用本地IP-Adapter模型
+                    from pathlib import Path
+                    local_ip_adapter_path = Path(settings.MODELS_PATH) / "models--h94--IP-Adapter" / "snapshots"
+                    
+                    if local_ip_adapter_path.exists():
+                        # 查找最新的快照目录
+                        snapshots = list(local_ip_adapter_path.iterdir())
+                        if snapshots:
+                            latest_snapshot = snapshots[0]
+                            
+                            # ✅ 使用models子目录（包含ip-adapter权重文件）
+                            models_dir = latest_snapshot / "models"
+                            
+                            if models_dir.exists():
+                                logger.info(f"Loading IP-Adapter from local: {models_dir}")
+                                logger.info(f"IP-Adapter weight file: {ip_adapter_filename}")
+                                
+                                # ✅ 从models子目录加载，必须指定subfolder=""
+                                self._ip_adapter_pipe.load_ip_adapter(
+                                    str(models_dir),
+                                    subfolder="",
+                                    weight_name=ip_adapter_filename,
+                                )
+                            else:
+                                # models目录不存在，尝试从快照根目录加载（兼容旧结构）
+                                logger.info(f"Models dir not found, using snapshot root: {latest_snapshot}")
+                                self._ip_adapter_pipe.load_ip_adapter(
+                                    str(latest_snapshot),
+                                    subfolder="models",
+                                    weight_name=ip_adapter_filename,
+                                )
+                        else:
+                            raise FileNotFoundError("No snapshots found")
+                    else:
+                        # 本地模型不存在，尝试从Hub下载
+                        logger.info("Local IP-Adapter not found, trying to load from Hub")
+                        self._ip_adapter_pipe.load_ip_adapter(
+                            ip_adapter_repo,
+                            subfolder=ip_adapter_subfolder,
+                            weight_name=ip_adapter_filename,
+                        )
+                    
                     logger.info("IP-Adapter loaded successfully")
                 except Exception as e:
-                    logger.warning(f"Could not load IP-Adapter weights: {e}")
-                    logger.info("Falling back to standard generation without IP-Adapter")
+                    logger.error(f"Could not load IP-Adapter weights: {e}")
+                    import traceback
+                    logger.error(traceback.format_exc())
+                    # ✅ 重新抛出异常，不让错误静默
+                    raise
                 
                 self._ip_adapter_pipe = self._ip_adapter_pipe.to(self.device)
                 
                 if self.device == "cuda":
                     self._ip_adapter_pipe.enable_model_cpu_offload()
+                elif self.device == "mps":
+                    # MPS使用内存优化
+                    try:
+                        self._ip_adapter_pipe.enable_attention_slicing()
+                        logger.info("Enabled attention slicing for MPS (IP-Adapter)")
+                    except Exception as e:
+                        logger.warning(f"Failed to enable attention slicing: {e}")
                 
             except Exception as e:
                 logger.error(f"Failed to load IP-Adapter pipeline: {e}")

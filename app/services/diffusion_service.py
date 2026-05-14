@@ -27,8 +27,19 @@ class DiffusionService:
         """Initialize diffusion service."""
         # Use cached GPU info to avoid redundant torch.cuda.is_available() checks
         gpu_info = gpu_cache.get_info()
-        self.device = "cuda" if gpu_info["cuda_available"] else "cpu"
-        self.dtype = torch.float16 if gpu_info["cuda_available"] else torch.float32
+        
+        # ✅ 支持Apple Silicon MPS
+        device_type = gpu_info.get("device_type", "cpu")
+        if device_type == "mps":
+            self.device = "mps"
+            self.dtype = torch.float16  # MPS支持float16
+        elif gpu_info["cuda_available"]:
+            self.device = "cuda"
+            self.dtype = torch.float16
+        else:
+            self.device = "cpu"
+            self.dtype = torch.float32
+        
         self._image_pipe = None
         self._video_pipe = None
         self.models_path = Path(settings.MODELS_PATH)
@@ -62,13 +73,22 @@ class DiffusionService:
                 # Enable memory efficient attention if available
                 if hasattr(self._image_pipe, "enable_xformers_memory_efficient_attention"):
                     try:
-                        self._image_pipe.enable_xformers_memory_efficient_attention()
+                        # xformers不适用于MPS
+                        if self.device != "mps":
+                            self._image_pipe.enable_xformers_memory_efficient_attention()
                     except Exception as e:
                         logger.warning(f"Failed to enable xformers: {e}")
                 
-                # Enable CPU offloading for low VRAM
+                # Enable CPU offloading for low VRAM (不适用于MPS)
                 if self.device == "cuda":
                     self._image_pipe.enable_model_cpu_offload()
+                elif self.device == "mps":
+                    # MPS使用内存优化
+                    try:
+                        self._image_pipe.enable_attention_slicing()
+                        logger.info("Enabled attention slicing for MPS")
+                    except Exception as e:
+                        logger.warning(f"Failed to enable attention slicing: {e}")
                 
                 logger.info("Image pipeline loaded successfully")
                 
