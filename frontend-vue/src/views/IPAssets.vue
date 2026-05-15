@@ -74,15 +74,25 @@
     </DataTable>
 
     <!-- Add/Edit Dialog -->
-    <el-dialog v-model="dialogVisible" :title="isEdit ? $t('ip.edit_asset') : $t('ip.create_asset')" width="650px" destroy-on-close>
-      <el-form ref="ipFormRef" :model="ipForm" :rules="ipRules" label-width="100px">
+    <CRUDDialog
+      v-model="dialogVisible"
+      :title="isEdit ? $t('ip.edit_asset') : $t('ip.create_asset')"
+      width="650px"
+      :form-data="ipForm"
+      :rules="ipRules"
+      label-width="100px"
+      :loading="submitting"
+      :confirm-text="isEdit ? $t('common.save') : $t('ip.create')"
+      @submit="handleSubmit"
+    >
+      <template #default="{ formData }">
         <el-form-item :label="$t('ip.name')" prop="name">
-          <el-input v-model="ipForm.name" />
+          <el-input v-model="formData.name" />
         </el-form-item>
         <el-row :gutter="16">
           <el-col :span="12">
             <el-form-item :label="$t('ip.category')" prop="category">
-              <el-select v-model="ipForm.category" :placeholder="$t('ip.select_category')" style="width:100%">
+              <el-select v-model="formData.category" :placeholder="$t('ip.select_category')" style="width:100%">
                 <el-option :label="$t('ip.category_pet')" value="pet" />
                 <el-option :label="$t('ip.category_human')" value="human" />
                 <el-option :label="$t('ip.category_fantasy')" value="fantasy" />
@@ -92,7 +102,7 @@
           </el-col>
           <el-col :span="12">
             <el-form-item :label="$t('ip.style_template')">
-              <el-select v-model="ipForm.style_template" style="width:100%">
+              <el-select v-model="formData.style_template" style="width:100%">
                 <el-option :label="$t('ip.style_3d_cartoon')" value="3d_cartoon" />
                 <el-option :label="$t('ip.style_blind_box')" value="blind_box" />
                 <el-option :label="$t('ip.style_healing')" value="healing" />
@@ -103,38 +113,29 @@
           </el-col>
         </el-row>
         <el-form-item :label="$t('ip.trigger_word')" prop="trigger_word">
-          <el-input v-model="ipForm.trigger_word" :placeholder="$t('ip.trigger_word_placeholder')" />
+          <el-input v-model="formData.trigger_word" :placeholder="$t('ip.trigger_word_placeholder')" />
         </el-form-item>
         <el-form-item :label="$t('ip.description')">
-          <el-input v-model="ipForm.description" type="textarea" :rows="3" :placeholder="$t('ip.description_placeholder')" />
+          <el-input v-model="formData.description" type="textarea" :rows="3" :placeholder="$t('ip.description_placeholder')" />
         </el-form-item>
         <el-form-item :label="$t('ip.reference_images')">
-          <el-upload
-            :file-list="fileList"
-            :auto-upload="false"
-            list-type="picture-card"
+          <ImageUploader
+            v-model="fileList"
             :limit="4"
             accept="image/*"
-            :on-change="handleFileChange"
-            :on-remove="handleFileRemove"
-          >
-            <el-icon><Plus /></el-icon>
-          </el-upload>
+            :show-tip="false"
+            @change="handleFileChange"
+            @remove="handleFileRemove"
+          />
         </el-form-item>
         <el-form-item :label="$t('ip.positive_tags')">
-          <el-input v-model="ipForm.positive_tags" type="textarea" :rows="2" />
+          <el-input v-model="formData.positive_tags" type="textarea" :rows="2" />
         </el-form-item>
         <el-form-item :label="$t('ip.negative_tags')">
-          <el-input v-model="ipForm.negative_tags" type="textarea" :rows="2" />
+          <el-input v-model="formData.negative_tags" type="textarea" :rows="2" />
         </el-form-item>
-      </el-form>
-      <template #footer>
-        <el-button @click="dialogVisible = false">{{ $t('common.cancel') }}</el-button>
-        <el-button type="primary" :loading="submitting" @click="handleSubmit">
-          {{ isEdit ? $t('common.save') : $t('ip.create') }}
-        </el-button>
       </template>
-    </el-dialog>
+    </CRUDDialog>
 
     <!-- Three Views Generation Dialog -->
     <el-dialog 
@@ -303,6 +304,8 @@ import { useDebounce } from '../composables/useDebounce'
 import { useAsyncData } from '@/composables/useAsyncData'
 import { logger } from '../utils/logger'
 import DataTable from '../components/common/DataTable.vue'
+import ImageUploader from '../components/common/ImageUploader.vue'
+import CRUDDialog from '../components/common/CRUDDialog.vue'
 
 const { t } = useI18n()
 
@@ -327,7 +330,6 @@ const searchText = ref('')
 const debouncedSearchText = ref('')
 const dialogVisible = ref(false)
 const isEdit = ref(false)
-const ipFormRef = ref(null)
 const fileList = ref([])
 const pendingFiles = ref([])
 
@@ -553,17 +555,14 @@ function openEditDialog(row) {
   dialogVisible.value = true
 }
 
-async function handleSubmit() {
-  const valid = await ipFormRef.value?.validate().catch(() => false)
-  if (!valid) return
-
+async function handleSubmit(formData) {
   submitting.value = true
   try {
-    logger.debug('[IPAssets] Submit - ipForm.reference_images:', ipForm.value.reference_images)
+    logger.debug('[IPAssets] Submit - formData.reference_images:', formData.reference_images)
     logger.debug('[IPAssets] Submit - pendingFiles:', pendingFiles.value)
     
     // Upload new files first
-    const uploadedPaths = [...(ipForm.value.reference_images || [])]
+    const uploadedPaths = [...(formData.reference_images || [])]
     logger.debug('[IPAssets] Submit - initial uploadedPaths:', uploadedPaths)
     
     for (const file of pendingFiles.value) {
@@ -582,7 +581,7 @@ async function handleSubmit() {
 
     logger.debug('[IPAssets] Submit - final uploadedPaths:', uploadedPaths)
     
-    const payload = { ...ipForm.value, reference_images: uploadedPaths }
+    const payload = { ...formData, reference_images: uploadedPaths }
     delete payload.id
 
     logger.debug('[IPAssets] Submit - payload:', payload)
@@ -592,7 +591,7 @@ async function handleSubmit() {
     if (payload.negative_tags === '') payload.negative_tags = null
 
     if (isEdit.value) {
-      await updateIP(ipForm.value.id, payload)
+      await updateIP(formData.id, payload)
       ElMessage.success(t('ip.update_success'))
     } else {
       await createIP(payload)

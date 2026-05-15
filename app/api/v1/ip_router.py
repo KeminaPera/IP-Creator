@@ -24,7 +24,7 @@ from app.core.exceptions import (
     NotFoundException,
     BadRequestException,
     ConflictException,
-    AppException
+    InternalServerError
 )
 from app.utils.logger import logger
 from app.utils.response import success_response, list_response, created_response, updated_response, deleted_response, message_response
@@ -191,11 +191,7 @@ async def generate_three_views(
         raise
     except Exception as e:
         logger.error(f"Failed to create three views tasks for IP {ip_id}: {e}")
-        raise AppException(
-            status_code=500,
-            error="TaskCreationError",
-            message="Failed to create three views generation tasks"
-        )
+        raise InternalServerError(message="Failed to create three views generation tasks")
 
 
 @router.post("/create", status_code=201)
@@ -248,11 +244,7 @@ async def create_ip_asset(
     except (ConflictException,):
         raise
     except Exception as e:
-        raise AppException(
-            status_code=500,
-            error="DatabaseError",
-            message="Failed to create IP asset"
-        )
+        raise InternalServerError(message="Failed to create IP asset")
 
 
 @router.get("/list")
@@ -312,11 +304,7 @@ async def list_ip_assets(
         )
         
     except Exception as e:
-        raise AppException(
-            status_code=500,
-            error="DatabaseError",
-            message="Failed to list IP assets"
-        )
+        raise InternalServerError(message="Failed to list IP assets")
 
 
 @router.get("/{ip_id}")
@@ -357,11 +345,7 @@ async def get_ip_asset(
     except NotFoundException:
         raise
     except Exception as e:
-        raise AppException(
-            status_code=500,
-            error="DatabaseError",
-            message="Failed to get IP asset"
-        )
+        raise InternalServerError(message="Failed to get IP asset")
 
 
 @router.put("/{ip_id}")
@@ -414,11 +398,7 @@ async def update_ip_asset(
     except NotFoundException:
         raise
     except Exception as e:
-        raise AppException(
-            status_code=500,
-            error="DatabaseError",
-            message="Failed to update IP asset"
-        )
+        raise InternalServerError(message="Failed to update IP asset")
 
 
 @router.delete("/{ip_id}", status_code=204)
@@ -449,8 +429,4 @@ async def delete_ip_asset(
     except NotFoundException:
         raise
     except Exception as e:
-        raise AppException(
-            status_code=500,
-            error="DatabaseError",
-            message="Failed to delete IP asset"
-        )
+        raise InternalServerError(message="Failed to delete IP asset")

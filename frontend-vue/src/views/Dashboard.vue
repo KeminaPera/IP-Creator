@@ -5,49 +5,42 @@
     <!-- Stats Row -->
     <el-row :gutter="20" class="stats-row">
       <el-col :span="6">
-        <el-card shadow="hover" class="stat-card stat-blue">
-          <div class="stat-content">
-            <div class="stat-info">
-              <p class="stat-label">{{ $t('dashboard.llm_models') }}</p>
-              <p class="stat-value">{{ stats.llm_count }}</p>
-              <p class="stat-sub">{{ $t('dashboard.active') }}: {{ stats.active_llm_count }}</p>
-            </div>
-            <el-icon :size="48" class="stat-icon"><Monitor /></el-icon>
-          </div>
-        </el-card>
+        <StatCard
+          :label="$t('dashboard.llm_models')"
+          :value="stats.llm_count"
+          type="blue"
+          :sub-label="$t('dashboard.active')"
+          :sub-value="stats.active_llm_count"
+        >
+          <template #icon><Monitor /></template>
+        </StatCard>
       </el-col>
       <el-col :span="6">
-        <el-card shadow="hover" class="stat-card stat-green">
-          <div class="stat-content">
-            <div class="stat-info">
-              <p class="stat-label">{{ $t('dashboard.ip_assets') }}</p>
-              <p class="stat-value">{{ stats.ip_count }}</p>
-            </div>
-            <el-icon :size="48" class="stat-icon"><PictureFilled /></el-icon>
-          </div>
-        </el-card>
+        <StatCard
+          :label="$t('dashboard.ip_assets')"
+          :value="stats.ip_count"
+          type="green"
+        >
+          <template #icon><PictureFilled /></template>
+        </StatCard>
       </el-col>
       <el-col :span="6">
-        <el-card shadow="hover" class="stat-card stat-orange">
-          <div class="stat-content">
-            <div class="stat-info">
-              <p class="stat-label">{{ $t('dashboard.total_tasks') }}</p>
-              <p class="stat-value">{{ stats.task_count }}</p>
-            </div>
-            <el-icon :size="48" class="stat-icon"><List /></el-icon>
-          </div>
-        </el-card>
+        <StatCard
+          :label="$t('dashboard.total_tasks')"
+          :value="stats.task_count"
+          type="orange"
+        >
+          <template #icon><List /></template>
+        </StatCard>
       </el-col>
       <el-col :span="6">
-        <el-card shadow="hover" class="stat-card stat-purple">
-          <div class="stat-content">
-            <div class="stat-info">
-              <p class="stat-label">{{ $t('dashboard.lora_models') }}</p>
-              <p class="stat-value">{{ stats.lora_count }}</p>
-            </div>
-            <el-icon :size="48" class="stat-icon"><Coin /></el-icon>
-          </div>
-        </el-card>
+        <StatCard
+          :label="$t('dashboard.lora_models')"
+          :value="stats.lora_count"
+          type="purple"
+        >
+          <template #icon><Coin /></template>
+        </StatCard>
       </el-col>
     </el-row>
 
@@ -450,6 +443,7 @@ import request from '@/api/request'
 import { getSystemHealth } from '@/api/system'
 import { logger } from '../utils/logger'
 import StatusBadge from '../components/common/StatusBadge.vue'
+import StatCard from '../components/common/StatCard.vue'
 import { 
   Check, Warning, CircleClose, Refresh, 
   Monitor, Connection, FolderOpened, Cpu, 

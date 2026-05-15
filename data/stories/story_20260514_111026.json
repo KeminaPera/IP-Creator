@@ -1,0 +1,10 @@
+{
+  "title": "Story - 20260514_111026",
+  "description": "",
+  "story": "\n```json\n{\n  \"title\": \"A Whisper from the Three Kingdoms\",\n  \"description\": \"A short, poetic video that captures the timeless wisdom and emotional depth of the classic novel *Romance of the Three Kingdoms*, presented as a gentle, healing book review.\",\n  \"scenes\": [\n    {\n      \"scene_number\": 1,\n      \"description\": \"A serene, misty landscape. An ancient Chinese scholar, dressed in traditional robes, stands contemplatively, perhaps looking at a scroll. The atmosphere is calm and reflective, evoking the timeless wisdom of the novel.\",\n      \"prompt\": \"A wise, elderly Chinese scholar in traditional robes, standing on a misty mountain peak at dawn, looking thoughtfully at a scroll. The scene is cinematic, with soft, ethereal lighting and a sense of profound contemplation. Style: realistic, epic, historical, 8k, --ar 9:16\",\n      \"duration\": 10\n    }\n  ]\n}\n```",
+  "prompt": "生成一个三国演义的书评",
+  "ip_name": null,
+  "style": "healing",
+  "duration_seconds": 10,
+  "generated_at": "2026-05-14T11:10:26.164361"
+}
