@@ -5,16 +5,40 @@
     <!-- Stats Row -->
     <el-row :gutter="16" class="stats-row">
       <el-col :span="6">
-        <el-statistic :title="$t('llm.total_channels')" :value="channels.length" />
+        <StatCard
+          :label="$t('llm.total_channels')"
+          :value="channels.length"
+          type="blue"
+        >
+          <template #icon><Monitor /></template>
+        </StatCard>
       </el-col>
       <el-col :span="6">
-        <el-statistic :title="$t('llm.active')" :value="channels.filter(c => c.is_active).length" />
+        <StatCard
+          :label="$t('llm.active')"
+          :value="channels.filter(c => c.is_active).length"
+          type="green"
+        >
+          <template #icon><CircleCheck /></template>
+        </StatCard>
       </el-col>
       <el-col :span="6">
-        <el-statistic :title="$t('llm.healthy')" :value="channels.filter(c => c.health_status === 'healthy').length" />
+        <StatCard
+          :label="$t('llm.healthy')"
+          :value="channels.filter(c => c.health_status === 'healthy').length"
+          type="cyan"
+        >
+          <template #icon><CircleCheck /></template>
+        </StatCard>
       </el-col>
       <el-col :span="6">
-        <el-statistic :title="$t('llm.current_active')" :value="channels.filter(c => c.is_active).length" />
+        <StatCard
+          :label="$t('llm.current_active')"
+          :value="channels.filter(c => c.is_active).length"
+          type="orange"
+        >
+          <template #icon><CircleCheck /></template>
+        </StatCard>
       </el-col>
     </el-row>
 
@@ -139,10 +163,20 @@
     </DataTable>
 
     <!-- Add/Edit Dialog -->
-    <el-dialog v-model="dialogVisible" :title="isEdit ? $t('llm.edit_channel') : $t('llm.add_channel')" width="600px" destroy-on-close>
-      <el-form ref="channelFormRef" :model="channelForm" :rules="channelRules" label-width="120px">
+    <CRUDDialog
+      v-model="dialogVisible"
+      :title="isEdit ? $t('llm.edit_channel') : $t('llm.add_channel')"
+      width="600px"
+      :form-data="channelForm"
+      :rules="channelRules"
+      label-width="120px"
+      :loading="submitting"
+      :confirm-text="isEdit ? $t('llm.update_channel_btn') : $t('llm.add_channel_btn')"
+      @submit="handleSubmit"
+    >
+      <template #default="{ formData }">
         <el-form-item :label="$t('llm.provider')" prop="provider">
-          <el-select v-model="channelForm.provider" :placeholder="$t('llm.select_provider')" @change="onProviderChange" :disabled="isEdit" style="width:100%">
+          <el-select v-model="formData.provider" :placeholder="$t('llm.select_provider')" @change="onProviderChange" :disabled="isEdit" style="width:100%">
             <el-option v-for="p in providers" :key="p.code" :label="p.name || p.name_cn || p.name_en || p.code" :value="p.code">
               <div style="display:flex;align-items:center;gap:8px;">
                 <img v-if="p.icon_url" :src="p.icon_url" :alt="p.name || p.name_cn || p.name_en || p.code" loading="lazy" style="width:18px;height:18px;" />
@@ -152,42 +186,36 @@
           </el-select>
         </el-form-item>
         <el-form-item :label="$t('llm.model')" prop="model_name">
-          <el-select v-model="channelForm.model_name" :placeholder="$t('llm.select_model')" :disabled="!channelForm.provider || isEdit" @change="onModelChange" style="width:100%">
+          <el-select v-model="formData.model_name" :placeholder="$t('llm.select_model')" :disabled="!formData.provider || isEdit" @change="onModelChange" style="width:100%">
             <el-option v-for="m in availableModels" :key="m.code" :label="m.name" :value="m.code" />
           </el-select>
         </el-form-item>
         <el-form-item :label="$t('llm.channel_name')" prop="name">
-          <el-input v-model="channelForm.name" :placeholder="$t('llm.channel_name_placeholder')" :disabled="isEdit" />
+          <el-input v-model="formData.name" :placeholder="$t('llm.channel_name_placeholder')" :disabled="isEdit" />
         </el-form-item>
         <el-form-item :label="$t('llm.api_endpoint')">
-          <el-input v-model="channelForm.api_endpoint" :placeholder="$t('llm.api_endpoint_hint')" />
+          <el-input v-model="formData.api_endpoint" :placeholder="$t('llm.api_endpoint_hint')" />
         </el-form-item>
         <el-form-item :label="isEdit ? $t('llm.api_key_edit') : $t('llm.api_key')" prop="api_key">
-          <el-input v-model="channelForm.api_key" type="password" show-password
+          <el-input v-model="formData.api_key" type="password" show-password
             :placeholder="isEdit ? $t('llm.api_key_update_placeholder') : $t('llm.api_key_placeholder')" />
         </el-form-item>
         <!-- Advanced Settings -->
         <el-collapse>
           <el-collapse-item :title="$t('llm.advanced_settings')">
             <el-form-item :label="$t('llm.temperature')">
-              <el-slider v-model="channelForm.temperature" :min="0" :max="2" :step="0.1" show-input />
+              <el-slider v-model="formData.temperature" :min="0" :max="2" :step="0.1" show-input />
             </el-form-item>
             <el-form-item :label="$t('llm.max_tokens')">
-              <el-input-number v-model="channelForm.max_tokens" :min="1" :max="128000" />
+              <el-input-number v-model="formData.max_tokens" :min="1" :max="128000" />
             </el-form-item>
             <el-form-item :label="$t('llm.timeout')">
-              <el-input-number v-model="channelForm.timeout" :min="5" :max="300" />
+              <el-input-number v-model="formData.timeout" :min="5" :max="300" />
             </el-form-item>
           </el-collapse-item>
         </el-collapse>
-      </el-form>
-      <template #footer>
-        <el-button @click="dialogVisible = false">{{ $t('common.cancel') }}</el-button>
-        <el-button type="primary" :loading="submitting" @click="handleSubmit">
-          {{ isEdit ? $t('llm.update_channel_btn') : $t('llm.add_channel_btn') }}
-        </el-button>
       </template>
-    </el-dialog>
+    </CRUDDialog>
   </div>
 </template>
 
@@ -195,7 +223,7 @@
 import { ref, computed, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { ElMessage } from 'element-plus'
-import { Connection, ArrowDown, Delete } from '@element-plus/icons-vue'
+import { Connection, ArrowDown, Delete, Monitor, CircleCheck, CircleClose } from '@element-plus/icons-vue'
 import { getChannels, registerChannel, updateChannel, deleteChannel } from '@/api/llm'
 import { getProviders } from '@/api/settings'
 import { formatTime } from '../utils/time'
@@ -204,6 +232,8 @@ import { useDeleteConfirm } from '../composables/useDeleteConfirm'
 import { useDebounce } from '../composables/useDebounce'
 import { useAsyncData } from '@/composables/useAsyncData'
 import DataTable from '../components/common/DataTable.vue'
+import StatCard from '../components/common/StatCard.vue'
+import CRUDDialog from '../components/common/CRUDDialog.vue'
 
 const { t } = useI18n()
 
@@ -230,7 +260,6 @@ const searchText = ref('')
 const debouncedSearchText = ref('')
 const dialogVisible = ref(false)
 const isEdit = ref(false)
-const channelFormRef = ref(null)
 
 // Pagination
 const pagination = ref({
@@ -456,19 +485,16 @@ function openEditDialog(row) {
   dialogVisible.value = true
 }
 
-async function handleSubmit() {
-  const valid = await channelFormRef.value?.validate().catch(() => false)
-  if (!valid) return
-
+async function handleSubmit(formData) {
   submitting.value = true
   try {
     if (isEdit.value) {
-      const { id, ...data } = channelForm.value
+      const { id, ...data } = formData
       if (!data.api_key) delete data.api_key
       await updateChannel(id, data)
       ElMessage.success(t('llm.update_success'))
     } else {
-      await registerChannel(channelForm.value)
+      await registerChannel(formData)
       ElMessage.success(t('llm.add_success'))
     }
     dialogVisible.value = false

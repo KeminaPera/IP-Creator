@@ -16,27 +16,19 @@
     :on-error="handleError"
     :before-upload="beforeUpload"
   >
-    <template v-if="listType === 'picture-card'">
+    <el-button v-if="listType !== 'picture-card'" type="primary">
+      <el-icon><Upload /></el-icon>
+      {{ buttonText }}
+    </el-button>
+    
+    <template v-if="listType === 'picture-card'" #default>
       <el-icon><Plus /></el-icon>
     </template>
     
-    <template v-else-if="listType === 'picture'">
-      <el-button type="primary">
-        <el-icon><Upload /></el-icon>
-        {{ buttonText }}
-      </el-button>
-    </template>
-    
-    <template v-else>
-      <el-button type="primary">
-        <el-icon><Upload /></el-icon>
-        {{ buttonText }}
-      </el-button>
-      <template v-if="showTip" #tip>
-        <div class="el-upload__tip">
-          {{ tipText }}
-        </div>
-      </template>
+    <template v-if="showTip" #tip>
+      <div class="el-upload__tip">
+        {{ tipText }}
+      </div>
     </template>
   </el-upload>
 </template>

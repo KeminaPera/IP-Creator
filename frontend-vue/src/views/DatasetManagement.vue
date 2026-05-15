@@ -103,35 +103,45 @@
     </DataTable>
 
     <!-- Create Dataset Dialog -->
-    <el-dialog v-model="createDialogVisible" title="创建训练数据集" width="700px">
-      <el-alert
-        title="数据集创建流程"
-        type="info"
-        :closable="false"
-        style="margin-bottom: 20px;"
-      >
-        <template #default>
-          <div style="font-size: 13px; line-height: 1.6;">
-            <strong>步骤 1:</strong> 填写数据集基本信息<br/>
-            <strong>步骤 2:</strong> 上传 15-30 张训练图片<br/>
-            <strong>步骤 3:</strong> 标注图片（角度、表情、姿势）<br/>
-            <strong>步骤 4:</strong> 验证数据集质量
-          </div>
-        </template>
-      </el-alert>
+    <CRUDDialog
+      v-model="createDialogVisible"
+      title="创建训练数据集"
+      width="700px"
+      :form-data="createForm"
+      :rules="createRules"
+      label-width="120px"
+      :loading="creating"
+      confirm-text="创建并上传图片"
+      @submit="handleCreate"
+    >
+      <template #default="{ formData }">
+        <el-alert
+          title="数据集创建流程"
+          type="info"
+          :closable="false"
+          style="margin-bottom: 20px;"
+        >
+          <template #default>
+            <div style="font-size: 13px; line-height: 1.6;">
+              <strong>步骤 1:</strong> 填写数据集基本信息<br/>
+              <strong>步骤 2:</strong> 上传 15-30 张训练图片<br/>
+              <strong>步骤 3:</strong> 标注图片（角度、表情、姿势）<br/>
+              <strong>步骤 4:</strong> 验证数据集质量
+            </div>
+          </template>
+        </el-alert>
 
-      <el-form ref="createFormRef" :model="createForm" :rules="createRules" label-width="120px">
         <el-form-item label="IP资产" prop="ip_asset_id">
-          <el-select v-model="createForm.ip_asset_id" placeholder="选择IP资产" style="width:100%">
+          <el-select v-model="formData.ip_asset_id" placeholder="选择IP资产" style="width:100%">
             <el-option v-for="ip in ipList" :key="ip.id" :label="ip.name" :value="ip.id" />
           </el-select>
         </el-form-item>
         <el-form-item label="数据集名称" prop="name">
-          <el-input v-model="createForm.name" placeholder="例如：我的角色数据集 v1" />
+          <el-input v-model="formData.name" placeholder="例如：我的角色数据集 v1" />
         </el-form-item>
         <el-form-item label="描述">
           <el-input
-            v-model="createForm.description"
+            v-model="formData.description"
             type="textarea"
             :rows="3"
             placeholder="数据集描述（可选）"
@@ -141,25 +151,13 @@
         <el-divider>图片上传</el-divider>
 
         <el-form-item label="训练图片">
-          <el-upload
-            ref="uploadRef"
-            :auto-upload="false"
-            :multiple="true"
+          <ImageUploader
+            v-model="uploadFileList"
             :limit="50"
             accept="image/jpeg,image/png,image/webp"
-            list-type="picture-card"
-            v-model:file-list="uploadFileList"
-            :on-change="handleFileChange"
-            :on-remove="handleFileRemove"
-          >
-            <el-icon><Plus /></el-icon>
-            <template #tip>
-              <div class="el-upload__tip">
-                支持 JPG/PNG/WEBP 格式，最多上传 50 张图片<br/>
-                建议：15-30 张高质量图片，包含不同角度、表情和姿势
-              </div>
-            </template>
-          </el-upload>
+            @change="handleFileChange"
+            @remove="handleFileRemove"
+          />
           
           <div v-if="uploadFileList.length > 0" style="margin-top: 12px; padding: 12px; background: #f0f9ff; border-radius: 4px;">
             <el-icon style="color: #409eff; vertical-align: middle;"><InfoFilled /></el-icon>
@@ -177,15 +175,8 @@
             </span>
           </div>
         </el-form-item>
-      </el-form>
-
-      <template #footer>
-        <el-button @click="createDialogVisible = false">取消</el-button>
-        <el-button type="primary" @click="handleCreate" :loading="creating">
-          创建并上传图片
-        </el-button>
       </template>
-    </el-dialog>
+    </CRUDDialog>
 
     <!-- Dataset Detail Dialog -->
     <el-dialog v-model="detailDialogVisible" title="数据集详情" width="900px">
@@ -252,6 +243,8 @@ import { useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Plus, ArrowDown, Check, MagicStick, DocumentCopy, Delete, InfoFilled } from '@element-plus/icons-vue'
 import DataTable from '@/components/common/DataTable.vue'
+import CRUDDialog from '@/components/common/CRUDDialog.vue'
+import ImageUploader from '@/components/common/ImageUploader.vue'
 import {
   getDatasetList,
   createDataset,
@@ -298,8 +291,6 @@ const {
 
 // Create Dialog
 const createDialogVisible = ref(false)
-const createFormRef = ref(null)
-const uploadRef = ref(null)
 const creating = ref(false)
 const uploadFileList = ref([])
 const createForm = reactive({
@@ -353,61 +344,56 @@ const handleFileRemove = (file, fileList) => {
   uploadFileList.value = fileList
 }
 
-const handleCreate = async () => {
-  if (!createFormRef.value) return
-  await createFormRef.value.validate(async (valid) => {
-    if (!valid) return
+const handleCreate = async (formData) => {
+  if (uploadFileList.value.length === 0) {
+    ElMessage.warning('请至少上传一张图片')
+    return
+  }
 
-    if (uploadFileList.value.length === 0) {
-      ElMessage.warning('请至少上传一张图片')
-      return
+  creating.value = true
+  try {
+    // Step 1: Create dataset
+    const res = await createDataset(formData)
+    const datasetId = res.data.id || res.data.data?.id
+    
+    ElMessage.success('数据集创建成功，正在上传图片...')
+    
+    // Step 2: Upload images
+    if (uploadFileList.value.length > 0) {
+      const files = uploadFileList.value.map(f => f.raw).filter(Boolean)
+      await uploadDatasetImages(datasetId, files)
+      ElMessage.success(`成功上传 ${files.length} 张图片`)
     }
-
-    creating.value = true
-    try {
-      // Step 1: Create dataset
-      const res = await createDataset(createForm)
-      const datasetId = res.data.id || res.data.data?.id
-      
-      ElMessage.success('数据集创建成功，正在上传图片...')
-      
-      // Step 2: Upload images
-      if (uploadFileList.value.length > 0) {
-        const files = uploadFileList.value.map(f => f.raw).filter(Boolean)
-        await uploadDatasetImages(datasetId, files)
-        ElMessage.success(`成功上传 ${files.length} 张图片`)
+    
+    createDialogVisible.value = false
+    loadDatasets()
+    
+    // Step 3: Redirect to annotation page
+    ElMessageBox.confirm(
+      '图片上传成功！是否前往标注页面为图片添加标注信息（角度、表情、姿势）？',
+      '前往标注',
+      {
+        confirmButtonText: '去标注',
+        cancelButtonText: '稍后标注',
+        type: 'success',
       }
-      
-      createDialogVisible.value = false
-      loadDatasets()
-      
-      // Step 3: Redirect to annotation page
-      ElMessageBox.confirm(
-        '图片上传成功！是否前往标注页面为图片添加标注信息（角度、表情、姿势）？',
-        '前往标注',
-        {
-          confirmButtonText: '去标注',
-          cancelButtonText: '稍后标注',
-          type: 'success',
-        }
-      ).then(() => {
-        router.push({
-          path: '/datasets/annotate',
-          query: { dataset_id: datasetId }
-        })
-      }).catch(() => {
-        // User chose to annotate later
+    ).then(() => {
+      router.push({
+        path: '/datasets/annotate',
+        query: { dataset_id: datasetId }
       })
-      
-    } catch (error) {
-      if (import.meta.env.DEV) {
-        console.error('Create dataset error:', error)
-      }
-      ElMessage.error(error.message || t('dataset.create_failed'))
-    } finally {
-      creating.value = false
+    }).catch(() => {
+      // User chose to annotate later
+    })
+    
+  } catch (error) {
+    if (import.meta.env.DEV) {
+      console.error('Create dataset error:', error)
     }
-  })
+    ElMessage.error(error.message || t('dataset.create_failed'))
+  } finally {
+    creating.value = false
+  }
 }
 
 const openDetailDialog = async (row) => {

@@ -99,7 +99,7 @@ import { useI18n } from 'vue-i18n'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Loading } from '@element-plus/icons-vue'
 import TrainingMonitorComponent from '@/components/lora/TrainingMonitor.vue'
-import { getLoRADetail, cancelTraining } from '@/api/lora'
+import { getLoRADetail, cancelTraining as cancelTrainingApi } from '@/api/lora'
 
 const { t } = useI18n()
 const route = useRoute()
@@ -177,7 +177,7 @@ const cancelTraining = async () => {
       }
     )
     
-    await cancelTraining(loraId.value)
+    await cancelTrainingApi(loraId.value)
     ElMessage.success(t('training_monitor.cancel_success'))
     await loadLoRADetails()
   } catch (err) {
