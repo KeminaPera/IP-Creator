@@ -137,8 +137,8 @@
         <el-alert
           v-for="(rec, index) in report.recommendations"
           :key="index"
-          :title="rec"
-          :type="getRecommendationType(rec)"
+          :title="rec.text"
+          :type="rec.type || 'info'"
           :closable="false"
           show-icon
           class="recommendation-item"
@@ -170,6 +170,7 @@ import { ElMessage } from 'element-plus'
 import { Picture } from '@element-plus/icons-vue'
 import { getQualityReport, assessQuality } from '../../api/lora'
 import { formatTime } from '../../utils/time'
+import { getGradeDescription } from '../../utils/grade'
 
 const { t } = useI18n()
 
@@ -252,26 +253,7 @@ function getScoreColor(score) {
 
 // 获取等级文本
 function getGradeText(grade) {
-  const gradeMap = {
-    'S': t('lora.quality.grade_s'),
-    'A': t('lora.quality.grade_a'),
-    'B': t('lora.quality.grade_b'),
-    'C': t('lora.quality.grade_c'),
-    'D': t('lora.quality.grade_d'),
-    'F': t('lora.quality.grade_f'),
-  }
-  return gradeMap[grade] || grade
-}
-
-// 获取建议类型
-function getRecommendationType(rec) {
-  if (rec.includes('good') || rec.includes('excellent')) {
-    return 'success'
-  }
-  if (rec.includes('low') || rec.includes('failed') || rec.includes('bad')) {
-    return 'warning'
-  }
-  return 'info'
+  return getGradeDescription(grade, t)
 }
 
 // 截断文本

@@ -7,7 +7,7 @@ model quality through CLIP similarity, loss analysis, and consistency checks.
 from typing import List, Dict, Any, Optional
 from pathlib import Path
 import json
-from datetime import datetime
+from app.utils.time_utils import get_timestamp_filename
 from app.models.lora_model import LoRAModel
 from app.models.quality_report import QualityReport
 from app.config.database import async_session_factory
@@ -57,7 +57,7 @@ class QualityAssessor:
         for i, prompt_data in enumerate(test_prompts):
             try:
                 # Generate image path
-                timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+                timestamp = get_timestamp_filename()
                 image_filename = f"test_{lora_model.id}_{i+1}_{timestamp}.png"
                 image_path = self.test_images_path / image_filename
                 
@@ -851,51 +851,69 @@ class QualityAssessor:
         self,
         quality_scores: Dict[str, Any],
         lora_model: LoRAModel,
-    ) -> List[str]:
+    ) -> List[Dict[str, str]]:
         """Generate optimization recommendations based on quality scores."""
         recommendations = []
         
         # Loss-based recommendations
         if quality_scores["loss_score"] < 70:
-            recommendations.append(
-                "High training loss detected. Consider increasing training epochs "
-                "or adjusting learning rate for better convergence."
-            )
+            recommendations.append({
+                "text": (
+                    "High training loss detected. Consider increasing training epochs "
+                    "or adjusting learning rate for better convergence."
+                ),
+                "type": "warning"
+            })
         
         # Completion-based recommendations
         if quality_scores["completion_score"] < 70:
             if lora_model.training_steps and lora_model.training_steps < 1000:
-                recommendations.append(
-                    f"Low training steps ({lora_model.training_steps}). "
-                    "Consider training for at least 1000 steps for better quality."
-                )
+                recommendations.append({
+                    "text": (
+                        f"Low training steps ({lora_model.training_steps}). "
+                        "Consider training for at least 1000 steps for better quality."
+                    ),
+                    "type": "warning"
+                })
         
         # File-based recommendations
         if quality_scores["file_score"] < 60:
-            recommendations.append(
-                "Model file size is smaller than expected. "
-                "This may indicate incomplete training or configuration issues."
-            )
+            recommendations.append({
+                "text": (
+                    "Model file size is smaller than expected. "
+                    "This may indicate incomplete training or configuration issues."
+                ),
+                "type": "error"
+            })
         
         # Generation success recommendations
         if quality_scores["generation_success"] < 80:
-            recommendations.append(
-                "Some test images failed to generate. "
-                "Check model file integrity and configuration."
-            )
+            recommendations.append({
+                "text": (
+                    "Some test images failed to generate. "
+                    "Check model file integrity and configuration."
+                ),
+                "type": "error"
+            })
         
         # Overall recommendations
         overall = quality_scores["overall_score"]
         if overall < 60:
-            recommendations.append(
-                "Overall quality is low. Consider retraining with different parameters: "
-                "increase epochs, adjust learning rate, or use more training data."
-            )
+            recommendations.append({
+                "text": (
+                    "Overall quality is low. Consider retraining with different parameters: "
+                    "increase epochs, adjust learning rate, or use more training data."
+                ),
+                "type": "error"
+            })
         elif overall >= 80:
-            recommendations.append(
-                "Model quality is good! You can start using this LoRA for generation. "
-                "Consider fine-tuning parameters for even better results."
-            )
+            recommendations.append({
+                "text": (
+                    "Model quality is good! You can start using this LoRA for generation. "
+                    "Consider fine-tuning parameters for even better results."
+                ),
+                "type": "success"
+            })
         
         return recommendations
     

@@ -10,6 +10,7 @@ from celery.signals import worker_process_init, worker_ready
 from app.config.settings import settings
 from typing import Optional
 from sqlalchemy.sql import func
+from app.utils.time_utils import format_datetime_full
 from sqlalchemy.ext.asyncio import AsyncSession
 
 # Eager-import all ORM models so SQLAlchemy mappers can resolve string-based
@@ -305,7 +306,7 @@ def generate_story_task(self, prompt: str, ip_name: Optional[str] = None, ip_ass
         
         # Update task status to running and set started_at using local time
         db_path = './data/ip_creator.db'
-        now = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+        now = format_datetime_full()
         
         conn = sqlite3.connect(db_path)
         cursor = conn.cursor()
@@ -341,7 +342,7 @@ def generate_story_task(self, prompt: str, ip_name: Optional[str] = None, ip_ass
             raise Exception(result.get("error", "Story generation failed"))
         
         # Update task status to completed and set completed_at
-        completed_at = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+        completed_at = format_datetime_full()
         conn = sqlite3.connect(db_path)
         cursor = conn.cursor()
         cursor.execute(
@@ -407,7 +408,7 @@ def generate_image_task(self, prompt: str, ip_asset_id: int = 0, **kwargs) -> di
         from app.core.video_generator import video_generator
         
         # Update task status to running
-        now = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+        now = format_datetime_full()
         conn = sqlite3.connect(db_path)
         cursor = conn.cursor()
         cursor.execute(
@@ -431,7 +432,7 @@ def generate_image_task(self, prompt: str, ip_asset_id: int = 0, **kwargs) -> di
             error_msg = result.get("error", "Image generation failed")
             
             # Update task status to failed with error message
-            completed_at = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+            completed_at = format_datetime_full()
             conn = sqlite3.connect(db_path)
             cursor = conn.cursor()
             cursor.execute(
@@ -452,7 +453,7 @@ def generate_image_task(self, prompt: str, ip_asset_id: int = 0, **kwargs) -> di
         
         # Update task status to completed
         execution_time = time.time() - start_time
-        completed_at = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+        completed_at = format_datetime_full()
         conn = sqlite3.connect(db_path)
         cursor = conn.cursor()
         cursor.execute(
@@ -529,7 +530,7 @@ def generate_image_task(self, prompt: str, ip_asset_id: int = 0, **kwargs) -> di
         else:
             # Final retry failed, update task status
             error_msg = str(exc)
-            completed_at = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+            completed_at = format_datetime_full()
             conn = sqlite3.connect(db_path)
             cursor = conn.cursor()
             cursor.execute(
@@ -564,7 +565,7 @@ def generate_video_task(self, prompt: str, image_path: str, ip_asset_id: int = 0
         from app.core.video_generator import video_generator
         
         # Update task status to running
-        now = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+        now = format_datetime_full()
         conn = sqlite3.connect(db_path)
         cursor = conn.cursor()
         cursor.execute(
@@ -589,7 +590,7 @@ def generate_video_task(self, prompt: str, image_path: str, ip_asset_id: int = 0
             error_msg = result.get("error", "Video generation failed")
             
             # Update task status to failed with error message
-            completed_at = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+            completed_at = format_datetime_full()
             conn = sqlite3.connect(db_path)
             cursor = conn.cursor()
             cursor.execute(
@@ -610,7 +611,7 @@ def generate_video_task(self, prompt: str, image_path: str, ip_asset_id: int = 0
         
         # Update task status to completed
         execution_time = time.time() - start_time
-        completed_at = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+        completed_at = format_datetime_full()
         conn = sqlite3.connect(db_path)
         cursor = conn.cursor()
         cursor.execute(
@@ -652,7 +653,7 @@ def generate_video_task(self, prompt: str, image_path: str, ip_asset_id: int = 0
         else:
             # Final retry failed, update task status
             error_msg = str(exc)
-            completed_at = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+            completed_at = format_datetime_full()
             conn = sqlite3.connect(db_path)
             cursor = conn.cursor()
             cursor.execute(
@@ -698,7 +699,7 @@ def _mock_training(self, lora_id: int, training_params: dict) -> dict:
         # Update status to training
         conn = sqlite3.connect(db_path)
         cursor = conn.cursor()
-        now = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+        now = format_datetime_full()
         
         cursor.execute(
             "UPDATE lora_models SET status='training', started_at=?, progress=0 WHERE id=?",
@@ -741,7 +742,7 @@ def _mock_training(self, lora_id: int, training_params: dict) -> dict:
             f.write(f"MOCK_LORA_MODEL\nlora_id: {lora_id}\ncreated: {now}\nepochs: {total_epochs}")
         
         # Update completion status
-        completed_at = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+        completed_at = format_datetime_full()
         cursor.execute(
             """UPDATE lora_models 
                SET status='completed',

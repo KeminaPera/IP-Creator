@@ -24,6 +24,11 @@ from app.schemas.training_dataset import (
     DatasetValidationReport,
     BatchImageUploadResponse,
     ImageUploadResponse,
+    DatasetGenerationRequest,
+    DatasetPreviewRequest,
+    DatasetConversionRequest,
+    DatasetAugmentationRequest,
+    AugmentationValidationRequest,
 )
 from app.api.deps import get_current_user
 from app.core.dataset_manager import dataset_manager
@@ -182,7 +187,7 @@ async def upload_images(
         dataset = result.scalar_one_or_none()
         
         if not dataset:
-            raise NotFoundException(f"Dataset {dataset_id} not found")
+            raise NotFoundException(resource="Dataset", identifier=str(dataset_id))
         
         # Validate file count
         if len(files) > settings.MAX_UPLOAD_FILES:
@@ -475,7 +480,7 @@ async def generate_captions(
     dataset = result.scalar_one_or_none()
     
     if not dataset:
-        raise NotFoundException(f"Dataset {dataset_id} not found")
+        raise NotFoundException(resource="Dataset", identifier=str(dataset_id))
     
     # Load images with annotations
     images_result = await db.execute(
@@ -579,7 +584,7 @@ async def batch_annotate_images(
 
 @router.post("/generate-from-features")
 async def generate_dataset_from_features(
-    request: dict,
+    request: DatasetGenerationRequest,
     current_user: dict = Depends(get_current_user),
     db: AsyncSession = Depends(get_db_session),
 ):
@@ -599,24 +604,16 @@ async def generate_dataset_from_features(
     }
     """
     try:
-        ip_asset_id = request.get("ip_asset_id")
-        selected_features = request.get("selected_features", {})
-        dataset_name = request.get("dataset_name")
-        description = request.get("description", "")
-        
-        if not ip_asset_id or not dataset_name:
-            raise BadRequestException("ip_asset_id and dataset_name are required")
-        
-        if not selected_features:
+        if not request.selected_features:
             raise BadRequestException("selected_features cannot be empty")
         
         # Generate dataset
         generator = DatasetGenerator(db)
         dataset = await generator.generate_dataset_from_features(
-            ip_asset_id=ip_asset_id,
-            selected_features=selected_features,
-            dataset_name=dataset_name,
-            description=description,
+            ip_asset_id=request.ip_asset_id,
+            selected_features=request.selected_features,
+            dataset_name=request.dataset_name,
+            description=request.description,
         )
         
         return created_response(
@@ -638,7 +635,7 @@ async def generate_dataset_from_features(
 
 @router.post("/preview-combinations")
 async def preview_dataset_combinations(
-    request: dict,
+    request: DatasetPreviewRequest,
     current_user: dict = Depends(get_current_user),
     db: AsyncSession = Depends(get_db_session),
 ):
@@ -655,16 +652,13 @@ async def preview_dataset_combinations(
     }
     """
     try:
-        ip_asset_id = request.get("ip_asset_id")
-        selected_features = request.get("selected_features", {})
-        
-        if not ip_asset_id or not selected_features:
-            raise BadRequestException("ip_asset_id and selected_features are required")
+        if not request.selected_features:
+            raise BadRequestException("selected_features cannot be empty")
         
         generator = DatasetGenerator(db)
         preview = await generator.preview_combinations(
-            ip_asset_id=ip_asset_id,
-            selected_features=selected_features,
+            ip_asset_id=request.ip_asset_id,
+            selected_features=request.selected_features,
         )
         
         return success_response(
@@ -682,7 +676,7 @@ async def preview_dataset_combinations(
 @router.post("/{dataset_id}/convert-to-kohya")
 async def convert_dataset_to_kohya(
     dataset_id: int,
-    request: Optional[dict] = None,
+    request: Optional[DatasetConversionRequest] = None,
     current_user: dict = Depends(get_current_user),
     db: AsyncSession = Depends(get_db_session),
 ):
@@ -695,7 +689,7 @@ async def convert_dataset_to_kohya(
     - metadata.json with dataset info
     """
     try:
-        output_dir = request.get("output_dir") if request else None
+        output_dir = request.output_dir if request else None
         
         converter = DatasetConverter()
         result = await converter.convert_to_kohya_format(
@@ -733,7 +727,7 @@ async def validate_kohya_dataset(
         # Get dataset
         dataset = await db.get(TrainingDataset, dataset_id)
         if not dataset:
-            raise NotFoundException(f"Dataset {dataset_id} not found")
+            raise NotFoundException(resource="Dataset", identifier=str(dataset_id))
         
         # Find kohya directory (assume it's in storage path)
         from pathlib import Path
@@ -765,7 +759,7 @@ async def validate_kohya_dataset(
 @router.post("/{dataset_id}/augment")
 async def apply_data_augmentation(
     dataset_id: int,
-    request: dict,
+    request: DatasetAugmentationRequest,
     current_user: dict = Depends(get_current_user),
     db: AsyncSession = Depends(get_db_session),
 ):
@@ -793,7 +787,7 @@ async def apply_data_augmentation(
         dataset = result.scalar_one_or_none()
         
         if not dataset:
-            raise NotFoundException(f"Dataset {dataset_id} not found")
+            raise NotFoundException(resource="Dataset", identifier=str(dataset_id))
         
         # Get dataset images
         images_result = await db.execute(
@@ -814,18 +808,13 @@ async def apply_data_augmentation(
         if not original_images:
             raise BadRequestException("No valid image paths found in dataset")
         
-        # Extract augmentation parameters
-        augmentation_types = request.get("augmentation_types", ["flip", "rotation", "color_jitter"])
-        multiplier = request.get("multiplier", 2)
-        create_version = request.get("create_version", False)
-        
         # Perform augmentation
         augmenter = DataAugmentation()
         aug_result = await augmenter.augment_dataset(
             dataset_id=dataset_id,
             original_images=original_images,
-            augmentation_types=augmentation_types,
-            multiplier=multiplier,
+            augmentation_types=request.augmentation_types,
+            multiplier=request.multiplier,
         )
         
         # Generate report
@@ -833,7 +822,7 @@ async def apply_data_augmentation(
             dataset_id=dataset_id,
             original_count=len(original_images),
             augmented_count=aug_result["augmented_count"],
-            augmentation_types=augmentation_types,
+            augmentation_types=request.augmentation_types,
         )
         
         response_data = {
@@ -841,7 +830,7 @@ async def apply_data_augmentation(
             "original_count": aug_result["original_count"],
             "augmented_count": aug_result["augmented_count"],
             "output_directory": aug_result["output_directory"],
-            "augmentation_types": augmentation_types,
+            "augmentation_types": request.augmentation_types,
             "report": report,
         }
         
@@ -860,7 +849,7 @@ async def apply_data_augmentation(
 @router.post("/{dataset_id}/augment/validate")
 async def validate_augmentation_safety(
     dataset_id: int,
-    request: dict,
+    request: AugmentationValidationRequest,
     current_user: dict = Depends(get_current_user),
     db: AsyncSession = Depends(get_db_session),
 ):
@@ -874,20 +863,13 @@ async def validate_augmentation_safety(
     }
     """
     try:
-        # Get image
-        image_id = request.get("image_id")
-        aug_type = request.get("augmentation_type", "flip")
-        
-        if not image_id:
-            raise BadRequestException("image_id is required")
-        
         result = await db.execute(
-            select(DatasetImage).where(DatasetImage.id == image_id)
+            select(DatasetImage).where(DatasetImage.id == request.image_id)
         )
         dataset_image = result.scalar_one_or_none()
         
         if not dataset_image:
-            raise NotFoundException(f"Dataset image {image_id} not found")
+            raise NotFoundException(resource="Dataset image", identifier=str(request.image_id))
         
         if not dataset_image.file_path:
             raise BadRequestException("Image has no file path")
@@ -896,7 +878,7 @@ async def validate_augmentation_safety(
         augmenter = DataAugmentation()
         safety_result = augmenter.validate_augmentation_safety(
             image_path=dataset_image.file_path,
-            aug_type=aug_type,
+            aug_type=request.augmentation_type,
         )
         
         return success_response(
@@ -928,7 +910,7 @@ async def get_augmentation_report(
         dataset = result.scalar_one_or_none()
         
         if not dataset:
-            raise NotFoundException(f"Dataset {dataset_id} not found")
+            raise NotFoundException(resource="Dataset", identifier=str(dataset_id))
         
         # Get image counts
         images_result = await db.execute(

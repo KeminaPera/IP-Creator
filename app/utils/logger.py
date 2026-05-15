@@ -105,7 +105,7 @@ def setup_logger():
         compression="zip",
         level="DEBUG",
         encoding="utf-8",
-        enqueue=not is_celery_worker,  # ✅ 修复：Celery环境中禁用enqueue
+        enqueue=False,  # ✅ 修复：禁用enqueue避免沙箱环境PermissionError
         backtrace=True,
         diagnose=settings.DEBUG,
     )
@@ -118,7 +118,7 @@ def setup_logger():
         compression="zip",
         level="ERROR",
         encoding="utf-8",
-        enqueue=not is_celery_worker,  # ✅ 修复：Celery环境中禁用enqueue
+        enqueue=False,  # ✅ 修复：禁用enqueue避免沙箱环境PermissionError
         backtrace=True,
         diagnose=settings.DEBUG,
     )

@@ -355,7 +355,7 @@ async def validate_lora_model(
         
     except Exception as e:
         logger.error(f"Error validating LoRA model: {e}")
-        raise AppException(status_code=500, error="ServerError", message="Failed to validate LoRA model: {str(e)}")
+        raise AppException(status_code=500, error="ServerError", message=f"Failed to validate LoRA model: {str(e)}")
 
 
 @router.post("/{lora_id}/train")
@@ -382,7 +382,7 @@ async def start_training(
         lora_model = result.scalar_one_or_none()
         
         if not lora_model:
-            raise NotFoundException(f"LoRA model {lora_id} not found")
+            raise NotFoundException(resource="LoRA model", identifier=str(lora_id))
         
         if lora_model.status == "training":
             raise BadRequestException("Model is already training")
@@ -571,7 +571,7 @@ async def assess_model_quality(
         lora_model = result.scalar_one_or_none()
         
         if not lora_model:
-            raise NotFoundException(f"LoRA model {lora_id} not found")
+            raise NotFoundException(resource="LoRA model", identifier=str(lora_id))
         
         if lora_model.status != "completed":
             raise BadRequestException(f"Model must be completed before assessment (current: {lora_model.status})")
@@ -622,7 +622,7 @@ async def get_quality_report(
         report = result.scalar_one_or_none()
         
         if not report:
-            raise NotFoundException(f"No quality report found for LoRA model {lora_id}")
+            raise NotFoundException(resource="Quality report", identifier=f"for LoRA model {lora_id}")
         
         return success_response(
             data={

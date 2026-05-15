@@ -48,7 +48,7 @@ class VideoGenerator:
         """
         try:
             from pathlib import Path
-            from datetime import datetime
+            from app.utils.time_utils import get_timestamp_filename
             import json
             
             # Build prompt for story generation
@@ -115,7 +115,7 @@ Return the response in JSON format with the following structure:
             
             # Generate title if empty
             if not title:
-                title = f"Story - {datetime.now().strftime('%Y%m%d_%H%M%S')}"
+                title = f"Story - {get_timestamp_filename()}"
             
             # Save story to file
             story_dir = Path('./data/stories')
@@ -134,7 +134,7 @@ Return the response in JSON format with the following structure:
             }
             
             # Save to JSON file
-            file_path = story_dir / f"story_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json"
+            file_path = story_dir / f"story_{get_timestamp_filename()}.json"
             with open(file_path, 'w', encoding='utf-8') as f:
                 json.dump(story_content, f, ensure_ascii=False, indent=2)
             

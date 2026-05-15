@@ -145,3 +145,60 @@ class BatchImageUploadResponse(BaseModel):
     total_uploaded: int
     successful: List[ImageUploadResponse] = []
     failed: List[Dict[str, Any]] = []
+
+
+# ============================================
+# Dataset Generation Schemas
+# ============================================
+
+class DatasetGenerationRequest(BaseModel):
+    """Schema for generating dataset from IP features."""
+    ip_asset_id: int = Field(..., description="IP asset ID")
+    selected_features: Dict[str, List[int]] = Field(
+        default_factory=dict,
+        description="Selected feature IDs by type: {'outfit': [1,2], 'expression': [3,4,5]}"
+    )
+    dataset_name: Optional[str] = Field(None, max_length=100, description="Dataset name")
+    description: Optional[str] = Field(None, description="Dataset description")
+
+
+class DatasetPreviewRequest(BaseModel):
+    """Schema for previewing dataset combinations."""
+    ip_asset_id: int = Field(..., description="IP asset ID")
+    selected_features: Dict[str, List[int]] = Field(
+        default_factory=dict,
+        description="Selected feature IDs by type"
+    )
+
+
+class DatasetConversionRequest(BaseModel):
+    """Schema for converting dataset to Kohya format."""
+    output_dir: Optional[str] = Field(None, description="Output directory path")
+
+
+class DatasetAugmentationRequest(BaseModel):
+    """Schema for applying data augmentation."""
+    augmentation_types: List[str] = Field(
+        default=["flip", "rotation", "color_jitter"],
+        description="Types of augmentation: flip, rotation, color_jitter, combined"
+    )
+    multiplier: int = Field(
+        default=2, 
+        ge=1, 
+        le=10,
+        description="Augmentation multiplier (1-10)"
+    )
+    create_version: bool = Field(
+        default=True, 
+        description="Whether to create new dataset version"
+    )
+
+
+class AugmentationValidationRequest(BaseModel):
+    """Schema for validating augmentation safety."""
+    image_id: int = Field(..., description="Image ID to validate")
+    augmentation_type: str = Field(
+        ..., 
+        max_length=50,
+        description="Augmentation type: flip, rotation, color_jitter, combined"
+    )
