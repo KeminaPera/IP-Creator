@@ -467,6 +467,41 @@ def generate_image_task(self, prompt: str, ip_asset_id: int = 0, **kwargs) -> di
         conn.commit()
         conn.close()
         
+        # Auto-trigger IP consistency check if using IP-Adapter
+        try:
+            use_ip_adapter = kwargs.get('use_ip_adapter', False)
+            reference_images = kwargs.get('reference_images', [])
+            
+            if use_ip_adapter and reference_images and ip_asset_id:
+                import asyncio
+                from app.services.ip_adapter_service import IPAdapterService
+                
+                async def run_consistency_check():
+                    ip_adapter_service = IPAdapterService()
+                    generated_image_path = result.get('image_path') or result.get('file_path')
+                    
+                    if generated_image_path:
+                        consistency_result = await ip_adapter_service.check_generated_consistency(
+                            generated_image_path=generated_image_path,
+                            reference_images=reference_images,
+                            ip_asset_id=ip_asset_id
+                        )
+                        
+                        # Log consistency score
+                        from app.utils.logger import logger
+                        score = consistency_result.get('consistency_score', 0)
+                        logger.info(f"IP consistency check: {score}/100 for task {self.request.id}")
+                        
+                        # If score is low, add warning to result
+                        if score < 80:
+                            result['consistency_warning'] = f"IP consistency score is low: {score}/100"
+                
+                # Run check in background
+                asyncio.create_task(run_consistency_check())
+        except Exception as e:
+            import logging
+            logging.getLogger(__name__).warning(f"Auto consistency check failed: {e}")
+        
         # Create content record with complete metadata
         execution_time = time.time() - start_time
         
@@ -724,6 +759,32 @@ def _mock_training(self, lora_id: int, training_params: dict) -> dict:
         )
         conn.commit()
         conn.close()
+        
+        # Auto-trigger quality assessment after training completes
+        try:
+            import asyncio
+            from app.services.quality_assessor import QualityAssessor
+            from app.models.lora_model import LoRAModel
+            from app.core.database import AsyncSessionLocal
+            
+            async def run_assessment():
+                async with AsyncSessionLocal() as db:
+                    from sqlalchemy import select
+                    result = await db.execute(select(LoRAModel).where(LoRAModel.id == lora_id))
+                    lora_model = result.scalar_one_or_none()
+                    if lora_model and lora_model.status == 'completed':
+                        assessor = QualityAssessor()
+                        await assessor.assess_model_quality(
+                            lora_model=lora_model,
+                            db=db,
+                            num_test_images=5
+                        )
+            
+            # Run assessment in background
+            asyncio.create_task(run_assessment())
+        except Exception as e:
+            import logging
+            logging.getLogger(__name__).warning(f"Auto quality assessment failed: {e}")
         
         return {
             "status": "success",

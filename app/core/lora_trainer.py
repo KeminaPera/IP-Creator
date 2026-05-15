@@ -276,6 +276,23 @@ class LoRATrainer:
                     level="INFO"
                 )
                 
+                # Auto-trigger quality assessment
+                try:
+                    from app.services.quality_assessor import QualityAssessor
+                    from sqlalchemy.ext.asyncio import AsyncSession
+                    from app.core.database import AsyncSessionLocal
+                    
+                    async with AsyncSessionLocal() as db:
+                        assessor = QualityAssessor()
+                        await assessor.assess_model_quality(
+                            lora_model=lora_model,
+                            db=db,
+                            num_test_images=5
+                        )
+                        logger.info(f"Auto quality assessment triggered for LoRA {lora_model.id}")
+                except Exception as e:
+                    logger.warning(f"Auto quality assessment failed: {e}")
+                
                 return True
             else:
                 logger.error(f"Training failed: {stderr}")
