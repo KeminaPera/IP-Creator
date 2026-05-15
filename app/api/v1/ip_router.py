@@ -16,6 +16,7 @@ from app.schemas.ip_schema import (
     IPAssetUpdate,
     IPAssetResponse,
     IPAssetListResponse,
+    ThreeViewGenerationRequest,
 )
 from app.api.deps import get_current_user
 from app.core.ip_manager import ip_manager
@@ -35,6 +36,7 @@ router = APIRouter(prefix="/api/v1/ip", tags=["IP Assets"])
 @router.post("/{ip_id}/generate-three-views")
 async def generate_three_views(
     ip_id: int,
+    request: ThreeViewGenerationRequest = None,
     current_user: dict = Depends(get_current_user),
     db: AsyncSession = Depends(get_db_session),
 ):
@@ -106,6 +108,15 @@ async def generate_three_views(
             }
         }
         
+        # Use provided parameters or defaults
+        params = request.model_dump() if request else {}
+        lora_weight = params.get("lora_weight", 0.7)
+        ip_adapter_scale = params.get("ip_adapter_scale", 0.85)
+        steps = params.get("steps", 30)
+        cfg_scale = params.get("cfg_scale", 7.0)
+        width = params.get("width", 512)
+        height = params.get("height", 512)
+        
         # Create async tasks for each view
         from app.models.task import TaskRecord
         from datetime import datetime
@@ -120,14 +131,14 @@ async def generate_three_views(
                 kwargs={
                     "channel_id": None,  # Use local model
                     "lora_path": lora_path,
-                    "lora_weight": 0.7,
+                    "lora_weight": lora_weight,
                     "use_ip_adapter": True,
                     "reference_images": reference_images,
-                    "ip_adapter_scale": 0.8,
-                    "width": 512,
-                    "height": 512,
-                    "steps": 30,
-                    "cfg_scale": 7.0,
+                    "ip_adapter_scale": ip_adapter_scale,
+                    "width": width,
+                    "height": height,
+                    "steps": steps,
+                    "cfg_scale": cfg_scale,
                     # view_type removed - not supported by generate_image()
                 },
                 queue="image_generation"
@@ -144,10 +155,12 @@ async def generate_three_views(
                     "view_type": view_name,
                     "use_ip_adapter": True,
                     "reference_images": reference_images,
-                    "width": 512,
-                    "height": 512,
-                    "steps": 30,
-                    "cfg_scale": 7.0,
+                    "lora_weight": lora_weight,
+                    "ip_adapter_scale": ip_adapter_scale,
+                    "width": width,
+                    "height": height,
+                    "steps": steps,
+                    "cfg_scale": cfg_scale,
                 },
                 created_by=current_user.get("id", 1),
                 created_at=datetime.now(),  # Use local time to match started_at

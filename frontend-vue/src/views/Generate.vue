@@ -162,6 +162,46 @@
                     </el-form-item>
                   </el-col>
                 </el-row>
+                
+                <!-- IP-Adapter Scale (shown when IP-Adapter is enabled) -->
+                <el-row :gutter="16" v-if="ipAdapterEnabled">
+                  <el-col :span="12">
+                    <el-form-item :label="$t('generate.ip_adapter_scale')">
+                      <el-slider v-model="ipAdapterScale" :min="0" :max="1" :step="0.05" show-input />
+                      <div class="param-hint">
+                        <el-icon><InfoFilled /></el-icon>
+                        <span>{{ $t('generate.ip_adapter_scale_hint') }}</span>
+                      </div>
+                    </el-form-item>
+                  </el-col>
+                </el-row>
+                
+                <!-- More Parameters (collapsible) -->
+                <el-collapse v-model="moreParamsCollapse" style="margin-top: 12px;">
+                  <el-collapse-item :title="$t('generate.more_params')" name="more">
+                    <el-row :gutter="16">
+                      <el-col :span="8">
+                        <el-form-item :label="$t('generate.sampler')">
+                          <el-select v-model="sampler" style="width:100%">
+                            <el-option :label="$t('generate.samplers.dpm_2m_karras')" value="DPM++ 2M Karras" />
+                            <el-option :label="$t('generate.samplers.euler_a')" value="Euler a" />
+                            <el-option :label="$t('generate.samplers.ddim')" value="DDIM" />
+                            <el-option :label="$t('generate.samplers.dpm_sde_karras')" value="DPM++ SDE Karras" />
+                          </el-select>
+                        </el-form-item>
+                      </el-col>
+                      <el-col :span="8">
+                        <el-form-item :label="$t('generate.scheduler')">
+                          <el-select v-model="scheduler" style="width:100%">
+                            <el-option :label="$t('generate.schedulers.karras')" value="karras" />
+                            <el-option :label="$t('generate.schedulers.normal')" value="normal" />
+                            <el-option :label="$t('generate.schedulers.exponential')" value="exponential" />
+                          </el-select>
+                        </el-form-item>
+                      </el-col>
+                    </el-row>
+                  </el-collapse-item>
+                </el-collapse>
               </el-collapse-item>
             </el-collapse>
             <el-form-item>
@@ -281,10 +321,16 @@ const imageAsyncLoading = ref(false)
 const imageResult = ref('')
 
 // Smart IP-Adapter features
+const ipAdapterScale = ref(0.85)
 const smartReferences = ref([])
 const adaptiveScale = ref(0.7)
 const promptAnalysis = ref(null)
 const autoSelectRefs = ref(true) // Auto-select reference images
+
+// More parameters collapse
+const moreParamsCollapse = ref('')
+const sampler = ref('DPM++ 2M Karras')
+const scheduler = ref('karras')
 
 // Video form
 const videoChannelId = ref(null)
@@ -325,7 +371,9 @@ async function loadIPs() {
       onIPChange(selectedIPId.value)
     }
   } catch (err) {
-    console.error('Failed to load IPs:', err)
+    if (import.meta.env.DEV) {
+      console.error('Failed to load IPs:', err)
+    }
   }
 }
 
@@ -359,7 +407,9 @@ async function loadChannels() {
     // 如果没有可用模型，显示警告
     // No text models available - user will see warning in UI
   } catch (err) {
-    console.error('Failed to load channels:', err)
+    if (import.meta.env.DEV) {
+      console.error('Failed to load channels:', err)
+    }
   }
 }
 
@@ -390,7 +440,9 @@ async function loadSmartReferences() {
     adaptiveScale.value = result.adaptive_scale || 0.7
     promptAnalysis.value = result.prompt_analysis || null
   } catch (err) {
-    console.error('Failed to load smart references:', err)
+    if (import.meta.env.DEV) {
+      console.error('Failed to load smart references:', err)
+    }
     // Fallback to empty array, will use manual selection
     smartReferences.value = []
   }
@@ -472,7 +524,9 @@ async function handleGenerateImage() {
         await loadSmartReferences()
         selectedRefs = smartReferences.value.map(r => r.path)
       } catch (err) {
-        console.warn('Failed to load smart references, using manual selection:', err)
+        if (import.meta.env.DEV) {
+          console.warn('Failed to load smart references, using manual selection:', err)
+        }
       }
     } else if (smartReferences.value.length > 0) {
       // Use already-loaded references
@@ -492,7 +546,7 @@ async function handleGenerateImage() {
       use_lora: loraEnabled.value,
       lora_weight: loraWeight.value,
       use_ip_adapter: ipAdapterEnabled.value,
-      ip_adapter_scale: scale,
+      ip_adapter_scale: ipAdapterEnabled.value ? ipAdapterScale.value : scale,
       reference_images: selectedRefs.length > 0 ? selectedRefs : undefined,
     })
     // Unified response format: { success: true, data: {...}, message: "..." }
@@ -521,7 +575,9 @@ async function handleGenerateImageAsync() {
         await loadSmartReferences()
         selectedRefs = smartReferences.value.map(r => r.path)
       } catch (err) {
-        console.warn('Failed to load smart references, using manual selection:', err)
+        if (import.meta.env.DEV) {
+          console.warn('Failed to load smart references, using manual selection:', err)
+        }
       }
     } else if (smartReferences.value.length > 0) {
       // Use already-loaded references
@@ -541,7 +597,7 @@ async function handleGenerateImageAsync() {
       use_lora: loraEnabled.value,
       lora_weight: loraWeight.value,
       use_ip_adapter: ipAdapterEnabled.value,
-      ip_adapter_scale: scale,
+      ip_adapter_scale: ipAdapterEnabled.value ? ipAdapterScale.value : scale,
       reference_images: selectedRefs.length > 0 ? selectedRefs : undefined,
     })
     ElMessage.success(t('common.async_submit_success'))
@@ -623,4 +679,18 @@ onMounted(() => {
   color: #303133;
 }
 .no-model-hint { margin-top: 4px; }
+
+/* Parameter hint style */
+.param-hint {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin-top: 8px;
+  font-size: 12px;
+  color: #909399;
+  line-height: 1.4;
+}
+.param-hint .el-icon {
+  flex-shrink: 0;
+}
 </style>

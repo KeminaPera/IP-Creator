@@ -292,7 +292,9 @@ async function loadContent() {
       contents.value = []
     }
   } catch (err) {
-    console.error('[TaskResultDialog] Error loading content:', err)
+    if (import.meta.env.DEV) {
+      console.error('[TaskResultDialog] Error loading content:', err)
+    }
     ElMessage.error(t('common.error'))
     hasContent.value = false
     contents.value = []
@@ -371,7 +373,9 @@ async function copyStoryContent(content) {
     await navigator.clipboard.writeText(textToCopy)
     ElMessage.success(t('tasks.copy_success'))
   } catch (err) {
-    console.error('Failed to copy:', err)
+    if (import.meta.env.DEV) {
+      console.error('Failed to copy:', err)
+    }
     ElMessage.error(t('tasks.copy_failed'))
   }
 }

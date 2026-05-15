@@ -113,7 +113,7 @@ class GPUCache:
                             if 'Chipset Model' in line:
                                 device_name = line.split(':')[1].strip()
                                 break
-                except:
+                except (subprocess.TimeoutExpired, subprocess.SubprocessError, IndexError):
                     pass
                 
                 # 估算统一内存 (Apple Silicon使用统一内存架构)

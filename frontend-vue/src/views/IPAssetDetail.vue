@@ -178,7 +178,9 @@ const loadStats = async () => {
       0
     )
   } catch (error) {
-    console.error('加载统计信息失败', error)
+    if (import.meta.env.DEV) {
+      console.error('加载统计信息失败', error)
+    }
   }
 }
 

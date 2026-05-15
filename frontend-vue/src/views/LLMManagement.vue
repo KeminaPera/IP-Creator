@@ -395,7 +395,9 @@ async function loadProviders() {
     // Unified response format
     providers.value = data.data || []
   } catch (err) {
-    console.error('Failed to load providers:', err)
+    if (import.meta.env.DEV) {
+      console.error('Failed to load providers:', err)
+    }
   }
 }
 

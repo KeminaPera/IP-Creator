@@ -152,6 +152,64 @@
           </template>
         </el-alert>
 
+        <!-- Generation Parameters -->
+        <el-card shadow="never" style="margin-bottom: 20px;">
+          <template #header>
+            <div style="display: flex; justify-content: space-between; align-items: center;">
+              <span style="font-weight: 600;">{{ $t('ip.generation_params') }}</span>
+              <el-button size="small" text @click="showAdvancedParams = !showAdvancedParams">
+                {{ showAdvancedParams ? $t('common.close') : $t('common.more') }}
+              </el-button>
+            </div>
+          </template>
+          
+          <el-form :model="threeViewParams" label-width="120px" size="default">
+            <!-- Key Parameters (always visible) -->
+            <el-row :gutter="16">
+              <el-col :span="8">
+                <el-form-item :label="$t('ip.ip_adapter_scale')">
+                  <el-slider v-model="threeViewParams.ip_adapter_scale" :min="0.5" :max="1.0" :step="0.05" show-input />
+                  <div class="param-hint">
+                    <el-icon><InfoFilled /></el-icon>
+                    <span>{{ $t('ip.ip_adapter_scale_hint') }}</span>
+                  </div>
+                </el-form-item>
+              </el-col>
+              <el-col :span="8">
+                <el-form-item :label="$t('ip.lora_weight')">
+                  <el-slider v-model="threeViewParams.lora_weight" :min="0" :max="1" :step="0.1" show-input />
+                </el-form-item>
+              </el-col>
+              <el-col :span="8">
+                <el-form-item :label="$t('ip.steps')">
+                  <el-input-number v-model="threeViewParams.steps" :min="20" :max="50" style="width: 100%" />
+                </el-form-item>
+              </el-col>
+            </el-row>
+            
+            <!-- Advanced Parameters (collapsible) -->
+            <el-collapse v-show="showAdvancedParams" style="margin-top: 12px;">
+              <el-collapse-item :title="$t('ip.advanced_params')" name="advanced">
+                <el-row :gutter="16">
+                  <el-col :span="8">
+                    <el-form-item :label="$t('ip.cfg_scale')">
+                      <el-input-number v-model="threeViewParams.cfg_scale" :min="5" :max="15" :step="0.5" style="width: 100%" />
+                    </el-form-item>
+                  </el-col>
+                  <el-col :span="8">
+                    <el-form-item :label="$t('ip.resolution')">
+                      <el-select v-model="threeViewParams.resolution" style="width: 100%">
+                        <el-option :label="$t('ip.resolutions.512')" :value="512" />
+                        <el-option :label="$t('ip.resolutions.768')" :value="768" />
+                      </el-select>
+                    </el-form-item>
+                  </el-col>
+                </el-row>
+              </el-collapse-item>
+            </el-collapse>
+          </el-form>
+        </el-card>
+
         <!-- Generate Button -->
         <div style="text-align: center; margin-bottom: 20px;">
           <el-button 
@@ -237,7 +295,7 @@
 import { ref, computed, onUnmounted, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { ElMessage } from 'element-plus'
-import { Picture, ArrowDown, Delete } from '@element-plus/icons-vue'
+import { Picture, ArrowDown, Delete, InfoFilled } from '@element-plus/icons-vue'
 import { getIPList, createIP, updateIP, deleteIP, uploadFile } from '@/api/ip'
 import request from '@/api/request'
 import { useDeleteConfirm } from '../composables/useDeleteConfirm'
@@ -285,6 +343,16 @@ const viewStatus = ref({ front: {}, side: {}, back: {} })
 const viewProgress = ref({ front: 0, side: 0, back: 0 })
 const viewTaskIds = ref({ front: null, side: null, back: null })
 const generationComplete = ref(false)
+
+// Three view generation parameters
+const showAdvancedParams = ref(false)
+const threeViewParams = ref({
+  ip_adapter_scale: 0.85,
+  lora_weight: 0.7,
+  steps: 30,
+  cfg_scale: 7.0,
+  resolution: 512,
+})
 
 const viewTypes = computed(() => [
   { key: 'front', label: t('ip.view_front') },
@@ -533,7 +601,9 @@ async function handleSubmit() {
     dialogVisible.value = false
     loadIPs()
   } catch (err) {
-    console.error('[IPAssets] Submit error:', err)
+    if (import.meta.env.DEV) {
+      console.error('[IPAssets] Submit error:', err)
+    }
     ElMessage.error(err.response?.data?.detail || 'Operation failed')
   } finally {
     submitting.value = false
@@ -553,6 +623,16 @@ function openThreeViewsDialog(row) {
   viewProgress.value = { front: 0, side: 0, back: 0 }
   viewTaskIds.value = { front: null, side: null, back: null }
   generationComplete.value = false
+  
+  // Reset generation parameters to defaults
+  threeViewParams.value = {
+    ip_adapter_scale: 0.85,
+    lora_weight: 0.7,
+    steps: 30,
+    cfg_scale: 7.0,
+    resolution: 512,
+  }
+  showAdvancedParams.value = false
 }
 
 async function generateThreeViews() {
@@ -565,8 +645,15 @@ async function generateThreeViews() {
   generationComplete.value = false
   
   try {
-    // Call API to generate three views
-    const { data } = await request.post(`/ip/${currentIP.value.id}/generate-three-views`)
+    // Call API to generate three views with parameters
+    const { data } = await request.post(`/ip/${currentIP.value.id}/generate-three-views`, {
+      ip_adapter_scale: threeViewParams.value.ip_adapter_scale,
+      lora_weight: threeViewParams.value.lora_weight,
+      steps: threeViewParams.value.steps,
+      cfg_scale: threeViewParams.value.cfg_scale,
+      width: threeViewParams.value.resolution,
+      height: threeViewParams.value.resolution,
+    })
     
     if (!data.success) {
       throw new Error(data.message || t('common.generation_failed'))
@@ -638,7 +725,9 @@ async function pollTaskStatus(taskIds) {
           viewStatus.value[viewName] = { text: t('status.pending'), type: 'info' }
           viewProgress.value[viewName] = 0
         } else {
-          console.error(`[ThreeViews] Failed to poll task ${taskId}:`, err)
+          if (import.meta.env.DEV) {
+            console.error(`[ThreeViews] Failed to poll task ${taskId}:`, err)
+          }
         }
       }
     }
@@ -753,5 +842,19 @@ onUnmounted(() => {
 
 .progress-container {
   margin-top: 12px;
+}
+
+/* Parameter hint style */
+.param-hint {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin-top: 8px;
+  font-size: 12px;
+  color: #909399;
+  line-height: 1.4;
+}
+.param-hint .el-icon {
+  flex-shrink: 0;
 }
 </style>

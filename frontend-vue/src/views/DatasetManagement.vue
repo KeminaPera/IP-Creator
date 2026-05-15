@@ -331,7 +331,9 @@ const loadIpList = async () => {
     const res = await getIPList({ limit: 100 })
     ipList.value = res.data.data || []
   } catch (error) {
-    console.error('Failed to load IP list:', error)
+    if (import.meta.env.DEV) {
+      console.error('Failed to load IP list:', error)
+    }
   }
 }
 
@@ -398,7 +400,9 @@ const handleCreate = async () => {
       })
       
     } catch (error) {
-      console.error('Create dataset error:', error)
+      if (import.meta.env.DEV) {
+        console.error('Create dataset error:', error)
+      }
       ElMessage.error(error.message || t('dataset.create_failed'))
     } finally {
       creating.value = false

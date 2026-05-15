@@ -71,3 +71,13 @@ class StyleTemplatePreset(BaseModel):
     description: str
     positive_tags: List[str]
     negative_tags: List[str]
+
+
+class ThreeViewGenerationRequest(BaseModel):
+    """Schema for three-view generation with configurable parameters."""
+    lora_weight: float = Field(default=0.7, ge=0.0, le=1.0, description="LoRA model weight")
+    ip_adapter_scale: float = Field(default=0.85, ge=0.0, le=1.0, description="IP-Adapter influence scale")
+    steps: int = Field(default=30, ge=10, le=100, description="Sampling steps")
+    cfg_scale: float = Field(default=7.0, ge=1.0, le=20.0, description="CFG guidance scale")
+    width: int = Field(default=512, ge=256, le=2048, description="Image width")
+    height: int = Field(default=512, ge=256, le=2048, description="Image height")

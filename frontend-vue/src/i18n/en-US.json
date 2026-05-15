@@ -268,7 +268,27 @@
     "status_healthy": "Healthy",
     "status_warning": "Warning",
     "status_error": "Error",
-    "status_info": "Info"
+    "status_info": "Info",
+    "directories_detail": "Directory Details",
+    "exists": "Exists",
+    "missing": "Missing",
+    "gpu_info": "GPU Information",
+    "device": "Device",
+    "count": "Count",
+    "memory": "Memory",
+    "status_label": "Status",
+    "available": "Available",
+    "using_cpu": "Using CPU",
+    "gpu_warning": "Image/video generation will be very slow. GPU acceleration is recommended.",
+    "celery_worker_info": "Celery Worker Information",
+    "online": "Online",
+    "not_detected": "Not Detected",
+    "worker_count": "Worker Count",
+    "node_name": "Node Name",
+    "detection_method": "Detection Method",
+    "download_in_progress": "Downloading...",
+    "redownload": "Redownload",
+    "model_incomplete": "Model file is incomplete. Redownload is recommended."
   },
   "llm": {
     "title": "LLM Channel Management",
@@ -390,7 +410,19 @@
     "not_generated": "Not generated",
     "waiting_generation": "Waiting for generation",
     "load_failed": "Failed to load IP asset information",
-    "detail_title": "IP Asset Detail"
+    "detail_title": "IP Asset Detail",
+    "generation_params": "Generation Parameters",
+    "ip_adapter_scale": "IP-Adapter Scale",
+    "ip_adapter_scale_hint": "Recommended 0.85-0.95 for high-quality reference images, 0.7-0.8 for lower quality",
+    "lora_weight": "LoRA Weight",
+    "steps": "Sampling Steps",
+    "advanced_params": "Advanced Parameters",
+    "cfg_scale": "CFG Scale",
+    "resolution": "Resolution",
+    "resolutions": {
+      "512": "512x512 (Standard)",
+      "768": "768x768 (HD)"
+    }
   },
   "training_monitor": {
     "title": "Training Monitor",
@@ -526,7 +558,23 @@
     "model_badge_video": "Video",
     "model_badge_vision": "Vision",
     "model_badge_code": "Code",
-    "configure_models_hint": "Configure models in LLM Management"
+    "configure_models_hint": "Configure models in LLM Management",
+    "ip_adapter_scale": "IP-Adapter Scale",
+    "ip_adapter_scale_hint": "Recommended 0.85-0.95 for high-quality reference images, 0.7-0.8 for lower quality",
+    "more_params": "More Parameters",
+    "sampler": "Sampler",
+    "scheduler": "Scheduler",
+    "samplers": {
+      "dpm_2m_karras": "DPM++ 2M Karras",
+      "euler_a": "Euler a",
+      "ddim": "DDIM",
+      "dpm_sde_karras": "DPM++ SDE Karras"
+    },
+    "schedulers": {
+      "karras": "Karras",
+      "normal": "Normal",
+      "exponential": "Exponential"
+    }
   },
   "tasks": {
     "title": "Task Monitor",

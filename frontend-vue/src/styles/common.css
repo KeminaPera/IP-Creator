@@ -265,3 +265,26 @@
 .el-dropdown-menu__item.text-info:hover {
   background-color: var(--el-fill-color-light);
 }
+
+/* ===== Dashboard Detail Sections ===== */
+.detail-divider {
+  margin: 12px 0;
+}
+
+.warning-icon {
+  color: #E6A23C;
+}
+
+.node-tag {
+  font-family: monospace;
+}
+
+.gpu-info-row--align-top {
+  align-items: flex-start;
+}
+
+.gpu-value--column {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}

@@ -646,7 +646,9 @@ async function loadContents() {
     contents.value = data.data || []
     total.value = data.pagination?.total || 0
   } catch (err) {
-    console.error('[ContentLibrary] Error loading contents:', err)
+    if (import.meta.env.DEV) {
+      console.error('[ContentLibrary] Error loading contents:', err)
+    }
     ElMessage.error(t('common.error'))
   } finally {
     loading.value = false

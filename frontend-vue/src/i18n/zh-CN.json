@@ -267,7 +267,27 @@
     "status_healthy": "健康",
     "status_warning": "警告",
     "status_error": "错误",
-    "status_info": "提示"
+    "status_info": "提示",
+    "directories_detail": "目录详情",
+    "exists": "存在",
+    "missing": "缺失",
+    "gpu_info": "GPU 信息",
+    "device": "设备",
+    "count": "数量",
+    "memory": "显存",
+    "status_label": "状态",
+    "available": "可用",
+    "using_cpu": "使用CPU",
+    "gpu_warning": "图像/视频生成速度将非常慢，建议使用GPU加速",
+    "celery_worker_info": "Celery Worker 信息",
+    "online": "在线",
+    "not_detected": "未检测到",
+    "worker_count": "Worker 数量",
+    "node_name": "节点名",
+    "detection_method": "探测方式",
+    "download_in_progress": "下载中...",
+    "redownload": "重新下载",
+    "model_incomplete": "模型文件不完整，建议重新下载"
   },
   "llm": {
     "title": "LLM 渠道管理",
@@ -386,7 +406,19 @@
     "not_generated": "未生成",
     "waiting_generation": "等待生成",
     "load_failed": "加载 IP 资产信息失败",
-    "detail_title": "IP 资产详情"
+    "detail_title": "IP 资产详情",
+    "generation_params": "生成参数配置",
+    "ip_adapter_scale": "IP-Adapter 权重",
+    "ip_adapter_scale_hint": "参考图质量好时建议 0.85-0.95，质量差时降低到 0.7-0.8",
+    "lora_weight": "LoRA 权重",
+    "steps": "采样步数",
+    "advanced_params": "高级参数",
+    "cfg_scale": "CFG 比例",
+    "resolution": "分辨率",
+    "resolutions": {
+      "512": "512x512 (标准)",
+      "768": "768x768 (高清)"
+    }
   },
   "training_monitor": {
     "title": "训练监控器",
@@ -520,7 +552,23 @@
     "model_badge_video": "视频",
     "model_badge_vision": "视觉",
     "model_badge_code": "代码",
-    "configure_models_hint": "在大模型管理中配置模型"
+    "configure_models_hint": "在大模型管理中配置模型",
+    "ip_adapter_scale": "IP-Adapter 权重",
+    "ip_adapter_scale_hint": "参考图质量好时建议 0.85-0.95，质量差时降低到 0.7-0.8",
+    "more_params": "更多参数",
+    "sampler": "采样器",
+    "scheduler": "调度器",
+    "samplers": {
+      "dpm_2m_karras": "DPM++ 2M Karras",
+      "euler_a": "Euler a",
+      "ddim": "DDIM",
+      "dpm_sde_karras": "DPM++ SDE Karras"
+    },
+    "schedulers": {
+      "karras": "Karras",
+      "normal": "Normal",
+      "exponential": "Exponential"
+    }
   },
   "tasks": {
     "title": "任务监控",

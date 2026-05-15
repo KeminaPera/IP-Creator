@@ -179,9 +179,9 @@
                     
                     <!-- Show integrity info for incomplete models -->
                     <div v-if="model.status === 'incomplete'" class="model-integrity-warning">
-                      <el-icon :size="14" style="color: #E6A23C;"><Warning /></el-icon>
+                      <el-icon :size="14" class="warning-icon"><Warning /></el-icon>
                       <span class="integrity-text">
-                        模型文件不完整，建议重新下载
+                        {{ $t('dashboard.model_incomplete') }}
                       </span>
                     </div>
                     
@@ -194,20 +194,20 @@
                       @click="downloadModel(model)"
                     >
                       <el-icon><Download /></el-icon>
-                      {{ model.status === 'incomplete' ? '重新下载' : $t('dashboard.model_download') }}
+                      {{ model.status === 'incomplete' ? $t('dashboard.redownload') : $t('dashboard.model_download') }}
                     </el-button>
                     
                     <!-- Downloading indicator -->
                     <div v-if="model.status === 'downloading'" class="model-downloading-indicator">
                       <el-icon class="is-loading" :size="16"><Refresh /></el-icon>
-                      <span>下载中...</span>
+                      <span>{{ $t('dashboard.download_in_progress') }}</span>
                     </div>
                   </div>
                   
                   <!-- Download progress section -->
                   <div v-if="activeDownloads.length > 0" class="download-progress-section">
-                    <el-divider style="margin: 12px 0;">
-                      <span style="color: #909399; font-size: 12px;">{{ $t('dashboard.download_progress') }}</span>
+                    <el-divider class="detail-divider">
+                      <span class="text-muted">{{ $t('dashboard.download_progress') }}</span>
                     </el-divider>
                     
                     <div v-for="download in activeDownloads" :key="download.taskId" class="download-progress-item">
@@ -232,15 +232,15 @@
                 
                 <!-- Show directory list with details -->
                 <div v-if="item.key === 'directories' && item.directoryList" class="detail-directory-list">
-                  <el-divider style="margin: 12px 0;">
-                    <span style="color: #909399; font-size: 12px;">目录详情</span>
+                  <el-divider class="detail-divider">
+                    <span class="text-muted">{{ $t('dashboard.directories_detail') }}</span>
                   </el-divider>
                   <div v-for="dir in item.directoryList" :key="dir.name" class="directory-item">
                     <div class="directory-header">
                       <el-icon :size="16"><FolderOpened /></el-icon>
                       <span class="directory-name">{{ dir.name.replace('_PATH', '') }}</span>
                       <el-tag :type="dir.exists ? 'success' : 'danger'" size="small">
-                        {{ dir.exists ? '存在' : '缺失' }}
+                        {{ dir.exists ? $t('dashboard.exists') : $t('dashboard.missing') }}
                       </el-tag>
                     </div>
                     <div class="directory-path">{{ dir.path }}</div>
@@ -250,57 +250,57 @@
                 
                 <!-- Show GPU detailed information -->
                 <div v-if="item.key === 'gpu' && item.gpuInfo" class="detail-gpu-info">
-                  <el-divider style="margin: 12px 0;">
-                    <span style="color: #909399; font-size: 12px;">GPU 信息</span>
+                  <el-divider class="detail-divider">
+                    <span class="text-muted">{{ $t('dashboard.gpu_info') }}</span>
                   </el-divider>
                   <div class="gpu-info-row">
-                    <span class="gpu-label">设备:</span>
-                    <span class="gpu-value">{{ item.gpuInfo.name || '无' }}</span>
+                    <span class="gpu-label">{{ $t('dashboard.device') }}:</span>
+                    <span class="gpu-value">{{ item.gpuInfo.name || $t('common.none') }}</span>
                   </div>
                   <div class="gpu-info-row">
-                    <span class="gpu-label">数量:</span>
+                    <span class="gpu-label">{{ $t('dashboard.count') }}:</span>
                     <span class="gpu-value">{{ item.gpuInfo.count || 0 }}</span>
                   </div>
                   <div class="gpu-info-row">
-                    <span class="gpu-label">显存:</span>
+                    <span class="gpu-label">{{ $t('dashboard.memory') }}:</span>
                     <span class="gpu-value">{{ item.gpuInfo.memory_gb || 0 }} GB</span>
                   </div>
                   <div class="gpu-info-row">
-                    <span class="gpu-label">状态:</span>
+                    <span class="gpu-label">{{ $t('dashboard.status_label') }}:</span>
                     <el-tag :type="item.gpuInfo.available ? 'success' : 'warning'" size="small">
-                      {{ item.gpuInfo.available ? '可用' : '使用CPU' }}
+                      {{ item.gpuInfo.available ? $t('dashboard.available') : $t('dashboard.using_cpu') }}
                     </el-tag>
                   </div>
                   <div v-if="!item.gpuInfo.available" class="gpu-warning">
                     <el-icon><Warning /></el-icon>
-                    <span>图像/视频生成速度将非常慢，建议使用GPU加速</span>
+                    <span>{{ $t('dashboard.gpu_warning') }}</span>
                   </div>
                 </div>
 
                 <!-- Show Celery Worker detailed information -->
                 <div v-if="item.key === 'celery_worker' && item.celeryInfo" class="detail-celery-info">
-                  <el-divider style="margin: 12px 0;">
-                    <span style="color: #909399; font-size: 12px;">Celery Worker 信息</span>
+                  <el-divider class="detail-divider">
+                    <span class="text-muted">{{ $t('dashboard.celery_worker_info') }}</span>
                   </el-divider>
                   <div class="gpu-info-row">
-                    <span class="gpu-label">状态:</span>
+                    <span class="gpu-label">{{ $t('dashboard.status_label') }}:</span>
                     <el-tag :type="item.celeryInfo.active ? 'success' : 'warning'" size="small">
-                      {{ item.celeryInfo.active ? '在线' : '未检测到' }}
+                      {{ item.celeryInfo.active ? $t('dashboard.online') : $t('dashboard.not_detected') }}
                     </el-tag>
                   </div>
                   <div class="gpu-info-row">
-                    <span class="gpu-label">Worker 数量:</span>
+                    <span class="gpu-label">{{ $t('dashboard.worker_count') }}:</span>
                     <span class="gpu-value">{{ item.celeryInfo.workers.length }}</span>
                   </div>
-                  <div v-if="item.celeryInfo.workers.length > 0" class="gpu-info-row" style="align-items:flex-start;">
-                    <span class="gpu-label">节点名:</span>
-                    <div class="gpu-value" style="display:flex;flex-direction:column;gap:4px;">
+                  <div v-if="item.celeryInfo.workers.length > 0" class="gpu-info-row gpu-info-row--align-top">
+                    <span class="gpu-label">{{ $t('dashboard.node_name') }}:</span>
+                    <div class="gpu-value gpu-value--column">
                       <el-tag
                         v-for="w in item.celeryInfo.workers"
                         :key="w"
                         size="small"
                         type="info"
-                        style="font-family:monospace;"
+                        class="node-tag"
                       >{{ w }}</el-tag>
                     </div>
                   </div>
