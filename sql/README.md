@@ -11,9 +11,22 @@ sql/
 ├── README.md                           # 本文件
 ├── schema_complete.sql                 # 完整数据库架构（最新版 v2.0）
 ├── seed_data.sql                       # 种子数据（LLM 供应商和模型）
+├── init_database.py                    # 数据库初始化脚本（建表+种子数据+管理员）
+├── init_admin.py                       # 管理员账号初始化脚本
+├── init_system_settings.py             # 系统设置初始化脚本
+├── export_database.py                  # 数据库导出工具
+├── seed_lora_data.py                   # LoRA测试数据种子脚本
+├── apply_migration_010.py              # 应用迁移010的脚本
 └── migrations/                         # 迁移脚本
     ├── 004_create_generated_contents.sql   # 内容库表创建
-    └── 005_add_performance_indexes.sql     # 性能索引优化
+    ├── 005_add_performance_indexes.sql     # 性能索引优化
+    ├── 006_create_training_datasets.sql    # 训练数据集表
+    ├── 007_add_quality_reports.py          # 质量报告表
+    ├── 007_create_test_images_and_checkpoints.sql
+    ├── 008_add_clip_consistency.py         # CLIP一致性字段
+    ├── 008_extend_lora_models.sql          # LoRA模型扩展
+    ├── 009_create_ip_feature_library.sql   # IP特征库
+    └── 010_add_training_diagnosis.sql      # 训练诊断字段
 ```
 
 ---
@@ -40,11 +53,11 @@ sql/
 
 **使用方法：**
 ```bash
-# 创建新数据库
+# 方式1：使用SQL脚本
 sqlite3 data/ip_creator.db < sql/schema_complete.sql
 
-# 或通过 Python 脚本
-python init_database.py
+# 方式2：使用Python脚本（推荐，包含完整初始化流程）
+python sql/init_database.py
 ```
 
 ---
@@ -64,11 +77,44 @@ python init_database.py
 ```bash
 # 在架构创建后执行
 sqlite3 data/ip_creator.db < sql/seed_data.sql
+
+# 或使用Python脚本一键初始化（推荐）
+python sql/init_database.py
 ```
 
 ---
 
-### **3. migrations/ 目录**
+### **3. Python 初始化脚本**
+
+#### **init_database.py** ⭐
+- **用途：** 完整的数据库初始化脚本
+- **执行步骤：**
+  1. 执行 `schema_complete.sql` 创建所有表
+  2. 执行 `seed_data.sql` 插入初始数据
+  3. 创建默认管理员账号（admin/admin123）
+- **使用方法：** `python sql/init_database.py`
+
+#### **init_admin.py**
+- **用途：** 单独创建或重置管理员账号
+- **使用方法：** `python sql/init_admin.py`
+
+#### **init_system_settings.py**
+- **用途：** 初始化系统设置（4个分类，14条设置）
+- **使用方法：** `python sql/init_system_settings.py`
+
+#### **export_database.py**
+- **用途：** 导出数据库为JSON格式
+- **使用方法：** `python sql/export_database.py`
+
+#### **seed_lora_data.py**
+- **用途：** 插入LoRA训练测试数据
+- **使用方法：** `python sql/seed_lora_data.py`
+
+#### **apply_migration_010.py**
+- **用途：** 应用数据库迁移010
+- **使用方法：** `python sql/apply_migration_010.py`
+
+### **4. migrations/ 目录**
 
 包含数据库迁移脚本，用于从旧版本升级到新版本。
 
@@ -88,25 +134,27 @@ sqlite3 data/ip_creator.db < sql/seed_data.sql
 
 ## 🛠️ 数据库初始化工具
 
-### **init_database.py**（根目录）
+### **推荐方式：一键初始化**
 
-完整的数据库初始化脚本，执行以下步骤：
-1. 执行 `schema_complete.sql` 创建所有表
-2. 执行 `seed_data.sql` 插入初始数据
-3. 创建默认管理员账号（admin/admin123）
-
-**使用方法：**
 ```bash
-python init_database.py
+# 完整的数据库初始化（建表+种子数据+管理员）
+python sql/init_database.py
 ```
 
-### **export_database.py**（根目录）
+### **分步初始化**
 
-数据库导出工具，支持导出为 JSON 格式。
-
-**使用方法：**
 ```bash
-python export_database.py
+# 1. 创建表结构
+sqlite3 data/ip_creator.db < sql/schema_complete.sql
+
+# 2. 插入种子数据
+sqlite3 data/ip_creator.db < sql/seed_data.sql
+
+# 3. 创建管理员
+python sql/init_admin.py
+
+# 4. 初始化系统设置
+python sql/init_system_settings.py
 ```
 
 ---

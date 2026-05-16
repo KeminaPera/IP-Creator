@@ -9,9 +9,14 @@ from pathlib import Path
 import os
 from datetime import datetime
 
+import cv2
+import numpy as np
+
 from sqlalchemy import select, func, and_
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.config.settings import settings
+from app.config.database import async_session_factory
 from app.models.training_dataset import TrainingDataset
 from app.models.dataset_image import DatasetImage
 from app.models.ip_asset import IPAsset
@@ -21,11 +26,59 @@ from app.schemas.training_dataset import (
     DatasetImageCreate,
     DatasetValidationReport,
 )
-from app.config.settings import settings
-from app.utils.logger import logger
-from app.config.database import async_session_factory
 from app.core.exceptions import NotFoundException, BadRequestException
 from app.core.data_augmentation import data_augmentation
+from app.utils.logger import logger
+
+# ============================================================================
+# Constants
+# ============================================================================
+
+# Quality evaluation weights (can be overridden by settings)
+QUALITY_WEIGHTS = settings.DATASET_QUALITY_WEIGHTS if hasattr(settings, 'DATASET_QUALITY_WEIGHTS') else {
+    "sharpness": 0.40,
+    "contrast": 0.30,
+    "brightness": 0.15,
+    "resolution": 0.15,
+}
+
+# Health score weights
+HEALTH_SCORE_WEIGHTS = {
+    "quantity": 0.25,
+    "quality": 0.35,
+    "angle": 0.25,
+    "integrity": 0.15,
+}
+
+# Health score grade thresholds
+HEALTH_SCORE_GRADES = [
+    (90, "S"),
+    (80, "A"),
+    (70, "B"),
+    (60, "C"),
+    (50, "D"),
+]
+DEFAULT_HEALTH_GRADE = "F"
+
+# Dataset status thresholds
+STATUS_READY_THRESHOLD = 60
+STATUS_PENDING_THRESHOLD = 40
+
+# Quantity score thresholds
+QUANTITY_THRESHOLDS = [
+    (30, 100),
+    (20, 80),
+    (15, 60),
+    (10, 40),
+]
+QUANTITY_MIN_SCORE_MULTIPLIER = 4
+
+# Required angles for coverage
+REQUIRED_ANGLES = ["front", "side", "back"]
+MIN_ANGLE_COVERAGE = 3
+
+# Integrity score penalty per issue
+INTEGRITY_PENALTY_PER_ISSUE = 20
 
 
 class DatasetManager:
@@ -365,6 +418,299 @@ class DatasetManager:
         logger.info(f"Calculated stats for dataset {dataset_id}: {stats}")
         return stats
     
+    async def evaluate_image_quality(self, image_path: str) -> float:
+        """
+        Evaluate image quality score (0-100).
+        
+        Evaluates based on:
+        - Sharpness (Laplacian variance) - 40%
+        - Contrast (standard deviation) - 30%
+        - Brightness (mean pixel value) - 15%
+        - Resolution (megapixels) - 15%
+        
+        Args:
+            image_path: Path to image file
+            
+        Returns:
+            Quality score (0-100)
+        """
+        try:
+            # Read image
+            image = cv2.imread(image_path)
+            if image is None:
+                logger.warning(f"Failed to read image: {image_path}")
+                return 0.0
+            
+            # Convert to grayscale
+            gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+            
+            # 1. Sharpness score (Laplacian variance) - Weight: 40%
+            # For cartoon/IP images, lower threshold is acceptable
+            laplacian_var = cv2.Laplacian(gray, cv2.CV_64F).var()
+            # Adjusted: /3 instead of /5 for more reasonable scoring
+            sharpness_score = min(100, laplacian_var / 3)
+            
+            # 2. Contrast score (standard deviation) - Weight: 30%
+            # Higher contrast is better for training
+            contrast = np.std(gray)
+            # Adjusted: /1.2 instead of /1.5 for better scaling
+            contrast_score = min(100, contrast / 1.2)
+            
+            # 3. Brightness score (mean pixel value) - Weight: 15%
+            # Cartoon images can have wider brightness range
+            brightness = np.mean(gray)
+            # More tolerant: 60-200 range is acceptable
+            if 60 <= brightness <= 200:
+                brightness_score = 100 - abs(brightness - 130) / 1.5
+            else:
+                brightness_score = max(0, 50 - abs(brightness - 130) / 3)
+            
+            # 4. Resolution score (based on megapixels) - Weight: 15%
+            # Lower weight since resolution is less critical for training
+            height, width = gray.shape
+            megapixels = (height * width) / 1_000_000
+            # Adjusted: 0.1MP already gets 50 points, 0.2MP+ gets 100
+            resolution_score = min(100, megapixels * 500)
+            
+            # Weighted average
+            quality_score = (
+                sharpness_score * QUALITY_WEIGHTS["sharpness"] +
+                contrast_score * QUALITY_WEIGHTS["contrast"] +
+                brightness_score * QUALITY_WEIGHTS["brightness"] +
+                resolution_score * QUALITY_WEIGHTS["resolution"]
+            )
+            
+            return round(max(0, min(100, quality_score)), 2)
+            
+        except Exception as e:
+            logger.error(f"Failed to evaluate image quality for {image_path}: {e}")
+            return 0.0
+    
+    async def batch_evaluate_quality(
+        self,
+        dataset_id: int,
+        db: AsyncSession,
+    ) -> Dict[str, Any]:
+        """
+        Batch evaluate quality for all images in dataset.
+        
+        Args:
+            dataset_id: Dataset ID
+            db: Database session
+            
+        Returns:
+            Evaluation summary
+        """
+        # Get all images
+        result = await db.execute(
+            select(DatasetImage).where(DatasetImage.dataset_id == dataset_id)
+        )
+        images = result.scalars().all()
+        
+        evaluated = 0
+        failed = 0
+        total_score = 0.0
+        
+        for image in images:
+            try:
+                if Path(image.file_path).exists():
+                    quality_score = await self.evaluate_image_quality(image.file_path)
+                    image.quality_score = quality_score
+                    evaluated += 1
+                    total_score += quality_score
+                else:
+                    logger.warning(f"Image file not found: {image.file_path}")
+                    failed += 1
+            except Exception as e:
+                logger.error(f"Failed to evaluate image {image.id}: {e}")
+                failed += 1
+        
+        try:
+            await db.commit()
+        except Exception as e:
+            await db.rollback()
+            logger.error(f"Failed to commit quality scores: {e}")
+            raise
+        
+        avg_score = total_score / evaluated if evaluated > 0 else 0.0
+        
+        summary = {
+            "evaluated": evaluated,
+            "failed": failed,
+            "total": len(images),
+            "average_quality": round(avg_score, 2),
+        }
+        
+        # Auto-update dataset status if quality is good
+        if avg_score >= STATUS_READY_THRESHOLD:
+            from sqlalchemy import update
+            await db.execute(
+                update(TrainingDataset)
+                .where(TrainingDataset.id == dataset_id)
+                .values(status="ready")
+            )
+            await db.commit()
+            logger.info(f"Dataset {dataset_id} status updated to 'ready' after quality evaluation")
+        
+        logger.info(f"Batch quality evaluation for dataset {dataset_id}: {summary}")
+        return summary
+    
+    async def batch_update_annotations(
+        self,
+        dataset_id: int,
+        db: AsyncSession,
+        image_ids: List[int],
+        updates: Dict[str, Any]
+    ) -> Dict[str, Any]:
+        """
+        Batch update annotations for multiple images.
+        
+        Args:
+            dataset_id: Dataset ID
+            db: Database session
+            image_ids: List of image IDs to update
+            updates: Dict of fields to update (angle, expression, pose, background)
+            
+        Returns:
+            Update summary
+        """
+        # Validate batch size
+        MAX_BATCH_SIZE = 100
+        if len(image_ids) > MAX_BATCH_SIZE:
+            raise BadRequestException(
+                message=f"Batch size too large: {len(image_ids)} images. Maximum allowed: {MAX_BATCH_SIZE}",
+                details={"max_batch_size": MAX_BATCH_SIZE}
+            )
+        
+        if not image_ids:
+            raise BadRequestException(
+                message="No image IDs provided",
+                details={}
+            )
+        
+        # Get images
+        result = await db.execute(
+            select(DatasetImage).where(
+                and_(
+                    DatasetImage.id.in_(image_ids),
+                    DatasetImage.dataset_id == dataset_id
+                )
+            )
+        )
+        images = result.scalars().all()
+        
+        updated_count = 0
+        for image in images:
+            if 'angle' in updates:
+                image.angle = updates['angle']
+            if 'expression' in updates:
+                image.expression = updates['expression']
+            if 'pose' in updates:
+                image.pose = updates['pose']
+            if 'background' in updates:
+                image.background = updates['background']
+            updated_count += 1
+        
+        try:
+            await db.commit()
+        except Exception as e:
+            await db.rollback()
+            logger.error(f"Failed to commit batch annotation updates: {e}")
+            raise
+        
+        summary = {
+            "updated_count": updated_count,
+            "total_requested": len(image_ids),
+        }
+        
+        logger.info(f"Batch annotation update for dataset {dataset_id}: {summary}")
+        return summary
+    
+    async def get_quality_distribution(
+        self,
+        dataset_id: int,
+        db: AsyncSession
+    ) -> Dict[str, Any]:
+        """
+        Get quality score distribution for dataset images.
+        
+        Returns:
+            Distribution data for histogram
+        """
+        # Get all selected images with quality scores
+        result = await db.execute(
+            select(DatasetImage.quality_score).where(
+                and_(
+                    DatasetImage.dataset_id == dataset_id,
+                    DatasetImage.is_selected == True,
+                    DatasetImage.quality_score.isnot(None)
+                )
+            )
+        )
+        scores = [row[0] for row in result.all()]
+        
+        if not scores:
+            return {
+                "distribution": {},
+                "statistics": {
+                    "min": 0,
+                    "max": 0,
+                    "avg": 0,
+                    "median": 0,
+                    "count": 0
+                }
+            }
+        
+        # Calculate distribution (bins of 10 points)
+        distribution = {
+            "0-10": 0,
+            "10-20": 0,
+            "20-30": 0,
+            "30-40": 0,
+            "40-50": 0,
+            "50-60": 0,
+            "60-70": 0,
+            "70-80": 0,
+            "80-90": 0,
+            "90-100": 0
+        }
+        
+        for score in scores:
+            if score < 10:
+                distribution["0-10"] += 1
+            elif score < 20:
+                distribution["10-20"] += 1
+            elif score < 30:
+                distribution["20-30"] += 1
+            elif score < 40:
+                distribution["30-40"] += 1
+            elif score < 50:
+                distribution["40-50"] += 1
+            elif score < 60:
+                distribution["50-60"] += 1
+            elif score < 70:
+                distribution["60-70"] += 1
+            elif score < 80:
+                distribution["70-80"] += 1
+            elif score < 90:
+                distribution["80-90"] += 1
+            else:
+                distribution["90-100"] += 1
+        
+        # Calculate statistics
+        statistics = {
+            "min": round(float(np.min(scores)), 2),
+            "max": round(float(np.max(scores)), 2),
+            "avg": round(float(np.mean(scores)), 2),
+            "median": round(float(np.median(scores)), 2),
+            "count": len(scores)
+        }
+        
+        return {
+            "distribution": distribution,
+            "statistics": statistics
+        }
+    
     async def validate_dataset(
         self,
         dataset_id: int,
@@ -421,6 +767,10 @@ class DatasetManager:
         
         quality_score = max(0, quality_score)
         
+        # Calculate health score (comprehensive rating)
+        health_score = self._calculate_health_score(stats, coverage, issues)
+        health_grade = self._get_health_grade(health_score)
+        
         report = DatasetValidationReport(
             total_images=stats["total_images"],
             selected_images=stats["selected_images"],
@@ -429,12 +779,129 @@ class DatasetManager:
             angle_coverage=coverage,
             diversity_score=round(len(coverage) * 20, 2),  # Simple diversity metric
             consistency_score=0.0,  # Will be calculated later with CLIP
+            health_score=round(health_score, 2),
+            health_grade=health_grade,
             issues=issues,
             recommendations=recommendations,
         )
         
         logger.info(f"Dataset validation complete for {dataset_id}: score={quality_score}")
+        
+        # Auto-update dataset status based on validation result
+        await self._update_dataset_status_after_validation(dataset_id, db, report)
+        
         return report
+    
+    async def _update_dataset_status_after_validation(
+        self,
+        dataset_id: int,
+        db: AsyncSession,
+        report: DatasetValidationReport
+    ) -> None:
+        """
+        Update dataset status based on validation results.
+        
+        Rules:
+        - quality_score >= 60 and no critical issues -> "ready"
+        - quality_score < 60 or has issues -> "pending"
+        """
+        from sqlalchemy import update
+        
+        # Determine new status using unified method
+        new_status = self._determine_dataset_status(report.quality_score, len(report.issues))
+        
+        # Update status
+        await db.execute(
+            update(TrainingDataset)
+            .where(TrainingDataset.id == dataset_id)
+            .values(
+                status=new_status,
+                quality_score=report.quality_score,
+                validation_report={
+                    "quality_score": report.quality_score,
+                    "angle_coverage": report.angle_coverage,
+                    "diversity_score": report.diversity_score,
+                    "issues": report.issues,
+                    "recommendations": report.recommendations,
+                }
+            )
+        )
+        
+        await db.commit()
+        logger.info(f"Dataset {dataset_id} status updated to: {new_status}")
+    
+    def _determine_dataset_status(
+        self,
+        quality_score: float,
+        issue_count: int = 0
+    ) -> str:
+        """
+        Determine dataset status based on quality metrics.
+        
+        Args:
+            quality_score: Quality score (0-100)
+            issue_count: Number of issues found
+            
+        Returns:
+            Status string: "ready" or "pending"
+        """
+        if quality_score >= STATUS_READY_THRESHOLD and issue_count == 0:
+            return "ready"
+        else:
+            return "pending"
+    
+    def _calculate_health_score(
+        self,
+        stats: Dict[str, Any],
+        coverage: Dict[str, int],
+        issues: List[str]
+    ) -> float:
+        """
+        Calculate comprehensive health score (0-100).
+        
+        Components:
+        - Image quantity (25%): Based on total images
+        - Image quality (35%): Average quality score
+        - Angle coverage (25%): Diversity of angles
+        - Data integrity (15%): No critical issues
+        """
+        # 1. Image quantity score (25%)
+        total = stats["total_images"]
+        quantity_score = 0
+        for threshold, score in QUANTITY_THRESHOLDS:
+            if total >= threshold:
+                quantity_score = score
+                break
+        else:
+            quantity_score = max(0, total * QUANTITY_MIN_SCORE_MULTIPLIER)
+        
+        # 2. Image quality score (35%)
+        quality_score = stats["avg_quality_score"]
+        
+        # 3. Angle coverage score (25%)
+        covered_angles = sum(1 for angle in REQUIRED_ANGLES if coverage.get(angle, 0) >= MIN_ANGLE_COVERAGE)
+        angle_score = (covered_angles / len(REQUIRED_ANGLES)) * 100
+        
+        # 4. Data integrity score (15%)
+        critical_issues = len(issues)
+        integrity_score = max(0, 100 - (critical_issues * INTEGRITY_PENALTY_PER_ISSUE))
+        
+        # Weighted average
+        health_score = (
+            quantity_score * HEALTH_SCORE_WEIGHTS["quantity"] +
+            quality_score * HEALTH_SCORE_WEIGHTS["quality"] +
+            angle_score * HEALTH_SCORE_WEIGHTS["angle"] +
+            integrity_score * HEALTH_SCORE_WEIGHTS["integrity"]
+        )
+        
+        return round(max(0, min(100, health_score)), 2)
+    
+    def _get_health_grade(self, health_score: float) -> str:
+        """Convert health score to letter grade."""
+        for threshold, grade in HEALTH_SCORE_GRADES:
+            if health_score >= threshold:
+                return grade
+        return DEFAULT_HEALTH_GRADE
     
     async def augment_dataset(
         self,
@@ -509,6 +976,9 @@ class DatasetManager:
                 continue
             
             # Create augmented image record
+            # Inherit 90% of parent's quality score (augmentation may slightly reduce quality)
+            inherited_quality = parent_image.quality_score * 0.9 if parent_image.quality_score else None
+            
             augmented_image = DatasetImage(
                 dataset_id=dataset_id,
                 file_path=aug_result['output_path'],
@@ -519,7 +989,7 @@ class DatasetManager:
                 expression=parent_image.expression,
                 pose=parent_image.pose,
                 background=parent_image.background,
-                quality_score=parent_image.quality_score,  # Inherit quality score
+                quality_score=round(inherited_quality, 2) if inherited_quality else None,
                 is_augmented=True,
                 parent_image_id=parent_image.id,
             )
@@ -530,7 +1000,15 @@ class DatasetManager:
         # Update dataset statistics
         dataset.augmented_count = added_count
         
-        await db.commit()
+        # Reset status to pending since dataset needs re-validation after augmentation
+        dataset.status = "pending"
+        
+        try:
+            await db.commit()
+        except Exception as e:
+            await db.rollback()
+            logger.error(f"Failed to commit augmentation results: {e}")
+            raise
         
         # Generate augmentation report
         report = data_augmentation.get_augmentation_report(augmentation_results)

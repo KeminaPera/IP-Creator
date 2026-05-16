@@ -235,9 +235,9 @@ const handleDelete = async (view) => {
 }
 
 // 工具函数
-const getImageUrl = (path) => {
-  return path ? `${import.meta.env.VITE_API_BASE_URL}${path}` : ''
-}
+import { getImageUrl } from '@/utils/image'
+
+// 工具函数已移至 utils/image.js
 
 const getViewTypeLabel = (type) => {
   const found = viewTypes.find(t => t.value === type)

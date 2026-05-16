@@ -303,6 +303,7 @@ import { useDeleteConfirm } from '../composables/useDeleteConfirm'
 import { useDebounce } from '../composables/useDebounce'
 import { useAsyncData } from '@/composables/useAsyncData'
 import { logger } from '../utils/logger'
+import { getImageUrl } from '../utils/image'
 import DataTable from '../components/common/DataTable.vue'
 import ImageUploader from '../components/common/ImageUploader.vue'
 import CRUDDialog from '../components/common/CRUDDialog.vue'
@@ -747,33 +748,8 @@ async function pollTaskStatus(taskIds) {
   poll()
 }
 
-function getImageUrl(filePath) {
-  if (!filePath) return ''
-  
-  try {
-    let cleanPath = filePath
-    
-    if (filePath.startsWith('http://') || filePath.startsWith('https://')) {
-      return filePath
-    }
-    
-    if (cleanPath.startsWith('/')) {
-      cleanPath = cleanPath.substring(1)
-    }
-    
-    const parts = cleanPath.split('/').filter(p => p.length > 0)
-    if (parts.length >= 2) {
-      return `/api/v1/generate/files/${parts[parts.length - 2]}/${parts[parts.length - 1]}`
-    } else if (parts.length === 1) {
-      return `/api/v1/generate/files/${parts[0]}`
-    }
-    
-    return ''
-  } catch (error) {
-    logger.error('Failed to get image URL:', error)
-    return ''
-  }
-}
+// 使用统一的 getImageUrl 工具函数
+// 已移至 utils/image.js
 
 // useAsyncData auto-loads on mount, only clean up polling timer on unmount
 

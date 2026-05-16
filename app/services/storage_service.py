@@ -171,10 +171,46 @@ class StorageService:
             raise
     
     def get_file_path(self, directory: str, filename: str) -> Optional[Path]:
-        """Get the full path of a stored file."""
-        file_path = self.storage_path / directory / filename
+        """
+        Get the full path of a stored file.
+        
+        Supports nested directories and various path formats:
+        - Simple: directory/filename
+        - Nested: images/ip_1/xxx.png
+        - Absolute paths (backward compatibility)
+        
+        Args:
+            directory: Directory name or path prefix
+            filename: Filename or relative path
+            
+        Returns:
+            Full Path if file exists, None otherwise
+        """
+        # Handle absolute paths (backward compatibility)
+        if Path(filename).is_absolute():
+            file_path = Path(filename)
+            if file_path.exists():
+                return file_path
+            return None
+        
+        # Handle nested paths in filename (e.g., "images/ip_1/xxx.png")
+        if '/' in filename or '\\' in filename:
+            # Filename contains the full relative path
+            file_path = self.storage_path / filename
+        else:
+            # Simple case: directory + filename
+            file_path = self.storage_path / directory / filename
+        
+        # Validate path safety
+        try:
+            self._validate_path(file_path, self.storage_path)
+        except ValueError:
+            logger.warning(f"Path validation failed: {file_path}")
+            return None
+        
         if file_path.exists():
             return file_path
+        
         return None
     
     def delete_file(self, file_path: str) -> bool:

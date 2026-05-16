@@ -91,6 +91,11 @@ if vue_dist_path.exists():
     if providers_path.exists():
         app.mount("/providers", StaticFiles(directory=str(providers_path)), name="providers")
 
+# Mount dataset images (for development)
+datasets_path = Path(settings.STORAGE_PATH) / "datasets"
+if datasets_path.exists():
+    app.mount("/datasets", StaticFiles(directory=str(datasets_path)), name="datasets")
+
 # CORS middleware configuration
 app.add_middleware(
     CORSMiddleware,

@@ -136,6 +136,7 @@ import MultiViewManager from '@/components/ip/MultiViewManager.vue'
 import FeatureLibrary from '@/components/ip/FeatureLibrary.vue'
 import { getIPAsset } from '@/api/ip'
 import { getMultiViews, getFeatures } from '@/api/ip-features'
+import { getImageUrl } from '@/utils/image'
 
 const route = useRoute()
 const ipId = computed(() => parseInt(route.params.id))
@@ -200,9 +201,7 @@ const getCategoryLabel = (category) => {
   return map[category] || category
 }
 
-const getImageUrl = (path) => {
-  return path ? `${import.meta.env.VITE_API_BASE_URL}${path}` : ''
-}
+// 使用统一的 getImageUrl 工具函数
 
 onMounted(() => {
   loadIPAsset()

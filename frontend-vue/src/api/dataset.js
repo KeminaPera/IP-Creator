@@ -41,8 +41,16 @@ export function validateDataset(id, data = {}) {
   return request.post(`/datasets/${id}/validate`, data)
 }
 
+export function evaluateDatasetQuality(id) {
+  return request.post(`/datasets/${id}/evaluate-quality`)
+}
+
 export function getDatasetStats(id) {
   return request.get(`/datasets/${id}/stats`)
+}
+
+export function getQualityDistribution(id) {
+  return request.get(`/datasets/${id}/quality-distribution`)
 }
 
 // Augmentation & Versioning
@@ -57,6 +65,10 @@ export function createDatasetVersion(id, params = {}) {
 // Batch Annotation & Caption Generation
 export function batchAnnotateImages(datasetId, annotations) {
   return request.post(`/datasets/${datasetId}/batch-annotate`, annotations)
+}
+
+export function filterLowQualityImages(datasetId, data) {
+  return request.post(`/datasets/${datasetId}/filter-quality`, data)
 }
 
 export function generateCaptions(datasetId, triggerWord, useAi = false) {

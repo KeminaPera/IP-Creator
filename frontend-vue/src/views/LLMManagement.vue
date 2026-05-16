@@ -25,7 +25,7 @@
       <el-col :span="6">
         <StatCard
           :label="$t('llm.healthy')"
-          :value="channels.filter(c => c.health_status === 'healthy').length"
+          :value="channels.filter(c => c.is_active && c.health_status === 'healthy').length"
           type="cyan"
         >
           <template #icon><CircleCheck /></template>
@@ -492,10 +492,10 @@ async function handleSubmit(formData) {
       const { id, ...data } = formData
       if (!data.api_key) delete data.api_key
       await updateChannel(id, data)
-      ElMessage.success(t('llm.update_success'))
+      ElMessage.success(t('common.update_success'))
     } else {
       await registerChannel(formData)
-      ElMessage.success(t('llm.add_success'))
+      ElMessage.success(t('common.add_success'))
     }
     dialogVisible.value = false
     loadChannels()
@@ -509,7 +509,7 @@ async function handleSubmit(formData) {
 async function toggleActive(row) {
   try {
     await updateChannel(row.id, { is_active: row.is_active })
-    ElMessage.success(row.is_active ? t('llm.enable_success') : t('llm.disable_success'))
+    ElMessage.success(row.is_active ? t('common.enable_success') : t('common.disable_success'))
   } catch (err) {
     row.is_active = !row.is_active
     ElMessage.error('Operation failed')

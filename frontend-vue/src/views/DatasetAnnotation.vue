@@ -163,6 +163,7 @@ import { ElMessage } from 'element-plus'
 import { ArrowLeft, Edit, Document, Picture } from '@element-plus/icons-vue'
 import PageToolbar from '@/components/common/PageToolbar.vue'
 import { getDatasetList, getDatasetDetail, batchAnnotateImages, generateCaptions } from '@/api/dataset'
+import { getImageUrl } from '@/utils/image'
 
 const { t } = useI18n()
 
@@ -332,10 +333,6 @@ const getPoseLabel = (pose) => {
   if (!pose || pose === 'unknown') return t('dataset.annotation.unknown')
   const key = `dataset.annotation.${pose}`
   return t(key) || pose
-}
-
-const getImageUrl = (path) => {
-  return path ? `${import.meta.env.VITE_API_BASE_URL}${path}` : ''
 }
 
 onMounted(() => {

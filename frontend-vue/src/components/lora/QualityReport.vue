@@ -29,7 +29,7 @@
         <template #header>
           <div class="card-header">
             <span>{{ $t('lora.quality.detailed_scores') }}</span>
-            <el-tag size="small" type="info">5 维度评分</el-tag>
+            <el-tag size="small" type="info">{{ $t('lora.quality.dimension_count') }}</el-tag>
           </div>
         </template>
 
@@ -112,7 +112,13 @@
           >
             <div class="test-image-card">
               <div class="image-placeholder">
-                <el-icon :size="48"><Picture /></el-icon>
+                <img 
+                  v-if="img.image_path" 
+                  :src="getImageUrl(img.image_path)" 
+                  :alt="img.scenario"
+                  @error="handleImageError"
+                />
+                <el-icon v-else :size="48"><Picture /></el-icon>
                 <p>{{ img.scenario }}</p>
               </div>
               <div class="image-info">
@@ -147,7 +153,11 @@
     </div>
 
     <div v-else class="empty-container">
-      <el-empty :description="$t('lora.quality.no_report')" />
+      <el-empty :description="$t('lora.quality.no_report')">
+        <el-button type="primary" @click="handleFirstAssess" :loading="assessing">
+          {{ $t('lora.quality.start_assess') }}
+        </el-button>
+      </el-empty>
     </div>
 
     <template #footer>
@@ -156,6 +166,7 @@
         v-if="report"
         type="primary"
         @click="handleReassess"
+        :loading="loading"
       >
         {{ $t('lora.quality.reassess') }}
       </el-button>
@@ -171,6 +182,7 @@ import { Picture } from '@element-plus/icons-vue'
 import { getQualityReport, assessQuality } from '../../api/lora'
 import { formatTime } from '../../utils/time'
 import { getGradeDescription } from '../../utils/grade'
+import { getImageUrl } from '../../utils/image'
 
 const { t } = useI18n()
 
@@ -185,6 +197,7 @@ const emit = defineEmits(['update', 'close'])
 
 const visible = ref(false)
 const loading = ref(false)
+const assessing = ref(false)  // 评估中状态
 const report = ref(null)
 
 // 等级样式
@@ -196,12 +209,21 @@ const gradeClass = computed(() => {
 
 // 打开对话框
 async function open() {
+  if (!props.loraId) {
+    ElMessage.error(t('lora.invalid_model_id'))
+    return
+  }
   visible.value = true
   await loadReport()
 }
 
 // 加载质量报告
 async function loadReport() {
+  if (!props.loraId) {
+    ElMessage.error(t('lora.invalid_model_id'))
+    return
+  }
+  
   loading.value = true
   try {
     const { data } = await getQualityReport(props.loraId)
@@ -220,6 +242,11 @@ async function loadReport() {
 
 // 重新评估
 async function handleReassess() {
+  if (!props.loraId) {
+    ElMessage.error(t('lora.invalid_model_id'))
+    return
+  }
+  
   try {
     loading.value = true
     const { data } = await assessQuality(props.loraId, { num_test_images: 5 })
@@ -233,6 +260,29 @@ async function handleReassess() {
     ElMessage.error(t('lora.quality.assess_failed'))
   } finally {
     loading.value = false
+  }
+}
+
+// 首次评估
+async function handleFirstAssess() {
+  if (!props.loraId) {
+    ElMessage.error(t('lora.invalid_model_id'))
+    return
+  }
+  
+  assessing.value = true
+  try {
+    const { data } = await assessQuality(props.loraId, { num_test_images: 5 })
+    ElMessage.success(t('lora.quality.assess_success', {
+      score: data.data.overall_score,
+      grade: data.data.grade,
+    }))
+    await loadReport()
+    emit('update')
+  } catch (err) {
+    ElMessage.error(t('lora.quality.assess_failed'))
+  } finally {
+    assessing.value = false
   }
 }
 
@@ -260,6 +310,13 @@ function getGradeText(grade) {
 function truncateText(text, maxLength) {
   if (!text) return ''
   return text.length > maxLength ? text.substring(0, maxLength) + '...' : text
+}
+
+// 图片加载错误处理
+function handleImageError(event) {
+  console.warn('Failed to load image:', event.target.src)
+  // 隐藏img，显示icon
+  event.target.style.display = 'none'
 }
 
 // 暴露方法
@@ -383,12 +440,27 @@ defineExpose({
   align-items: center;
   justify-content: center;
   color: #909399;
+  position: relative;
+  overflow: hidden;
+}
+
+.image-placeholder img {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
 }
 
 .image-placeholder p {
   margin-top: 8px;
   font-size: 14px;
   text-transform: capitalize;
+  z-index: 1;
+  background: rgba(255, 255, 255, 0.8);
+  padding: 4px 12px;
+  border-radius: 4px;
 }
 
 .image-info {

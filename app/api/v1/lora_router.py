@@ -48,9 +48,16 @@ async def create_lora_model(
     Create a new LoRA model.
     """
     try:
+        from pathlib import Path
+        from app.config.settings import settings
+        
+        # Generate default file path
+        output_path = Path(settings.LORA_MODELS_PATH) / f"{lora_data.get('name')}.safetensors"
+        
         # Create LoRA model
         new_model = LoRAModel(
             name=lora_data.get("name"),
+            file_path=str(output_path),
             base_model=lora_data.get("base_model", "sd1.5"),
             description=lora_data.get("description", ""),
             status="not_trained",
@@ -186,7 +193,7 @@ async def get_training_presets(
         presets = list_presets()
         
         return success_response(
-            data={"presets": [p.model_dump() for p in presets]},
+            data=[p.model_dump() for p in presets],
             message="Training presets retrieved successfully"
         )
     except Exception as e:
@@ -611,6 +618,9 @@ async def get_quality_report(
     """
     try:
         from app.models.quality_report import QualityReport
+        import traceback
+        
+        logger.info(f"Getting quality report for LoRA model {lora_id}")
         
         # Get latest report
         result = await db.execute(
@@ -622,7 +632,10 @@ async def get_quality_report(
         report = result.scalar_one_or_none()
         
         if not report:
+            logger.info(f"No quality report found for LoRA model {lora_id}")
             raise NotFoundException(resource="Quality report", identifier=f"for LoRA model {lora_id}")
+        
+        logger.info(f"Quality report found: score={report.overall_score}, grade={report.grade}")
         
         return success_response(
             data={
@@ -646,4 +659,5 @@ async def get_quality_report(
         raise
     except Exception as e:
         logger.error(f"Error getting quality report: {e}")
-        raise AppException(status_code=500, error="ServerError", message="Failed to get quality report")
+        logger.error(f"Traceback: {traceback.format_exc()}")
+        raise AppException(status_code=500, error="ServerError", message=f"Failed to get quality report: {str(e)}")

@@ -38,6 +38,15 @@ env/
 # Data and logs
 data/*.db
 data/*.sqlite
+data/ip_assets/
+data/test_images/
+data/datasets/
+data/lora_models/
+data/models/
+data/stories/
+data/training_datasets/
+data/videos/
+data/exports/
 logs/
 *.log
 

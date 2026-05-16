@@ -71,6 +71,17 @@ class Settings(BaseSettings):
     # "real" - Real Kohya training (requires GPU, produces actual models)
     LORA_TRAINING_MODE: str = "mock"
     
+    # Dataset Quality Assessment Settings
+    DATASET_QUALITY_THRESHOLD: float = 30.0  # Default quality score threshold
+    DATASET_MIN_IMAGES: int = 15  # Minimum recommended images
+    DATASET_MAX_IMAGES: int = 30  # Maximum recommended images
+    DATASET_QUALITY_WEIGHTS: dict = Field(default_factory=lambda: {
+        "brightness": 0.25,
+        "contrast": 0.25,
+        "sharpness": 0.25,
+        "colorfulness": 0.25
+    })
+    
     class Config:
         """Pydantic configuration for environment variable loading."""
         env_file = ".env"

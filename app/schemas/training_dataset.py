@@ -122,6 +122,8 @@ class DatasetValidationReport(BaseModel):
     angle_coverage: Dict[str, int]
     diversity_score: float
     consistency_score: float
+    health_score: float = 0.0  # Comprehensive health score (0-100)
+    health_grade: str = "N/A"  # S/A/B/C/D/F
     issues: List[str] = []
     recommendations: List[str] = []
 

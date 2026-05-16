@@ -266,16 +266,28 @@ async function handleDelete(row) {
 }
 
 function showTrainingWizard(row) {
+  if (!row.id) {
+    ElMessage.error(t('lora.invalid_model_id'))
+    return
+  }
   selectedLoraId.value = row.id
   wizardVisible.value = true
 }
 
 function showTrainingMonitor(row) {
+  if (!row.id) {
+    ElMessage.error(t('lora.invalid_model_id'))
+    return
+  }
   selectedLoraId.value = row.id
   monitorVisible.value = true
 }
 
 function showQualityReport(row) {
+  if (!row.id) {
+    ElMessage.error(t('lora.invalid_model_id'))
+    return
+  }
   selectedLoraId.value = row.id
   qualityReportRef.value?.open()
 }

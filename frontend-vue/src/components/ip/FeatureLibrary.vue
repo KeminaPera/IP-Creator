@@ -330,9 +330,9 @@ const getAngleLabel = (angle) => {
   return map[angle] || angle
 }
 
-const getImageUrl = (path) => {
-  return path ? `${import.meta.env.VITE_API_BASE_URL}${path}` : ''
-}
+import { getImageUrl } from '@/utils/image'
+
+// 工具函数已移至 utils/image.js
 
 // 监听 IP ID 变化
 watch(() => props.ipId, () => {

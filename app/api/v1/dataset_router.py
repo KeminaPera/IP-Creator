@@ -7,11 +7,13 @@ dataset CRUD, image uploads, and quality validation.
 from fastapi import APIRouter, Depends, UploadFile, File, Form
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
-from typing import List, Optional
+from pydantic import BaseModel, Field
+from typing import List, Optional, Literal
 
 from app.config.database import get_db_session
 from app.models.training_dataset import TrainingDataset
 from app.models.dataset_image import DatasetImage
+from app.models.ip_asset import IPAsset
 from app.schemas.training_dataset import (
     TrainingDatasetCreate,
     TrainingDatasetUpdate,
@@ -42,6 +44,19 @@ from app.services.dataset_converter import DatasetConverter
 from app.services.data_augmentation import DataAugmentation
 
 router = APIRouter(prefix="/api/v1/datasets", tags=["Training Datasets"])
+
+
+# Request schemas
+class QualityFilterRequest(BaseModel):
+    """Request schema for filtering low quality images."""
+    threshold: float = Field(default=30.0, ge=0.0, le=100.0, description="Quality score threshold")
+    action: Literal["mark", "delete"] = Field(default="mark", description="Action to take: mark or delete")
+
+
+class BatchAnnotateRequest(BaseModel):
+    """Request schema for batch annotating images."""
+    image_ids: List[int] = Field(..., min_items=1, description="List of image IDs")
+    updates: dict = Field(..., min_items=1, description="Annotation updates")
 
 
 @router.post("", status_code=201)
@@ -75,10 +90,18 @@ async def get_dataset(
     Optionally includes images in the response.
     """
     dataset = await dataset_manager.get_dataset(dataset_id, db, include_images)
-    return success_response(
-        data=TrainingDatasetDetail.model_validate(dataset),
-        message="Dataset retrieved successfully"
-    )
+    
+    # Use different schema based on include_images flag
+    if include_images:
+        return success_response(
+            data=TrainingDatasetDetail.model_validate(dataset),
+            message="Dataset retrieved successfully"
+        )
+    else:
+        return success_response(
+            data=TrainingDatasetResponse.model_validate(dataset),
+            message="Dataset retrieved successfully"
+        )
 
 
 @router.get("")
@@ -286,6 +309,10 @@ async def upload_images(
                     f.write(content)
                 saved_files.append(file_path)  # Track for potential cleanup
                 
+                # Evaluate image quality automatically
+                from app.core.dataset_manager import dataset_manager
+                quality_score = await dataset_manager.evaluate_image_quality(str(file_path))
+                
                 # Create dataset image record with correct schema fields
                 dataset_image = DatasetImage(
                     dataset_id=dataset_id,
@@ -293,6 +320,7 @@ async def upload_images(
                     width=width,
                     height=height,
                     file_size_kb=len(content) // 1024,
+                    quality_score=quality_score,
                     angle="unknown",
                     expression="unknown",
                     pose="unknown",
@@ -368,7 +396,7 @@ async def upload_images(
         raise BadRequestException(f"Failed to upload images: {str(e)}")
 
 
-@router.post("/{dataset_id}/validate", response_model=DatasetValidationReport)
+@router.post("/{dataset_id}/validate")
 async def validate_dataset(
     dataset_id: int,
     validation_request: DatasetValidationRequest,
@@ -395,6 +423,20 @@ async def validate_dataset(
     )
 
 
+@router.post("/{dataset_id}/evaluate-quality")
+async def evaluate_dataset_quality(
+    dataset_id: int,
+    current_user: dict = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db_session),
+):
+    """Batch evaluate quality for all images in dataset."""
+    result = await dataset_manager.batch_evaluate_quality(dataset_id, db)
+    return success_response(
+        data=result,
+        message=f"质量评估完成：{result['evaluated']}/{result['total']} 张图片，平均分 {result['average_quality']}"
+    )
+
+
 @router.get("/{dataset_id}/stats")
 async def get_dataset_stats(
     dataset_id: int,
@@ -408,11 +450,30 @@ async def get_dataset_stats(
     return success_response(data=stats, message="Dataset statistics retrieved")
 
 
+@router.get("/{dataset_id}/quality-distribution")
+async def get_quality_distribution(
+    dataset_id: int,
+    current_user: dict = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db_session),
+):
+    """Get quality score distribution for dataset images."""
+    distribution = await dataset_manager.get_quality_distribution(dataset_id, db)
+    return success_response(data=distribution, message="Quality distribution retrieved")
+
+
+class DatasetAugmentRequest(BaseModel):
+    """Request schema for dataset augmentation."""
+    augmentation_factor: int = Field(default=2, ge=1, le=5, description="Augmentation factor (1-5)")
+    strategies: Optional[List[str]] = Field(
+        default=None,
+        description="Augmentation strategies: horizontal_flip, rotation, brightness, contrast, color_jitter"
+    )
+
+
 @router.post("/{dataset_id}/augment")
 async def augment_dataset(
     dataset_id: int,
-    augmentation_factor: int = 2,
-    strategies: Optional[List[str]] = None,
+    augment_request: DatasetAugmentRequest,
     current_user: dict = Depends(get_current_user),
     db: AsyncSession = Depends(get_db_session),
 ):
@@ -421,12 +482,10 @@ async def augment_dataset(
     
     Args:
         dataset_id: Dataset ID
-        augmentation_factor: Number of augmented versions per image (default: 2)
-        strategies: Specific strategies to apply (default: random)
-            Options: horizontal_flip, rotation, brightness, contrast, color_jitter
+        augment_request: Augment request body with factor and strategies
     """
     result = await dataset_manager.augment_dataset(
-        dataset_id, db, augmentation_factor, strategies
+        dataset_id, db, augment_request.augmentation_factor, augment_request.strategies
     )
     return success_response(
         data=result,
@@ -532,50 +591,152 @@ async def generate_captions(
     )
 
 
-@router.post("/{dataset_id}/batch-annotate")
-async def batch_annotate_images(
+@router.post("/{dataset_id}/filter-quality")
+async def filter_low_quality_images(
     dataset_id: int,
-    annotations: dict,
+    request: QualityFilterRequest,
     current_user: dict = Depends(get_current_user),
     db: AsyncSession = Depends(get_db_session),
 ):
     """
-    Batch annotate multiple images in dataset.
+    Filter and optionally delete low quality images.
     
-    Args:
-        dataset_id: Dataset ID
-        annotations: Dict of {image_id: {angle, expression, pose, background}}
+    Request body:
+    {
+        "threshold": 30.0,  # Quality score threshold
+        "action": "mark" or "delete"  # Mark as unselected or delete
+    }
     """
-    updated_count = 0
-    
-    for image_id, annotation in annotations.items():
+    try:
+        threshold = request.threshold
+        action = request.action
+        
+        # Get low quality images
         result = await db.execute(
             select(DatasetImage).where(
-                DatasetImage.id == int(image_id),
-                DatasetImage.dataset_id == dataset_id
+                and_(
+                    DatasetImage.dataset_id == dataset_id,
+                    DatasetImage.quality_score.isnot(None),
+                    DatasetImage.quality_score < threshold,
+                    DatasetImage.is_selected == True
+                )
             )
         )
-        image = result.scalar_one_or_none()
+        low_quality_images = result.scalars().all()
         
-        if image:
-            # Update annotations
-            if "angle" in annotation:
-                image.angle = annotation["angle"]
-            if "expression" in annotation:
-                image.expression = annotation["expression"]
-            if "pose" in annotation:
-                image.pose = annotation["pose"]
-            if "background" in annotation:
-                image.background = annotation["background"]
+        if not low_quality_images:
+            return success_response(
+                data={"affected_count": 0},
+                message=f"No images found with quality score below {threshold}"
+            )
+        
+        affected_count = 0
+        
+        if action == "delete":
+            # Delete images and files
+            for image in low_quality_images:
+                # Delete file
+                try:
+                    from pathlib import Path
+                    file_path = Path(image.file_path)
+                    if file_path.exists():
+                        file_path.unlink()
+                except Exception as e:
+                    logger.warning(f"Failed to delete file {image.file_path}: {e}")
+                
+                # Delete database record
+                await db.delete(image)
+                affected_count += 1
+        else:
+            # Mark as unselected
+            for image in low_quality_images:
+                image.is_selected = False
+                image.rejection_reason = f"Low quality score: {image.quality_score}"
+                affected_count += 1
+        
+        await db.commit()
+        
+        # Update dataset image count
+        if action == "delete":
+            from sqlalchemy import update, func
+            count_result = await db.execute(
+                select(func.count()).select_from(DatasetImage).where(
+                    and_(
+                        DatasetImage.dataset_id == dataset_id,
+                        DatasetImage.is_selected == True
+                    )
+                )
+            )
+            new_count = count_result.scalar()
             
-            updated_count += 1
+            await db.execute(
+                update(TrainingDataset)
+                .where(TrainingDataset.id == dataset_id)
+                .values(image_count=new_count)
+            )
+            await db.commit()
+        
+        return success_response(
+            data={
+                "affected_count": affected_count,
+                "threshold": threshold,
+                "action": action
+            },
+            message=f"{affected_count} images {action}ed with quality < {threshold}"
+        )
+        
+    except Exception as e:
+        logger.error(f"Failed to filter low quality images: {e}")
+        raise AppException(
+            status_code=500,
+            error="ServerError",
+            message="Failed to filter low quality images"
+        )
+
+
+@router.post("/{dataset_id}/batch-annotate")
+async def batch_annotate_images(
+    dataset_id: int,
+    request: BatchAnnotateRequest,
+    current_user: dict = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db_session),
+):
+    """
+    Batch update annotations for multiple images.
     
-    await db.commit()
-    
-    return success_response(
-        data={"updated_count": updated_count},
-        message=f"Updated {updated_count} images successfully"
-    )
+    Request body:
+    {
+        "image_ids": [1, 2, 3],  # List of image IDs
+        "updates": {
+            "angle": "front",
+            "expression": "happy",
+            "pose": "standing",
+            "background": "simple"
+        }
+    }
+    """
+    try:
+        image_ids = request.image_ids
+        updates = request.updates
+        
+        result = await dataset_manager.batch_update_annotations(
+            dataset_id, db, image_ids, updates
+        )
+        
+        return success_response(
+            data=result,
+            message=f"Updated {result['updated_count']} images successfully"
+        )
+        
+    except (BadRequestException, NotFoundException):
+        raise
+    except Exception as e:
+        logger.error(f"Failed to batch annotate images: {e}")
+        raise AppException(
+            status_code=500,
+            error="ServerError",
+            message="Failed to batch annotate images"
+        )
 
 
 # ============================================

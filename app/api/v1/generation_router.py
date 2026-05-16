@@ -369,21 +369,37 @@ async def upload_file(
         )
 
 
-@router.get("/files/{directory}/{filename}")
+@router.get("/files/{file_path:path}")
 async def get_file(
-    directory: str,
-    filename: str,
+    file_path: str,
 ):
     """
     Serve a stored file (image, video, etc.).
+    
+    Supports nested paths like:
+    - ip_assets/xxx.png
+    - datasets/dataset_1/xxx.jpg
+    - images/ip_1/xxx.png
+    - test_images/test_1_xxx.png
     """
     try:
-        file_path = storage_service.get_file_path(directory, filename)
+        # Security: Prevent directory traversal
+        if '..' in file_path or file_path.startswith('/'):
+            from app.core.exceptions import BadRequestException
+            raise BadRequestException(message="Invalid file path")
         
-        if not file_path:
+        # Normalize path
+        file_path = file_path.replace('\\', '/')
+        
+        # Pass the entire path as filename, storage_service will handle it
+        # storage_path / filename => ./data / datasets/dataset_1/xxx.jpg
+        file_path_obj = storage_service.get_file_path('', file_path)
+        
+        if not file_path_obj:
+            from app.core.exceptions import NotFoundException
             raise NotFoundException(resource="File")
         
-        return FileResponse(str(file_path))
+        return FileResponse(str(file_path_obj))
     
     except AppException:
         raise
