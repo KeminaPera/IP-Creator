@@ -22,7 +22,7 @@
 #### 🎬 Content Generation
 - **🏷️ IP Asset Management**: Complete lifecycle with multi-angle reference images
 - **🖼️ Three-View Generation**: Auto-generate front/side/back views for IP characters
-- **🧠 LoRA Training**: Integrated fine-tuning with real-time progress tracking
+- **🧠 LoRA Training**: Integrated fine-tuning with **real-time WebSocket progress tracking**
 - **🎭 IP-Adapter Integration**: Instant character consistency using reference images
 - **🖼️ AI Image Generation**: Stable Diffusion with LoRA + IP-Adapter constraints
 - **🎬 Video Generation**: CogVideoX image-to-video with temporal consistency
@@ -31,6 +31,7 @@
 #### 💻 System & Platform
 - **📁 Content Library**: Advanced filtering, favorites, statistics, and bulk operations
 - **💚 System Health Dashboard**: Real-time monitoring of Redis, DB, GPU, Celery, LLM configs
+- **🔌 WebSocket Real-time Push**: Redis Pub/Sub based live progress updates (<100ms latency)
 - **🌐 Internationalization**: Full Chinese/English support with dynamic switching
 - **🔒 Privacy-First**: Full offline capability - all data stays local
 - **⚡ Async Task Queue**: Celery multi-queue with progress tracking and error handling
@@ -45,10 +46,11 @@
 │                   Frontend (Vue3 + Element Plus)             │
 │  Dashboard | LLM Mgmt | IP Assets | Generate | Tasks | Library│
 └───────────────────────┬─────────────────────────────────────┘
-                        │ HTTP/REST + JWT Auth
+                        │ HTTP/REST + JWT Auth + WebSocket
 ┌───────────────────────▼─────────────────────────────────────┐
 │                    FastAPI Backend Layer                      │
 │    API Routers | Auth | CORS | Static Files | SPA Fallback   │
+│    WebSocket Endpoints | Redis Pub/Sub Listener              │
 └───────────────────────┬─────────────────────────────────────┘
                         │
 ┌───────────────────────▼─────────────────────────────────────┐
@@ -60,11 +62,12 @@
 ┌───────────────────────▼─────────────────────────────────────┐
 │              Async Task Processing (Celery)                  │
 │  Story Generation | Image Generation | Video Generation      │
+│  LoRA Training (publishes progress to Redis Pub/Sub)        │
 └───────────────────────┬─────────────────────────────────────┘
                         │
 ┌───────────────────────▼─────────────────────────────────────┐
 │                  Data & Storage Layer                        │
-│  SQLite DB | Redis Cache | File Storage | Models             │
+│  SQLite DB | Redis Cache | Redis Pub/Sub | File Storage     │
 └─────────────────────────────────────────────────────────────┘
 ```
 
@@ -199,7 +202,8 @@ ip-creator/
 │   │   ├── task_router.py     # Task monitoring
 │   │   ├── content_router.py  # Content library
 │   │   ├── system_health.py   # Health checks
-│   │   └── settings_router.py # System settings
+│   │   ├── settings_router.py # System settings
+│   │   └── training_websocket.py # WebSocket real-time progress
 │   ├── config/                # Configuration
 │   │   ├── database.py        # Async SQLAlchemy setup
 │   │   └── settings.py        # Pydantic settings
@@ -220,6 +224,11 @@ ip-creator/
 │   │   ├── cloud_gen_service.py # Cloud generation
 │   │   ├── diffusion_service.py # Diffusion models
 │   │   └── ...
+│   ├── websocket/             # WebSocket real-time push system
+│   │   ├── __init__.py        # Module exports
+│   │   ├── instances.py       # Global singleton instances
+│   │   ├── manager.py         # WebSocket connection manager
+│   │   └── redis_listener.py  # Redis Pub/Sub listener
 │   ├── security/              # Auth, JWT, encryption
 │   ├── utils/                 # Logger, response helpers
 │   └── tasks/                 # Celery task definitions
@@ -228,7 +237,7 @@ ip-creator/
 │   │   ├── api/              # Axios API clients (8 modules)
 │   │   ├── views/            # Page components (9 views)
 │   │   ├── components/       # Reusable components
-│   │   ├── composables/      # Vue composables (pagination, delete)
+│   │   ├── composables/      # Vue composables (pagination, delete, **WebSocket**)
 │   │   ├── stores/           # Pinia state management (auth, app)
 │   │   ├── i18n/             # Internationalization (zh-CN, en-US)
 │   │   ├── router/           # Vue Router
@@ -256,6 +265,7 @@ ip-creator/
 ├── DOCKER_DEPLOYMENT.md       # Docker deployment guide
 ├── docs/                      # Documentation
 │   ├── ERROR_HANDLING_GUIDE.md # Error handling reference
+│   ├── WEBSOCKET_PROGRESS_SYSTEM.md # WebSocket real-time progress design
 │   └── 可配置多LLM本地化AI卡通IP视频生成系统——详细项目设计文档.md
 ├── celery_worker.py           # Celery worker for async tasks
 ├── init_database.py           # DB initialization (schema + seed + admin)
@@ -462,7 +472,11 @@ Once the backend is running, access:
 
 - **Kohya-ss Integration**: Real LoRA training with environment detection
 - **Training Presets**: Beginner, Standard, and Expert configuration templates
-- **Real-time Monitoring**: WebSocket-based live progress updates
+- **Real-time Monitoring**: **WebSocket-based live progress updates** (<100ms latency)
+  - Redis Pub/Sub for real-time message broadcasting
+  - Automatic reconnection (up to 5 attempts)
+  - Multi-client support for simultaneous monitoring
+  - Log streaming with auto-scroll (limited to 1000 entries)
 - **Training Metrics**: Loss curves, learning rates, and GPU utilization
 - **Quality Assessment**: Automatic post-training quality evaluation
   - CLIP character consistency scoring
@@ -503,12 +517,17 @@ Once the backend is running, access:
 
 ### 6. Task Monitoring
 
-- Real-time progress tracking
+- **Real-time progress tracking** via WebSocket push (<100ms latency)
 - Task status (pending, running, completed, failed)
 - Execution time and resource usage
 - Error messages and retry logic
 - Filter by IP asset and task type
 - Pagination support for large task lists
+- **WebSocket Architecture**:
+  - Celery Worker publishes progress to Redis Pub/Sub
+  - FastAPI listens and broadcasts via WebSocket
+  - Frontend composable handles connection and reconnection
+  - 📚 See [WebSocket Progress System Design](docs/WEBSOCKET_PROGRESS_SYSTEM.md)
 
 ### 7. System Health Dashboard
 
@@ -685,17 +704,20 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 - [x] Provider-model-channel architecture
 - [x] Health monitoring with EMA metrics
 - [x] IP asset management with three-view generation
-- [x] LoRA training with progress tracking
+- [x] LoRA training with **WebSocket real-time progress tracking**
 - [x] Content generation (story/image/video)
 - [x] Content library with advanced filtering
 - [x] System health dashboard
 - [x] Internationalization (CN/EN)
 - [x] Unified API response format (53 endpoints)
+- [x] **WebSocket real-time push system** (Redis Pub/Sub, <100ms latency)
 
 ### 🚧 In Progress
 - [ ] Dataset preparation assistant for LoRA training
 - [ ] LoRA test bench for model validation
 - [ ] One-click IP creation wizard
+- [ ] WebSocket JWT authentication for security
+- [ ] Redis connection retry mechanism
 
 ### 📋 Planned
 - [ ] Automated testing framework (pytest)
@@ -708,6 +730,7 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 - [ ] Batch generation tool
 - [ ] Frontend error boundaries
 - [ ] Advanced analytics dashboard
+- [ ] WebSocket message persistence for reconnection recovery
 
 ---
 

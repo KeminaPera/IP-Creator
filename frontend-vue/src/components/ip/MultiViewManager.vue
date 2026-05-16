@@ -162,7 +162,7 @@ const loadViews = async () => {
   loading.value = true
   try {
     const response = await getMultiViews(props.ipId)
-    views.value = response.data || []
+    views.value = response.data.data || []
   } catch (error) {
     ElMessage.error('加载多视图失败')
   } finally {

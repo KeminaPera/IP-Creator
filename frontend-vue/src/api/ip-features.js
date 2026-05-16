@@ -6,7 +6,7 @@
  * - Feature library (outfits, expressions, poses, etc.)
  * - Feature images management
  */
-import request from '@/utils/request'
+import request from '@/api/request'
 
 // ============================================
 // Multi-View APIs

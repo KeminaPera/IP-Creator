@@ -25,7 +25,20 @@
               style="width: 100%; max-width: 500px;"
             />
             
-            <!-- String 类型：输入框 -->
+            <!-- String 类型：如果有options则使用下拉选择器，否则使用输入框 -->
+            <el-select 
+              v-else-if="setting.value_type === 'string' && setting.validation_rule?.options"
+              v-model="localSettings[setting.setting_key]"
+              style="width: 100%; max-width: 500px;"
+            >
+              <el-option
+                v-for="option in setting.validation_rule.options"
+                :key="option"
+                :label="getOptionLabel(setting, option)"
+                :value="option"
+              />
+            </el-select>
+            
             <el-input 
               v-else-if="setting.value_type === 'string'"
               v-model="localSettings[setting.setting_key]"
@@ -99,24 +112,37 @@ const loadSettings = async () => {
     // Unified response format: { success: true, data: { key1: value1, ... } }
     const settingsData = data.data || {}
     
-    // Convert object to array
+    // 获取完整的设置详情（包括 validation_rule）
     const settingsArray = []
-    for (const [key, value] of Object.entries(settingsData)) {
-      settingsArray.push({
-        setting_key: key,
-        setting_value: value,
-        value_type: getTypeFromValue(value),
-        display_name_cn: getDisplayName(key),
-        description_cn: getDescription(key),
-        validation_rule: getValidationRule(key),
-        default_value: value,
-        is_system: isSystemSetting(key)
-      })
+    for (const key of Object.keys(settingsData)) {
+      try {
+        const detailResponse = await import('../../api/settings').then(mod => 
+          mod.getSettingDetail(props.category, key)
+        )
+        const detail = detailResponse.data.data || detailResponse.data
+        settingsArray.push(detail)
+      } catch (error) {
+        // 如果获取详情失败，使用基本格式
+        console.warn(`Failed to load detail for ${key}, using basic format:`, error)
+        settingsArray.push({
+          setting_key: key,
+          setting_value: settingsData[key],
+          value_type: getTypeFromValue(settingsData[key]),
+          display_name_cn: getDisplayName(key),
+          description_cn: getDescription(key),
+          validation_rule: getValidationRule(key),
+          default_value: settingsData[key],
+          is_system: isSystemSetting(key)
+        })
+      }
     }
     settingsList.value = settingsArray
     
     // Initialize local settings
-    localSettings.value = { ...settingsData }
+    localSettings.value = {}
+    for (const setting of settingsArray) {
+      localSettings.value[setting.setting_key] = setting.setting_value
+    }
   } catch (error) {
     ElMessage.error(t('common.load_failed'))
     console.error('Failed to load settings:', error)
@@ -239,6 +265,25 @@ const getValidationRule = (key) => {
 const isSystemSetting = (key) => {
   const systemKeys = ['gpu_memory_limit', 'max_concurrent_tasks', 'storage_path', 'models_path', 'ip_assets_path', 'lora_models_path', 'videos_path', 'lora_training_mode']
   return systemKeys.includes(key)
+}
+
+// 辅助函数：获取选项标签
+const getOptionLabel = (setting, option) => {
+  const labels = {
+    lora_training_mode: {
+      mock: 'Mock（模拟训练）',
+      real: 'Real（真实训练）'
+    }
+  }
+  
+  // 尝试从设置键名获取翻译
+  const keyLabels = labels[setting.setting_key]
+  if (keyLabels && keyLabels[option]) {
+    return keyLabels[option]
+  }
+  
+  // 否则使用选项值加上显示名称
+  return `${option} (${setting.display_name_en || setting.setting_key})`
 }
 
 // 监听 category 变化

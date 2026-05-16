@@ -55,6 +55,11 @@ class LoRAModel(Base):
     # Training Dataset Association
     dataset_id = Column(Integer, ForeignKey("training_datasets.id"), nullable=True, index=True, comment="Training dataset used")
     
+    # Celery Task Tracking
+    celery_task_id = Column(String(255), nullable=True, index=True, comment="Celery async task ID")
+    retry_count = Column(Integer, default=0, comment="Number of retries")
+    max_retries = Column(Integer, default=2, comment="Maximum retry attempts")
+    
     # Quality Assessment
     quality_score = Column(Float, nullable=True, comment="Overall quality score (0-100)")
     quality_report = Column(JSON, nullable=True, comment="Detailed quality assessment report")

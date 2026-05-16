@@ -1,40 +1,30 @@
-#!/usr/bin/env bash
-# IP-Creator Celery Worker 启动脚本 (macOS / Linux)
-# 必须显式 -Q 监听全部自定义队列, 否则 task_routes 路由后的任务无人消费
-# 详见 celery_worker.py 中 task_routes 配置
+#!/bin/bash
+# Celery Worker 启动脚本
+# 自动从 celery_worker.py 读取 CELERY_QUEUES 配置，避免手动指定 -Q 参数
 
 set -e
+
+# 设置macOS环境变量，解决multiprocessing.Value权限问题
+export OBJC_DISABLE_INITIALIZE_FORK_SAFETY=YES
+export PYTORCH_ENABLE_MPS_FALLBACK=1
+
 cd "$(dirname "$0")"
 
-# 队列列表来自 celery_worker.py 中的 CELERY_QUEUES (SSOT, 单一可信源)
-# 修改队列只需改 celery_worker.py, 此处自动同步
-if [ -d "venv" ]; then
-    # shellcheck disable=SC1091
-    source venv/bin/activate
-fi
+# 激活虚拟环境
+source venv/bin/activate
 
-CELERY_QUEUES="$(python -c 'from celery_worker import CELERY_QUEUES; print(",".join(CELERY_QUEUES))')"
-if [ -z "$CELERY_QUEUES" ]; then
-    echo "❌ 无法从 celery_worker.py 读取 CELERY_QUEUES, 请检查该文件是否定义了该常量" >&2
-    exit 1
-fi
-CELERY_POOL="${CELERY_POOL:-solo}"
-CELERY_LOGLEVEL="${CELERY_LOGLEVEL:-info}"
-CELERY_CONCURRENCY="${CELERY_CONCURRENCY:-1}"
+# 从 celery_worker.py 动态读取 CELERY_QUEUES
+QUEUES=$(python3 -c "
+from celery_worker import CELERY_QUEUES
+print(','.join(CELERY_QUEUES))
+")
 
-# 日志目录
-mkdir -p logs
+echo "🚀 启动 Celery Worker..."
+echo "📋 监听队列: $QUEUES"
 
-echo "=========================================="
-echo "  IP-Creator Celery Worker"
-echo "=========================================="
-echo "  Queues : $CELERY_QUEUES"
-echo "  Pool   : $CELERY_POOL"
-echo "  Level  : $CELERY_LOGLEVEL"
-echo "=========================================="
-
-exec celery -A celery_worker.celery_app worker \
-    --loglevel="$CELERY_LOGLEVEL" \
-    --pool="$CELERY_POOL" \
-    --concurrency="$CELERY_CONCURRENCY" \
-    -Q "$CELERY_QUEUES"
+# 启动 Celery Worker，使用solo模式避免macOS权限问题
+exec celery -A celery_worker worker \
+    --loglevel=info \
+    --pool=solo \
+    -Q "$QUEUES" \
+    -n worker1@%h

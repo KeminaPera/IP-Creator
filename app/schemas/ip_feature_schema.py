@@ -56,10 +56,8 @@ class MultiViewResponse(MultiViewBase):
 
 
 class MultiViewListResponse(BaseModel):
-    """Schema for multi-view list response."""
-    success: bool = True
+    """Schema for multi-view list response (data only, wrapper handled by success_response())."""
     data: List[MultiViewResponse]
-    message: Optional[str] = None
 
 
 # ============================================
@@ -145,10 +143,8 @@ class FeatureResponse(FeatureBase):
 
 
 class FeatureListResponse(BaseModel):
-    """Schema for feature list response."""
-    success: bool = True
+    """Schema for feature list response (data only, wrapper handled by success_response())."""
     data: List[FeatureResponse]
-    message: Optional[str] = None
 
 
 # ============================================
@@ -170,10 +166,8 @@ class FeatureTypeConfig(BaseModel):
 
 
 class FeatureTypeListResponse(BaseModel):
-    """Schema for feature type list response."""
-    success: bool = True
+    """Schema for feature type list response (data only, wrapper handled by success_response())."""
     data: List[FeatureTypeConfig]
-    message: Optional[str] = None
 
 
 # ============================================
@@ -186,10 +180,8 @@ class BatchFeatureCreate(BaseModel):
 
 
 class FeatureImageUpload(BaseModel):
-    """Schema for feature image upload response."""
-    success: bool = True
+    """Schema for feature image upload response (data only, wrapper handled by success_response())."""
     data: FeatureImageResponse
-    message: Optional[str] = None
 
 
 class FeatureValidationResult(BaseModel):

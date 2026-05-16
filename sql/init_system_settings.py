@@ -180,6 +180,20 @@ async def init_system_settings():
         },
         {
             "category": "system_feature",
+            "setting_key": "lora_training_mode",
+            "setting_value": "mock",
+            "value_type": "string",
+            "display_name_cn": "LoRA训练模式",
+            "display_name_en": "LoRA Training Mode",
+            "description_cn": "训练模式：mock（模拟训练，用于流程验证）或real（真实Kohya训练）",
+            "description_en": "Training mode: mock (simulated for workflow validation) or real (real Kohya training)",
+            "validation_rule": '{"options": ["mock", "real"]}',
+            "default_value": "mock",
+            "is_system": False,
+            "is_active": True
+        },
+        {
+            "category": "system_feature",
             "setting_key": "enable_quality_assessment",
             "setting_value": "true",
             "value_type": "boolean",

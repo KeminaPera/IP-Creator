@@ -21,6 +21,9 @@ from app.models.ip_asset import IPAsset
 from app.models.lora_model import LoRAModel
 from app.models.task import TaskRecord
 
+# Import WebSocket components
+from app.websocket.instances import ws_manager, redis_listener
+
 # Import API routers
 from app.api.v1 import llm_router
 from app.api.v1 import auth_router
@@ -62,10 +65,22 @@ async def lifespan(app: FastAPI):
     await llm_manager.initialize_models()
     logger.info("LLM models initialized")
     
+    # Start Redis progress listener
+    try:
+        await redis_listener.start()
+        logger.info("Redis progress listener started")
+    except Exception as e:
+        logger.warning(f"Failed to start Redis listener: {e}")
+    
     yield
     
     # Shutdown
     logger.info("Shutting down IP Creator application...")
+    
+    # Stop Redis listener
+    await redis_listener.stop()
+    logger.info("Redis progress listener stopped")
+    
     await close_db()
     logger.info("Application shutdown complete")
 

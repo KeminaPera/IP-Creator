@@ -8,6 +8,7 @@ from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 from typing import Dict
 
 from app.services.training_logger import training_logger
+from app.websocket.instances import ws_manager
 
 router = APIRouter()
 
@@ -25,20 +26,17 @@ async def training_websocket(websocket: WebSocket, lora_id: int):
         lora_id: LoRA model ID to monitor
     
     Usage:
-        const ws = new WebSocket('ws://localhost:8000/api/v1/ws/training/123')
+        const ws = new WebSocket('ws://localhost:8000/ws/training/123')
         ws.onmessage = (event) => {
             const log = JSON.parse(event.data)
             console.log(log)
         }
     """
-    # Connect to the WebSocket
-    await websocket.accept()
-    
-    # Register with training logger
-    await training_logger.register_websocket(lora_id, websocket)
+    # Connect to the WebSocket using ConnectionManager
+    await ws_manager.connect(websocket, lora_id)
     
     # Send historical logs immediately
-    recent_logs = await training_logger.get_recent_logs(lora_id, limit=50)
+    recent_logs = await training_logger.get_logs(lora_id, limit=50)
     for log in recent_logs:
         await websocket.send_json(log)
     
@@ -60,10 +58,10 @@ async def training_websocket(websocket: WebSocket, lora_id: int):
     
     except WebSocketDisconnect:
         # Client disconnected
-        await training_logger.unregister_websocket(lora_id, websocket)
+        ws_manager.disconnect(websocket, lora_id)
     except Exception as e:
         # Handle other errors
-        await training_logger.unregister_websocket(lora_id, websocket)
+        ws_manager.disconnect(websocket, lora_id)
         raise
 
 

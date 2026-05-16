@@ -247,8 +247,8 @@ const { loading, execute: loadChannels } = useAsyncData(
     errorMessage: 'common.load_failed', 
     autoLoad: true,
     onSuccess: (result) => {
-      // Extract data from nested response: result.data.data
-      channels.value = result?.data?.data || result?.data || []
+      // Unified response format: response.data.data
+      channels.value = result?.data?.data || []
     }
   }
 )

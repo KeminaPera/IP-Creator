@@ -611,28 +611,30 @@ class HealthChecker:
     
     @staticmethod
     def get_training_mode() -> Dict:
-        """Check LoRA training mode."""
-        mode = settings.LORA_TRAINING_MODE
+        """Check LoRA training mode from database settings."""
+        # Use the new method that reads from database
+        mode = settings.get_lora_training_mode()
         
         if mode == "mock":
             return {
                 "status": "info",
-                "message": "Mock training mode (for workflow validation)",
+                "message": "Mock training mode (simulated for workflow validation)",
                 "mode": "mock",
-                "note": "Simulated training - no real model produced"
+                "note": "Simulated training - no real model produced, fast execution"
             }
         elif mode == "real":
             return {
                 "status": "ok",
-                "message": "Real training mode (Kohya)",
+                "message": "Real training mode (Kohya-ss)",
                 "mode": "real",
-                "requirement": "GPU with 8+ GB VRAM required"
+                "requirement": "GPU with 8+ GB VRAM required, produces actual models"
             }
         else:
             return {
                 "status": "warning",
                 "message": f"Unknown training mode: {mode}",
-                "mode": mode
+                "mode": mode,
+                "note": "Falling back to mock mode"
             }
 
 

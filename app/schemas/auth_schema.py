@@ -52,9 +52,23 @@ class UserLogin(BaseModel):
 class TokenResponse(BaseModel):
     """Schema for JWT token response."""
     access_token: str = Field(..., description="JWT access token")
+    refresh_token: Optional[str] = Field(None, description="JWT refresh token")
     token_type: str = Field("bearer", description="Token type")
-    expires_in: int = Field(..., description="Token expiration time in seconds")
+    expires_in: int = Field(..., description="Access token expiration time in seconds")
+    refresh_expires_in: Optional[int] = Field(None, description="Refresh token expiration time in seconds")
     user: dict = Field(..., description="User information")
+
+
+class RefreshTokenRequest(BaseModel):
+    """Schema for refresh token request."""
+    refresh_token: str = Field(..., description="JWT refresh token")
+
+
+class TokenRefreshResponse(BaseModel):
+    """Schema for token refresh response."""
+    access_token: str = Field(..., description="New JWT access token")
+    token_type: str = Field("bearer", description="Token type")
+    expires_in: int = Field(..., description="Access token expiration time in seconds")
 
 
 class ChangePasswordRequest(BaseModel):

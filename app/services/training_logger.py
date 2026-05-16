@@ -143,17 +143,67 @@ class TrainingLogger:
             
         Returns:
             List of log entries
+            
+        Priority:
+        1. Memory buffer (fast, recent logs)
+        2. Log file (persistent, historical logs)
         """
-        if lora_id not in self.log_buffers:
+        logs = []
+        
+        # 1. Try to get from memory buffer first (fast)
+        if lora_id in self.log_buffers:
+            buffer_logs = list(self.log_buffers[lora_id])
+            logs = buffer_logs[-(offset + limit):len(buffer_logs) - offset if offset > 0 else None]
+        
+        # 2. If memory is empty, load from file (persistent)
+        if not logs:
+            log_file = self.get_log_file(lora_id)
+            if log_file.exists():
+                logs = self._load_logs_from_file(log_file, limit, offset)
+        
+        # Convert to dict format
+        return [
+            log.to_dict() if hasattr(log, 'to_dict') else log
+            for log in logs
+        ]
+    
+    def _load_logs_from_file(
+        self,
+        log_file: Path,
+        limit: int,
+        offset: int
+    ) -> List[Dict[str, Any]]:
+        """
+        Load logs from file.
+        
+        Args:
+            log_file: Path to log file
+            limit: Maximum number of logs to return
+            offset: Offset from most recent
+            
+        Returns:
+            List of log entries
+        """
+        try:
+            all_logs = []
+            
+            with open(log_file, 'r', encoding='utf-8') as f:
+                for line in f:
+                    line = line.strip()
+                    if line:
+                        try:
+                            log_data = json.loads(line)
+                            all_logs.append(log_data)
+                        except json.JSONDecodeError:
+                            logger.warning(f"Invalid log line in {log_file}: {line[:50]}")
+                            continue
+            
+            # Apply offset and limit
+            return all_logs[-(offset + limit):len(all_logs) - offset if offset > 0 else None]
+        
+        except Exception as e:
+            logger.error(f"Failed to load logs from file {log_file}: {e}")
             return []
-        
-        # Get logs from buffer
-        logs = list(self.log_buffers[lora_id])
-        
-        # Apply offset and limit
-        logs = logs[-(offset + limit):len(logs) - offset if offset > 0 else None]
-        
-        return [log.to_dict() for log in logs]
     
     async def get_metrics(self, lora_id: int) -> Dict[str, Any]:
         """

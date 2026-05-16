@@ -26,16 +26,23 @@ from app.models import (  # noqa: F401
 # Celery 队列 SSOT (Single Source of Truth)
 # -----------------------------------------------------------------------------
 # CELERY_QUEUES: worker 必须监听的全部队列, 启动脚本通过 import 此常量派生 -Q 参数
-#                (start_celery.sh / docker-compose.yml / start.bat 都读这里)
+#                (start_celery.sh / start_celery.bat / docker-compose.yml 都读这里)
 # TASK_ROUTES  : 任务名 -> 队列 的路由映射, 任何使用的 queue 必须出现在 CELERY_QUEUES 中
 # 修改时务必两个变量同步, worker_ready 信号会在启动时做一致性校验.
+#
+# ⚠️  重要：不要手动在启动命令中指定 -Q 参数！
+#          使用启动脚本，它会自动读取 CELERY_QUEUES 常量：
+#          - macOS/Linux: ./start_celery.sh
+#          - Windows:     start_celery.bat
+#          - Docker:      docker-compose up (已配置动态读取)
+#          手动指定极易导致队列遗漏和不一致！
 # =============================================================================
 CELERY_QUEUES = [
     "celery",              # 默认队列 (兼容未路由任务)
     "story_generation",    # 文本 / 剧本生成
     "image_generation",    # 图像生成
     "video_generation",    # 视频生成
-    "training",            # LoRA / 微调训练
+    "lora_training",       # LoRA 训练
 ]
 
 TASK_ROUTES = {
@@ -679,8 +686,10 @@ def train_lora_task(self, lora_id: int, training_params: dict) -> dict:
     """LoRA training task - supports both mock and real training modes."""
     from app.config.settings import settings
     
-    # Check training mode
-    if settings.LORA_TRAINING_MODE == "mock":
+    # Check training mode from database settings (with .env fallback)
+    training_mode = settings.get_lora_training_mode()
+    
+    if training_mode == "mock":
         return _mock_training(self, lora_id, training_params)
     else:
         return _real_training(self, lora_id, training_params)
@@ -691,9 +700,33 @@ def _mock_training(self, lora_id: int, training_params: dict) -> dict:
     import sqlite3
     import time
     import os
+    import redis
+    import json
     from datetime import datetime
+    from app.config.settings import settings
     
     db_path = './data/ip_creator.db'
+    
+    # Initialize Redis client for progress publishing (use settings config)
+    # Change db from 0 to 3 for WebSocket progress
+    redis_url = settings.REDIS_URL.rsplit('/', 1)[0] + '/3'
+    redis_client = redis.from_url(redis_url, decode_responses=True)
+    
+    def publish_progress(progress: float, epoch: int, loss: float = None):
+        """发布进度到Redis"""
+        try:
+            data = {
+                'progress': progress,
+                'current_epoch': epoch,
+                'current_loss': loss,
+                'timestamp': time.time()
+            }
+            redis_client.publish(
+                f'training_progress:{lora_id}',
+                json.dumps(data)
+            )
+        except Exception as e:
+            print(f"Failed to publish progress: {e}")
     
     try:
         # Update status to training
@@ -728,6 +761,9 @@ def _mock_training(self, lora_id: int, training_params: dict) -> dict:
             )
             conn.commit()
             
+            # Publish progress to Redis
+            publish_progress(progress, epoch, current_loss)
+            
             # Simulate training time (5 seconds per epoch)
             time.sleep(5)
         
@@ -760,6 +796,9 @@ def _mock_training(self, lora_id: int, training_params: dict) -> dict:
         )
         conn.commit()
         conn.close()
+        
+        # Publish completion to Redis
+        publish_progress(100, total_epochs, current_loss)
         
         # Auto-trigger quality assessment after training completes
         try:
@@ -813,20 +852,86 @@ def _mock_training(self, lora_id: int, training_params: dict) -> dict:
 
 
 def _real_training(self, lora_id: int, training_params: dict) -> dict:
-    """Real LoRA training task with Kohya-sd (to be implemented when GPU is available)."""
+    """Real LoRA training task with Kohya-ss."""
+    import sqlite3
+    import redis
+    import json
+    import time
+    from app.utils.time_utils import format_datetime_full
+    from app.config.settings import settings
+    
+    db_path = './data/ip_creator.db'
+    
+    # Initialize Redis client for progress publishing (use settings config)
+    # Change db from 0 to 3 for WebSocket progress
+    redis_url = settings.REDIS_URL.rsplit('/', 1)[0] + '/3'
+    redis_client = redis.from_url(redis_url, decode_responses=True)
+    
+    def publish_progress(progress: float, epoch: int, loss: float = None):
+        """发布进度到Redis"""
+        try:
+            data = {
+                'progress': progress,
+                'current_epoch': epoch,
+                'current_loss': loss,
+                'timestamp': time.time()
+            }
+            redis_client.publish(
+                f'training_progress:{lora_id}',
+                json.dumps(data)
+            )
+        except Exception as e:
+            print(f"Failed to publish progress: {e}")
+    
     try:
         from app.core.lora_trainer import lora_trainer
         
-        # 复用全局事件循环
-        loop = asyncio.get_event_loop()
-        result = loop.run_until_complete(
-            lora_trainer.start_training(lora_id)
+        # Update status to training
+        conn = sqlite3.connect(db_path)
+        cursor = conn.cursor()
+        now = format_datetime_full()
+        cursor.execute(
+            "UPDATE lora_models SET status='training', started_at=?, progress=0 WHERE id=?",
+            (now, lora_id)
         )
+        conn.commit()
+        
+        # Publish start progress
+        publish_progress(0, 0)
+        
+        # Run training - fix: use new_event_loop instead of get_event_loop
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+        try:
+            result = loop.run_until_complete(
+                lora_trainer.start_training(lora_id)
+            )
+        finally:
+            loop.close()
+        
+        conn.close()
+        
+        # Publish completion
+        publish_progress(100, training_params.get('epochs', 10))
         
         return {"status": "success", "data": result}
     
     except Exception as exc:
-        raise Exception(f"Real training failed: {str(exc)}")
+        # Update failed status with error message
+        error_msg = f"Real training failed: {str(exc)}"
+        try:
+            conn = sqlite3.connect(db_path)
+            cursor = conn.cursor()
+            cursor.execute(
+                "UPDATE lora_models SET status='failed', error_message=? WHERE id=?",
+                (error_msg, lora_id)
+            )
+            conn.commit()
+            conn.close()
+        except Exception as db_exc:
+            print(f"Failed to update error in database: {db_exc}")
+        
+        raise Exception(error_msg)
 
 
 @celery_app.task(bind=True)

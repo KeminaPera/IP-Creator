@@ -59,11 +59,13 @@ class KohyaDetector:
         logger.info(f"Found Kohya-ss at: {kohya_path}")
         
         # 2. Check training script
-        train_script = kohya_path / "train_network.py"
+        train_script = kohya_path / "sd-scripts" / "train_network.py"
         if not train_script.exists():
             # Try alternative locations
             alternatives = [
+                kohya_path / "train_network.py",
                 kohya_path / "kohya_ss" / "train_network.py",
+                kohya_path / "sd-scripts" / "train_network.py",
                 kohya_path / "library" / "train_network.py",
             ]
             
@@ -110,28 +112,44 @@ class KohyaDetector:
     def _find_kohya_installation(self) -> Optional[Path]:
         """Search for Kohya-ss installation in common locations."""
         
-        # Check common paths
-        for path in self.common_paths:
-            if path.exists() and (path / "requirements.txt").exists():
-                return path.resolve()
+        # 1. Priority: Use settings configuration
+        from app.config.settings import settings
+        if hasattr(settings, 'KOHYA_PATH') and settings.KOHYA_PATH:
+            kohya_path = Path(settings.KOHYA_PATH)
+            if kohya_path.exists():
+                logger.info(f"Found Kohya-ss from settings: {kohya_path}")
+                return kohya_path.resolve()
         
-        # Check environment variable
+        # 2. Check environment variable
         import os
         env_path = os.environ.get("KOHYA_PATH")
         if env_path:
             kohya_path = Path(env_path)
             if kohya_path.exists():
+                logger.info(f"Found Kohya-ss from environment: {kohya_path}")
                 return kohya_path.resolve()
+        
+        # 3. Check common paths
+        for path in self.common_paths:
+            if path.exists() and (path / "requirements.txt").exists():
+                return path.resolve()
         
         return None
     
     def _find_python_executable(self, kohya_path: Path) -> Optional[Path]:
         """Find Python executable in Kohya environment."""
         
-        # Check for venv
-        venv_python = kohya_path / "venv" / "Scripts" / "python.exe"
-        if venv_python.exists():
-            return venv_python
+        # Check for macOS/Linux venv
+        venv_python_unix = kohya_path / "venv" / "bin" / "python"
+        if venv_python_unix.exists():
+            logger.info(f"Found Kohya Python (macOS/Linux): {venv_python_unix}")
+            return venv_python_unix
+        
+        # Check for Windows venv
+        venv_python_win = kohya_path / "venv" / "Scripts" / "python.exe"
+        if venv_python_win.exists():
+            logger.info(f"Found Kohya Python (Windows): {venv_python_win}")
+            return venv_python_win
         
         # Check for conda environment
         conda_python = kohya_path / "python.exe"
@@ -139,6 +157,7 @@ class KohyaDetector:
             return conda_python
         
         # Fallback to system Python
+        logger.warning(f"No Kohya Python found, using system Python: {sys.executable}")
         return Path(sys.executable)
     
     def _check_gpu(self, python_exe: Optional[Path]) -> Dict[str, Any]:

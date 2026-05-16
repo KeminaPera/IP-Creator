@@ -205,7 +205,7 @@ const featureForm = ref({
 const loadFeatureTypes = async () => {
   try {
     const response = await getFeatureTypes()
-    featureTypes.value = response.data || []
+    featureTypes.value = response.data.data || []
   } catch (error) {
     console.error('加载特征类型失败', error)
   }
@@ -216,7 +216,7 @@ const loadFeatures = async () => {
   loading.value = true
   try {
     const response = await getFeatures(props.ipId)
-    features.value = response.data || []
+    features.value = response.data.data || []
   } catch (error) {
     ElMessage.error('加载特征库失败')
   } finally {

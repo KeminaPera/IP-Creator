@@ -168,11 +168,11 @@ const loadStats = async () => {
   try {
     // 多视图数量
     const multiViews = await getMultiViews(ipId.value)
-    stats.value.multiViewCount = (multiViews.data || []).length
+    stats.value.multiViewCount = (multiViews.data.data || []).length
 
     // 特征数量和图片数量
     const features = await getFeatures(ipId.value)
-    const featuresList = features.data || []
+    const featuresList = features.data.data || []
     stats.value.featureCount = featuresList.length
     stats.value.featureImageCount = featuresList.reduce(
       (sum, f) => sum + (f.images || []).length, 

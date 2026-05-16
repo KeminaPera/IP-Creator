@@ -23,7 +23,7 @@ from app.schemas.ip_feature_schema import (
     FeatureTypeListResponse,
     BatchFeatureCreate
 )
-from app.utils.response import success_response, created_response
+from app.utils.response import success_response, created_response, updated_response, deleted_response
 from app.api.deps import get_current_user
 from app.config.feature_types import get_feature_types, get_feature_type, is_feature_type_valid, get_trigger_phrase
 
@@ -34,7 +34,7 @@ router = APIRouter(prefix="/api/v1/ip", tags=["IP Features"])
 # Multi-View Endpoints
 # ============================================
 
-@router.post("/{ip_id}/multi-views", status_code=201, response_model=MultiViewResponse)
+@router.post("/{ip_id}/multi-views", status_code=201)
 async def create_multi_view(
     ip_id: int,
     view_data: MultiViewCreate,
@@ -58,10 +58,13 @@ async def create_multi_view(
     await db.commit()
     await db.refresh(multi_view)
     
-    return MultiViewResponse.model_validate(multi_view)
+    return created_response(
+        data=MultiViewResponse.model_validate(multi_view),
+        message="Multi-view created successfully"
+    )
 
 
-@router.get("/{ip_id}/multi-views", response_model=MultiViewListResponse)
+@router.get("/{ip_id}/multi-views")
 async def get_multi_views(
     ip_id: int,
     current_user: dict = Depends(get_current_user),
@@ -75,8 +78,9 @@ async def get_multi_views(
     )
     views = result.scalars().all()
     
-    return MultiViewListResponse(
-        data=[MultiViewResponse.model_validate(v) for v in views]
+    return success_response(
+        data=[MultiViewResponse.model_validate(v) for v in views],
+        message="Multi-views retrieved successfully"
     )
 
 
@@ -112,7 +116,7 @@ async def delete_multi_view(
 # Feature Library Endpoints
 # ============================================
 
-@router.post("/{ip_id}/features", status_code=201, response_model=FeatureResponse)
+@router.post("/{ip_id}/features", status_code=201)
 async def create_feature(
     ip_id: int,
     feature_data: FeatureCreate,
@@ -171,10 +175,13 @@ async def create_feature(
     )
     feature = result.scalar_one()
     
-    return FeatureResponse.model_validate(feature)
+    return created_response(
+        data=FeatureResponse.model_validate(feature),
+        message="Feature created successfully"
+    )
 
 
-@router.get("/{ip_id}/features", response_model=FeatureListResponse)
+@router.get("/{ip_id}/features")
 async def get_features(
     ip_id: int,
     feature_type: Optional[str] = None,
@@ -192,12 +199,13 @@ async def get_features(
     result = await db.execute(query)
     features = result.scalars().all()
     
-    return FeatureListResponse(
-        data=[FeatureResponse.model_validate(f) for f in features]
+    return success_response(
+        data=[FeatureResponse.model_validate(f) for f in features],
+        message="Features retrieved successfully"
     )
 
 
-@router.get("/{ip_id}/features/{feature_id}", response_model=FeatureResponse)
+@router.get("/{ip_id}/features/{feature_id}")
 async def get_feature(
     ip_id: int,
     feature_id: int,
@@ -215,10 +223,13 @@ async def get_feature(
     if not feature:
         raise HTTPException(status_code=404, detail="Feature not found")
     
-    return FeatureResponse.model_validate(feature)
+    return success_response(
+        data=FeatureResponse.model_validate(feature),
+        message="Feature retrieved successfully"
+    )
 
 
-@router.patch("/{ip_id}/features/{feature_id}", response_model=FeatureResponse)
+@router.patch("/{ip_id}/features/{feature_id}")
 async def update_feature(
     ip_id: int,
     feature_id: int,
@@ -251,7 +262,10 @@ async def update_feature(
     )
     feature = result.scalar_one()
     
-    return FeatureResponse.model_validate(feature)
+    return updated_response(
+        data=FeatureResponse.model_validate(feature),
+        message="Feature updated successfully"
+    )
 
 
 @router.delete("/{ip_id}/features/{feature_id}")
@@ -287,7 +301,7 @@ async def delete_feature(
 # Feature Image Endpoints
 # ============================================
 
-@router.post("/features/{feature_id}/images", status_code=201, response_model=FeatureImageResponse)
+@router.post("/features/{feature_id}/images", status_code=201)
 async def create_feature_image(
     feature_id: int,
     image_data: FeatureImageCreate,
@@ -312,7 +326,10 @@ async def create_feature_image(
     await db.commit()
     await db.refresh(image)
     
-    return FeatureImageResponse.model_validate(image)
+    return created_response(
+        data=FeatureImageResponse.model_validate(image),
+        message="Feature image added successfully"
+    )
 
 
 @router.get("/features/{feature_id}/images")
@@ -366,10 +383,13 @@ async def delete_feature_image(
 # Feature Type Configuration Endpoint
 # ============================================
 
-@router.get("/feature-types", response_model=FeatureTypeListResponse)
+@router.get("/feature-types")
 async def get_feature_types_endpoint(
     current_user: dict = Depends(get_current_user)
 ):
     """Get all supported feature types configuration."""
     types = get_feature_types()
-    return FeatureTypeListResponse(data=types)
+    return success_response(
+        data=types,
+        message="Feature types retrieved successfully"
+    )

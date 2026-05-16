@@ -320,8 +320,8 @@ const { loading, execute: loadIPs } = useAsyncData(
     errorMessage: 'common.load_failed', 
     autoLoad: true,
     onSuccess: (result) => {
-      // Extract data from nested response: result.data.data
-      ipAssets.value = result?.data?.data || result?.data || []
+      // Unified response format: response.data.data
+      ipAssets.value = result?.data?.data || []
     }
   }
 )

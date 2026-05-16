@@ -74,7 +74,16 @@ class DatasetConverter:
             
             kohya_dir.mkdir(parents=True, exist_ok=True)
             
+            # Create Kohya-compatible subdirectory structure
+            # Format: {repeats}_{identifier}
+            # Using 10 repeats and dataset name as identifier
+            repeats = 10
+            identifier = dataset.name.replace(' ', '_').replace('/', '_')[:50]
+            image_subdir = kohya_dir / f"{repeats}_{identifier}"
+            image_subdir.mkdir(parents=True, exist_ok=True)
+            
             logger.info(f"Output directory: {kohya_dir}")
+            logger.info(f"Image subdirectory: {image_subdir}")
             
             # 4. Convert images and create captions
             converted_count = 0
@@ -87,8 +96,9 @@ class DatasetConverter:
                     img_filename = f"image_{img_num:04d}.jpg"
                     txt_filename = f"image_{img_num:04d}.txt"
                     
-                    img_path = kohya_dir / img_filename
-                    txt_path = kohya_dir / txt_filename
+                    # Place files in the subdirectory (Kohya requirement)
+                    img_path = image_subdir / img_filename
+                    txt_path = image_subdir / txt_filename
                     
                     # Copy image file (if source exists)
                     source_path = Path(image.file_path)
@@ -102,9 +112,23 @@ class DatasetConverter:
                         # For now, create a dummy file
                         img_path.touch()
                     
-                    # Create caption file
+                    # Create caption file from annotations
+                    # Generate caption from available annotations
+                    caption_parts = []
+                    if image.angle:
+                        caption_parts.append(f"{image.angle} view")
+                    if image.expression:
+                        caption_parts.append(f"{image.expression} expression")
+                    if image.pose:
+                        caption_parts.append(f"{image.pose}")
+                    if image.background:
+                        caption_parts.append(f"{image.background} background")
+                    
+                    # Use annotation-based caption or default to empty
+                    caption = ", ".join(caption_parts) if caption_parts else ""
+                    
                     with open(txt_path, "w", encoding="utf-8") as f:
-                        f.write(image.caption)
+                        f.write(caption)
                     
                     converted_count += 1
                     

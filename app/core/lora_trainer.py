@@ -181,7 +181,7 @@ class LoRATrainer:
             True if training completed successfully
         """
         import subprocess
-        import json
+        import toml
         
         logger.info(f"Starting Kohya training for: {lora_model.name}")
         logger.info(f"Base model: {lora_model.base_model}")
@@ -201,35 +201,71 @@ class LoRATrainer:
         # 3. Get dataset path if available
         dataset_path = None
         if lora_model.dataset_id:
-            from pathlib import Path
             from app.config.settings import settings
             kohya_dir = Path(settings.STORAGE_PATH) / "datasets" / f"kohya_dataset_{lora_model.dataset_id}"
             if kohya_dir.exists():
-                dataset_path = str(kohya_dir)
+                dataset_path = str(kohya_dir.resolve())  # Ensure absolute path
                 logger.info(f"Using dataset: {dataset_path}")
         
-        # 4. Create training configuration
+        # 4. Map base model to actual model path or HuggingFace ID
+        base_model_map = {
+            "sd1.5": "runwayml/stable-diffusion-v1-5",
+            "sd2.1": "stabilityai/stable-diffusion-2-1",
+            "sdxl": "stabilityai/stable-diffusion-xl-base-1.0",
+        }
+        pretrained_model = base_model_map.get(lora_model.base_model, lora_model.base_model)
+        
+        # Validate dataset path
+        if not dataset_path:
+            logger.error(f"No training dataset found for LoRA model {lora_model.id}")
+            raise ValueError(
+                f"训练数据集未找到。请先为模型 {lora_model.name} 创建并转换数据集。"
+            )
+        
+        # 5. Create training configuration with absolute paths
+        # Note: Kohya-ss expects certain fields as strings, not integers
+        resolution_value = params.get("resolution", 512)
+        
         config = {
-            "pretrained_model_name_or_path": lora_model.base_model,
-            "train_data_dir": dataset_path or "dataset",  # Kohya dataset path
-            "output_dir": str(output_dir),
-            "output_name": lora_model.name,
-            "max_train_steps": params.get("max_train_steps", 1000),
-            "save_every_n_steps": params.get("save_every_n_steps", 100),
-            "learning_rate": params.get("learning_rate", 1e-4),
-            "resolution": params.get("resolution", 512),
-            "train_batch_size": params.get("train_batch_size", 1),
-            "gradient_accumulation_steps": params.get("gradient_accumulation_steps", 4),
-            "mixed_precision": params.get("mixed_precision", "fp16"),
-            "network_dim": params.get("network_dim", 64),
-            "network_alpha": params.get("network_alpha", 32),
-            "lr_scheduler": params.get("lr_scheduler", "cosine_with_restarts"),
-            "optimizer_type": params.get("optimizer_type", "AdamW8bit"),
+            "general": {
+                "pretrained_model_name_or_path": pretrained_model,
+                "train_data_dir": dataset_path,
+                "output_dir": str(output_dir.resolve()),
+                "output_name": lora_model.name,
+                "max_train_steps": params.get("max_train_steps", 1000),
+                "save_every_n_steps": params.get("save_every_n_steps", 100),
+                "learning_rate": params.get("learning_rate", 1e-4),
+                "resolution": str(resolution_value),  # Must be string for Kohya-ss
+                "train_batch_size": params.get("train_batch_size", 1),
+                "gradient_accumulation_steps": params.get("gradient_accumulation_steps", 4),
+                "mixed_precision": params.get("mixed_precision", "fp16"),
+                # Disable DataLoader workers on macOS to avoid multiprocessing issues
+                "max_data_loader_n_workers": 0,
+                "seed": params.get("seed", 42),
+                # Enable bucketing to handle large images
+                "enable_bucket": True,
+                "bucket_reso_steps": 64,
+                # Disable multiprocessing completely for macOS
+                "persistent_data_loader_workers": False,
+                "cache_latents_to_disk": False,
+            },
+            "optimizer": {
+                "optimizer_type": params.get("optimizer_type", "AdamW8bit"),
+                "lr_scheduler": params.get("lr_scheduler", "cosine_with_restarts"),
+            },
+            "network": {
+                "network_module": "networks.lora",  # Required by Kohya-ss
+                "network_dim": params.get("network_dim", 64),
+                "network_alpha": params.get("network_alpha", 32),
+            },
         }
         
-        config_path = output_dir / "training_config.json"
-        with open(config_path, "w") as f:
-            json.dump(config, f, indent=2)
+        # Use TOML format for config file (Kohya-ss requirement)
+        config_path = (output_dir / "training_config.toml").resolve()
+        with open(config_path, "w", encoding="utf-8") as f:
+            toml.dump(config, f)
+        
+        logger.info(f"Training config saved to: {config_path}")
         
         try:
             # 5. Run actual Kohya training
@@ -240,13 +276,25 @@ class LoRATrainer:
                 logger.warning("Training script not found, using simulation mode")
                 return await self._simulate_training(lora_model)
             
+            # Build command - use wrapper script to patch multiprocessing
+            kohya_script_str = str(kohya_script)
+            config_path_str = str(config_path)
+            
+            # Get the directory of kohya script (sd-scripts) for working_dir
+            kohya_script_dir = str(Path(kohya_script_str).parent)
+            
+            # Use wrapper script that patches multiprocessing before importing Kohya
+            wrapper_script = str(Path(__file__).parent.parent.parent / 'scripts' / 'kohya_wrapper.py')
+            
             cmd = [
                 python_exe,
-                kohya_script,
-                "--config_file", str(config_path),
+                wrapper_script,
+                kohya_script_str,
+                '--config_file', config_path_str,
             ]
             
             logger.info(f"Running command: {' '.join(cmd)}")
+            logger.info(f"Working directory: {kohya_script_dir}")
             
             # Log training start
             await training_logger.log(
@@ -255,16 +303,64 @@ class LoRATrainer:
                 level="INFO"
             )
             
+            # Set environment variables to disable multiprocessing fork safety on macOS
+            import os
+            env = os.environ.copy()
+            env["OBJC_DISABLE_INITIALIZE_FORK_SAFETY"] = "YES"
+            env["PYTORCH_ENABLE_MPS_FALLBACK"] = "1"
+            
+            # Use subprocess with real-time output capture
             process = subprocess.Popen(
                 cmd,
                 stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE,
+                stderr=subprocess.STDOUT,  # Merge stderr into stdout
                 text=True,
+                bufsize=1,  # Line buffered
+                universal_newlines=True,
+                env=env,  # Pass modified environment
             )
             
-            stdout, stderr = process.communicate()
+            # Read output line by line in real-time
+            full_output = []
+            error_detected = False
+            error_messages = []
             
-            if process.returncode == 0:
+            for line in process.stdout:
+                line = line.strip()
+                if not line:
+                    continue
+                    
+                full_output.append(line)
+                logger.info(f"Kohya: {line}")
+                
+                # Log to training logger
+                await training_logger.log(
+                    lora_model.id,
+                    line,
+                    level="INFO"
+                )
+                
+                # Detect errors
+                if any(err in line.lower() for err in ['error:', 'exception:', 'traceback', 'failed']):
+                    error_detected = True
+                    error_messages.append(line)
+                
+                # Extract progress if available
+                if 'epoch' in line.lower() and ('/' in line or '%' in line):
+                    try:
+                        # Parse epoch and loss if available
+                        await training_logger.log(
+                            lora_model.id,
+                            line,
+                            level="PROGRESS"
+                        )
+                    except:
+                        pass
+            
+            # Wait for process to complete
+            returncode = process.wait()
+            
+            if returncode == 0 and not error_detected:
                 logger.info(f"Training completed successfully")
                 lora_model.final_loss = 0.05
                 lora_model.training_steps = config["max_train_steps"]
@@ -295,11 +391,12 @@ class LoRATrainer:
                 
                 return True
             else:
-                logger.error(f"Training failed: {stderr}")
+                error_detail = '\n'.join(error_messages[-10:]) if error_messages else '\n'.join(full_output[-20:])
+                logger.error(f"Training failed with return code {returncode}: {error_detail}")
                 
                 await training_logger.log(
                     lora_model.id,
-                    f"Kohya training failed: {stderr}",
+                    f"Kohya training failed (exit code {returncode}):\n{error_detail}",
                     level="ERROR"
                 )
                 
@@ -307,7 +404,16 @@ class LoRATrainer:
         
         except Exception as e:
             logger.error(f"Training execution error: {e}")
-            return await self._simulate_training(lora_model)
+            
+            # Log the error
+            await training_logger.log(
+                lora_model.id,
+                f"Training failed with error: {str(e)}",
+                level="ERROR"
+            )
+            
+            # In real mode, raise exception instead of falling back to mock
+            raise RuntimeError(f"Kohya training failed: {str(e)}")
     
     async def _simulate_training(self, lora_model: LoRAModel) -> bool:
         """

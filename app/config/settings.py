@@ -69,7 +69,52 @@ class Settings(BaseSettings):
     # LoRA Training Mode
     # "mock" - Simulated training for workflow validation (fast, no GPU needed)
     # "real" - Real Kohya training (requires GPU, produces actual models)
+    # "auto" - Auto-detect best available mode
     LORA_TRAINING_MODE: str = "mock"
+    
+    # Kohya-ss Installation Path
+    KOHYA_PATH: str = "./kohya_ss"
+    
+    def get_lora_training_mode(self) -> str:
+        """
+        Get LoRA training mode from database settings, fallback to .env config.
+        
+        This allows dynamic configuration via the Settings Management UI.
+        
+        Returns:
+            Training mode: "mock" or "real"
+        """
+        try:
+            # Use sync SQLite to avoid async context issues in Celery
+            import sqlite3
+            from pathlib import Path
+            
+            db_path = Path("./data/ip_creator.db")
+            if not db_path.exists():
+                return self.LORA_TRAINING_MODE
+            
+            conn = sqlite3.connect(str(db_path))
+            cursor = conn.cursor()
+            
+            cursor.execute(
+                "SELECT setting_value FROM system_settings "
+                "WHERE category='system_feature' AND setting_key='lora_training_mode' "
+                "AND is_active=1"
+            )
+            
+            result = cursor.fetchone()
+            conn.close()
+            
+            if result and result[0]:
+                mode = result[0]
+                # Validate mode
+                if mode in ["mock", "real"]:
+                    return mode
+            
+            return self.LORA_TRAINING_MODE
+        except Exception as e:
+            # Fallback to .env config if database read fails
+            return self.LORA_TRAINING_MODE
     
     # Dataset Quality Assessment Settings
     DATASET_QUALITY_THRESHOLD: float = 30.0  # Default quality score threshold

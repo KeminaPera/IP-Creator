@@ -68,7 +68,17 @@
 
       <template #actions="{ row }">
         <el-button
-          v-if="row.status !== 'trained' && row.status !== 'training'"
+          v-if="row.status === 'failed' && row.error_message"
+          size="small"
+          type="warning"
+          plain
+          @click="showErrorReason(row)"
+        >
+          <el-icon><WarningFilled /></el-icon>
+          {{ $t('lora.view_error') }}
+        </el-button>
+        <el-button
+          v-if="row.status === 'pending' || row.status === 'failed'"
           size="small"
           type="primary"
           @click="showTrainingWizard(row)"
@@ -153,7 +163,7 @@
 import { ref, computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { Plus } from '@element-plus/icons-vue'
+import { Plus, WarningFilled } from '@element-plus/icons-vue'
 import { getLoraList, deleteLora, createLora } from '@/api/lora'
 import { useAsyncData, useAsyncList } from '@/composables/useAsyncData'
 import { usePolling } from '@/composables/usePolling'
@@ -290,6 +300,23 @@ function showQualityReport(row) {
   }
   selectedLoraId.value = row.id
   qualityReportRef.value?.open()
+}
+
+function showErrorReason(row) {
+  if (!row.error_message) {
+    ElMessage.warning(t('lora.no_error_message'))
+    return
+  }
+  
+  ElMessageBox.alert(
+    `<pre style="white-space: pre-wrap; word-break: break-word; max-height: 400px; overflow-y: auto;">${row.error_message}</pre>`,
+    t('lora.error_details'),
+    {
+      dangerouslyUseHTMLString: true,
+      confirmButtonText: t('common.close'),
+      customClass: 'error-message-dialog'
+    }
+  )
 }
 
 // getGradeType is now imported from @/utils/grade

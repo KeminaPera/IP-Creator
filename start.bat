@@ -61,7 +61,8 @@ echo ============================================================
 echo   Starting Celery Worker
 echo ============================================================
 echo.
-start "IP-Creator Celery" cmd /k "call venv\Scripts\activate.bat && celery -A celery_worker.celery_app worker --loglevel=info --pool=solo -Q celery,story_generation,image_generation,video_generation,training"
+:: SSOT: 使用 PowerShell 动态读取 CELERY_QUEUES 常量
+start "IP-Creator Celery" cmd /k "call venv\Scripts\activate.bat && powershell -Command \"$$queues = python -c 'from celery_worker import CELERY_QUEUES; print(\",\".join(CELERY_QUEUES))'; celery -A celery_worker.celery_app worker --loglevel=info --pool=solo -Q $$queues\""
 
 timeout /t 3 /nobreak >nul
 

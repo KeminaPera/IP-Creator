@@ -454,13 +454,34 @@ async def start_training(
                 
                 logger.info(f"Dataset associated: {dataset.name} with {dataset.image_count} images")
         
-        # Start training in background
-        import asyncio
-        asyncio.create_task(lora_trainer.start_training(lora_id))
+        # Start training via Celery (真正的异步)
+        from celery_worker import train_lora_task
+        
+        # 准备训练参数
+        training_params = {}
+        if request and request.custom_config:
+            training_params = request.custom_config.dict()
+        elif request and request.use_preset:
+            # 使用预设时会从数据库加载
+            training_params = {"use_preset": request.use_preset}
+        
+        # 调用Celery任务
+        celery_task = train_lora_task.delay(
+            lora_id=lora_id,
+            training_params=training_params
+        )
+        
+        # 保存Celery任务ID到数据库
+        lora_model.celery_task_id = celery_task.id
+        lora_model.status = "pending"
+        await db.commit()
+        
+        logger.info(f"🚀 Training task queued for LoRA {lora_id}, celery_task_id={celery_task.id}")
         
         response_data = {
             "lora_id": lora_id,
-            "status": "training_started",
+            "celery_task_id": celery_task.id,
+            "status": "pending",
             "config_applied": config_applied
         }
         
