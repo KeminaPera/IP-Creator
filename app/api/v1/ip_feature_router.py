@@ -10,6 +10,7 @@ from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, delete
 from typing import Optional, List
+from pathlib import Path
 import os
 
 from app.config.database import get_db_session
@@ -26,8 +27,25 @@ from app.schemas.ip_feature_schema import (
 from app.utils.response import success_response, created_response, updated_response, deleted_response
 from app.api.deps import get_current_user
 from app.config.feature_types import get_feature_types, get_feature_type, is_feature_type_valid, get_trigger_phrase
+from app.utils.logger import logger
 
 router = APIRouter(prefix="/api/v1/ip", tags=["IP Features"])
+
+
+# ============================================
+# Feature Type Configuration Endpoint (必须在参数路由之前)
+# ============================================
+
+@router.get("/feature-types")
+async def get_feature_types_endpoint(
+    current_user: dict = Depends(get_current_user)
+):
+    """Get all supported feature types configuration."""
+    types = get_feature_types()
+    return success_response(
+        data=types,
+        message="Feature types retrieved successfully"
+    )
 
 
 # ============================================
@@ -102,14 +120,21 @@ async def delete_multi_view(
     if not view:
         raise HTTPException(status_code=404, detail="Multi-view not found")
     
-    # Delete file if exists
-    if os.path.exists(view.image_path):
-        os.remove(view.image_path)
+    # 删除资源文件（如果是新资源路径格式）
+    if view.image_path and view.image_path.startswith('data/resources/'):
+        try:
+            resource_path = Path(view.image_path)
+            if resource_path.exists():
+                resource_path.unlink()
+                logger.info(f"Deleted multi-view resource: {view.image_path}")
+        except Exception as e:
+            # 记录错误但不阻止删除操作
+            logger.warning(f"Failed to delete resource file {view.image_path}: {e}")
     
     await db.delete(view)
     await db.commit()
     
-    return success_response(message="Multi-view deleted successfully")
+    return success_response(data={"id": view_id}, message="Multi-view deleted successfully")
 
 
 # ============================================
@@ -288,13 +313,19 @@ async def delete_feature(
     
     # Delete associated images files
     for image in feature.images:
-        if os.path.exists(image.image_path):
-            os.remove(image.image_path)
+        if image.image_path and image.image_path.startswith('data/resources/'):
+            try:
+                resource_path = Path(image.image_path)
+                if resource_path.exists():
+                    resource_path.unlink()
+                    logger.info(f"Deleted feature image resource: {image.image_path}")
+            except Exception as e:
+                logger.warning(f"Failed to delete resource file {image.image_path}: {e}")
     
     await db.delete(feature)
     await db.commit()
     
-    return success_response(message="Feature deleted successfully")
+    return success_response(data={"id": feature_id}, message="Feature deleted successfully")
 
 
 # ============================================
@@ -370,26 +401,16 @@ async def delete_feature_image(
         raise HTTPException(status_code=404, detail="Image not found")
     
     # Delete file
-    if os.path.exists(image.image_path):
-        os.remove(image.image_path)
+    if image.image_path and image.image_path.startswith('data/resources/'):
+        try:
+            resource_path = Path(image.image_path)
+            if resource_path.exists():
+                resource_path.unlink()
+                logger.info(f"Deleted feature image resource: {image.image_path}")
+        except Exception as e:
+            logger.warning(f"Failed to delete resource file {image.image_path}: {e}")
     
     await db.delete(image)
     await db.commit()
     
-    return success_response(message="Image deleted successfully")
-
-
-# ============================================
-# Feature Type Configuration Endpoint
-# ============================================
-
-@router.get("/feature-types")
-async def get_feature_types_endpoint(
-    current_user: dict = Depends(get_current_user)
-):
-    """Get all supported feature types configuration."""
-    types = get_feature_types()
-    return success_response(
-        data=types,
-        message="Feature types retrieved successfully"
-    )
+    return success_response(data={"id": image_id}, message="Image deleted successfully")

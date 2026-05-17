@@ -3,9 +3,11 @@
 Defines all asynchronous task definitions for background processing
 including LLM calls, LoRA training, and video generation.
 """
+import os
 import asyncio
 import logging
 from datetime import datetime
+from pathlib import Path
 from celery import Celery
 from celery.signals import worker_process_init, worker_ready
 from app.config.settings import settings
@@ -150,11 +152,15 @@ def _verify_queue_consistency(sender=None, **kwargs):
 
 @worker_process_init.connect
 def init_worker_process(**kwargs):
-    """Initialize worker process: event loop + LLM manager."""
+    """Initialize worker process: event loop + GPU cache + LLM manager."""
     try:
         # 创建全局事件循环（所有任务复用）
         loop = asyncio.new_event_loop()
         asyncio.set_event_loop(loop)
+        
+        # 清除GPU缓存，确保worker进程重新检测MPS设备
+        from app.core.gpu_cache import gpu_cache
+        gpu_cache.invalidate()
         
         from app.core.llm_manager import llm_manager
         loop.run_until_complete(llm_manager.initialize_models())

@@ -26,16 +26,6 @@ export function addDatasetImage(datasetId, data) {
   return request.post(`/datasets/${datasetId}/images`, data)
 }
 
-export function uploadDatasetImages(datasetId, files) {
-  const formData = new FormData()
-  files.forEach(file => {
-    formData.append('files', file)
-  })
-  return request.post(`/datasets/${datasetId}/upload-images`, formData, {
-    headers: { 'Content-Type': 'multipart/form-data' }
-  })
-}
-
 // Validation & Statistics
 export function validateDataset(id, data = {}) {
   return request.post(`/datasets/${id}/validate`, data)

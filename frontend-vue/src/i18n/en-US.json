@@ -21,6 +21,7 @@
     "actions": "Actions",
     "more": "More",
     "retry": "Retry",
+    "view_detail": "View Details",
     "no": "No.",
     "created_at": "Created At",
     "updated_at": "Updated At",
@@ -631,7 +632,16 @@
       "karras": "Karras",
       "normal": "Normal",
       "exponential": "Exponential"
-    }
+    },
+    "gen_mode": "Generation Mode",
+    "gen_mode_cloud": "Cloud AI Generation",
+    "gen_mode_local": "Local Model Generation",
+    "gen_mode_cloud_hint": "Use cloud APIs like Dashscope, Zhipu. LoRA not supported",
+    "gen_mode_local_hint": "Use local Stable Diffusion model with LoRA and IP-Adapter support",
+    "select_lora": "Select LoRA Model",
+    "select_lora_placeholder": "-- Select a LoRA Model --",
+    "no_lora_available": "No available LoRA models for this IP",
+    "go_to_train_lora": "Train LoRA"
   },
   "tasks": {
     "title": "Task Monitor",

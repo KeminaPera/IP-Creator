@@ -17,7 +17,7 @@ import request from '@/api/request'
  */
 export function createMultiView(ipId, data) {
   return request({
-    url: `/api/v1/ip/${ipId}/multi-views`,
+    url: `/ip/${ipId}/multi-views`,
     method: 'post',
     data
   })
@@ -28,7 +28,7 @@ export function createMultiView(ipId, data) {
  */
 export function getMultiViews(ipId) {
   return request({
-    url: `/api/v1/ip/${ipId}/multi-views`,
+    url: `/ip/${ipId}/multi-views`,
     method: 'get'
   })
 }
@@ -38,7 +38,7 @@ export function getMultiViews(ipId) {
  */
 export function deleteMultiView(ipId, viewId) {
   return request({
-    url: `/api/v1/ip/${ipId}/multi-views/${viewId}`,
+    url: `/ip/${ipId}/multi-views/${viewId}`,
     method: 'delete'
   })
 }
@@ -52,7 +52,7 @@ export function deleteMultiView(ipId, viewId) {
  */
 export function createFeature(ipId, data) {
   return request({
-    url: `/api/v1/ip/${ipId}/features`,
+    url: `/ip/${ipId}/features`,
     method: 'post',
     data
   })
@@ -63,7 +63,7 @@ export function createFeature(ipId, data) {
  */
 export function getFeatures(ipId, params = {}) {
   return request({
-    url: `/api/v1/ip/${ipId}/features`,
+    url: `/ip/${ipId}/features`,
     method: 'get',
     params
   })
@@ -74,7 +74,7 @@ export function getFeatures(ipId, params = {}) {
  */
 export function getFeature(ipId, featureId) {
   return request({
-    url: `/api/v1/ip/${ipId}/features/${featureId}`,
+    url: `/ip/${ipId}/features/${featureId}`,
     method: 'get'
   })
 }
@@ -84,7 +84,7 @@ export function getFeature(ipId, featureId) {
  */
 export function updateFeature(ipId, featureId, data) {
   return request({
-    url: `/api/v1/ip/${ipId}/features/${featureId}`,
+    url: `/ip/${ipId}/features/${featureId}`,
     method: 'patch',
     data
   })
@@ -95,7 +95,7 @@ export function updateFeature(ipId, featureId, data) {
  */
 export function deleteFeature(ipId, featureId) {
   return request({
-    url: `/api/v1/ip/${ipId}/features/${featureId}`,
+    url: `/ip/${ipId}/features/${featureId}`,
     method: 'delete'
   })
 }
@@ -109,7 +109,7 @@ export function deleteFeature(ipId, featureId) {
  */
 export function createFeatureImage(featureId, data) {
   return request({
-    url: `/api/v1/ip/features/${featureId}/images`,
+    url: `/ip/features/${featureId}/images`,
     method: 'post',
     data
   })
@@ -120,7 +120,7 @@ export function createFeatureImage(featureId, data) {
  */
 export function getFeatureImages(featureId) {
   return request({
-    url: `/api/v1/ip/features/${featureId}/images`,
+    url: `/ip/features/${featureId}/images`,
     method: 'get'
   })
 }
@@ -130,7 +130,7 @@ export function getFeatureImages(featureId) {
  */
 export function deleteFeatureImage(featureId, imageId) {
   return request({
-    url: `/api/v1/ip/features/${featureId}/images/${imageId}`,
+    url: `/ip/features/${featureId}/images/${imageId}`,
     method: 'delete'
   })
 }
@@ -144,7 +144,7 @@ export function deleteFeatureImage(featureId, imageId) {
  */
 export function getFeatureTypes() {
   return request({
-    url: '/api/v1/ip/feature-types',
+    url: '/ip/feature-types',
     method: 'get'
   })
 }

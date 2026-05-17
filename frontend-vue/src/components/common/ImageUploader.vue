@@ -2,19 +2,17 @@
   <el-upload
     ref="uploadRef"
     :file-list="fileList"
-    :auto-upload="autoUpload"
+    :auto-upload="true"
+    :action="uploadAction"
+    :headers="uploadHeaders"
+    :on-success="handleSuccess"
+    :on-remove="handleRemove"
+    :on-error="handleError"
+    :before-upload="beforeUpload"
     :multiple="multiple"
     :limit="limit"
     :accept="accept"
     :list-type="listType"
-    :action="action"
-    :headers="uploadHeaders"
-    :data="uploadData"
-    :on-change="handleChange"
-    :on-remove="handleRemove"
-    :on-success="handleSuccess"
-    :on-error="handleError"
-    :before-upload="beforeUpload"
   >
     <el-button v-if="listType !== 'picture-card'" type="primary">
       <el-icon><Upload /></el-icon>
@@ -24,12 +22,6 @@
     <template v-if="listType === 'picture-card'" #default>
       <el-icon><Plus /></el-icon>
     </template>
-    
-    <template v-if="showTip" #tip>
-      <div class="el-upload__tip">
-        {{ tipText }}
-      </div>
-    </template>
   </el-upload>
 </template>
 
@@ -37,33 +29,28 @@
 /**
  * 图片上传组件
  * 
- * 封装 el-upload，提供统一的图片上传功能
- * 支持预览、删除、数量限制等功能
+ * 统一使用即时上传模式 - 选择文件后立即上传到服务器
+ * 返回资源路径数组供父组件使用
  * 
  * @example
  * <ImageUploader
- *   v-model="imageFiles"
+ *   v-model="imagePaths"
  *   :limit="4"
  *   accept="image/*"
- *   @change="handleFilesChange"
  * />
  */
 
 import { ref, computed, watch } from 'vue'
 import { ElMessage } from 'element-plus'
 import { Plus, Upload } from '@element-plus/icons-vue'
+import { deleteResource, getResourceUrl, extractResourceName } from '@/api/resource'
 
 const props = defineProps({
-  // 已选文件列表（v-model）
+  // 数据模型（v-model）
+  // 资源路径数组 ["data/resources/...", ...]
   modelValue: {
     type: Array,
     default: () => []
-  },
-  
-  // 是否自动上传
-  autoUpload: {
-    type: Boolean,
-    default: false
   },
   
   // 是否支持多选
@@ -91,145 +78,128 @@ const props = defineProps({
     validator: (value) => ['text', 'picture', 'picture-card'].includes(value)
   },
   
-  // 上传地址（自动上传时使用）
-  action: {
-    type: String,
-    default: ''
-  },
-  
-  // 上传请求头
-  headers: {
-    type: Object,
-    default: () => ({})
-  },
-  
-  // 上传额外数据
-  data: {
-    type: Object,
-    default: () => ({})
-  },
-  
   // 按钮文本
   buttonText: {
     type: String,
-    default: '上传图片'
+    default: '上传'
   },
-  
-  // 是否显示提示文本
-  showTip: {
-    type: Boolean,
-    default: true
-  },
-  
-  // 提示文本
-  tipText: {
-    type: String,
-    default: '支持 jpg、png 格式，单个文件不超过 5MB'
-  },
-  
-  // 单个文件大小限制（MB）
-  maxSize: {
-    type: Number,
-    default: 5
-  }
 })
 
-const emit = defineEmits(['update:modelValue', 'change', 'remove', 'success', 'error'])
+const emit = defineEmits(['update:modelValue', 'upload-success'])
 
-const uploadRef = ref(null)
 const fileList = ref([])
-
-// 监听外部 modelValue 变化
-watch(() => props.modelValue, (newVal) => {
-  // 同步外部变化（包括清空操作）
-  fileList.value = newVal || []
-}, { immediate: true })
+const uploadAction = computed(() => {
+  // 使用完整URL，确保在Nginx环境下也能正确上传
+  return `${window.location.origin}/api/v1/resources/upload`
+})
 
 // 上传请求头
 const uploadHeaders = computed(() => {
-  const token = localStorage.getItem('token')
-  return {
-    ...props.headers,
-    ...(token ? { 'Authorization': `Bearer ${token}` } : {})
+  const token = localStorage.getItem('access_token')
+  return token ? { 'Authorization': `Bearer ${token}` } : {}
+})
+
+// 监听modelValue变化，初始化fileList
+watch(() => props.modelValue, (value) => {
+  if (!value || value.length === 0) {
+    fileList.value = []
+    return
   }
-})
-
-// 上传额外数据
-const uploadData = computed(() => {
-  return { ...props.data }
-})
-
-// 文件选择变化
-function handleChange(file, list) {
-  fileList.value = list
-  emit('update:modelValue', list)
-  emit('change', list)
-}
-
-// 文件删除
-function handleRemove(file, list) {
-  fileList.value = list
-  emit('update:modelValue', list)
-  emit('remove', file)
-}
-
-// 上传成功
-function handleSuccess(response, file, list) {
-  emit('success', response, file)
-  ElMessage.success('上传成功')
-}
-
-// 上传失败
-function handleError(error, file, list) {
-  emit('error', error, file)
-  ElMessage.error('上传失败')
-}
+  
+  // 将路径数组转换为fileList格式
+  fileList.value = value.map((path, index) => {
+    const fileName = extractResourceName(path)
+    return {
+      uid: Date.now() + index,
+      name: fileName,
+      url: getResourceUrl(path),
+      path: path,  // 保存原始路径
+      status: 'success',
+    }
+  })
+}, { immediate: true })
 
 // 上传前验证
 function beforeUpload(file) {
-  // 验证文件类型
   const isImage = file.type.startsWith('image/')
+  const isLt50M = file.size / 1024 / 1024 < 50
+  
   if (!isImage) {
-    ElMessage.error('只能上传图片文件！')
+    ElMessage.error('只能上传图片文件!')
     return false
   }
-  
-  // 验证文件大小
-  const isLtMaxSize = file.size / 1024 / 1024 < props.maxSize
-  if (!isLtMaxSize) {
-    ElMessage.error(`图片大小不能超过 ${props.maxSize}MB！`)
+  if (!isLt50M) {
+    ElMessage.error('图片大小不能超过50MB!')
     return false
   }
-  
   return true
 }
 
-// 暴露方法供外部调用
+// 上传成功
+function handleSuccess(response, file, uploadedFileList) {
+  if (response.success) {
+    const resourcePath = response.data.resource_path
+    const resourceUrl = response.data.resource_url
+    
+    // 更新file对象，保存完整响应数据
+    file.path = resourcePath
+    // 使用API URL作为显示URL，el-upload会自动通过这个URL显示图片
+    file.url = resourceUrl
+    file.response = response.data
+    file.status = 'success'
+    
+    // 更新fileList，确保UI显示正确的URL
+    const index = fileList.value.findIndex(f => f.uid === file.uid)
+    if (index !== -1) {
+      fileList.value[index] = file
+    }
+    
+    // 更新modelValue
+    const newPaths = [...props.modelValue, resourcePath]
+    emit('update:modelValue', newPaths)
+    
+    // 触发upload-success事件，传递完整响应数据
+    emit('upload-success', response.data)
+    
+    ElMessage.success('上传成功')
+  } else {
+    ElMessage.error(response.message || '上传失败')
+  }
+}
+
+// 删除文件
+async function handleRemove(file, uploadedFileList) {
+  // 调用后端删除
+  try {
+    if (file.path) {
+      await deleteResource(file.path)
+    }
+    
+    // 从modelValue中移除
+    const newPaths = props.modelValue.filter(p => p !== file.path)
+    emit('update:modelValue', newPaths)
+    
+    ElMessage.success('删除成功')
+  } catch (error) {
+    ElMessage.error(error.response?.data?.message || '删除失败')
+    
+    // 删除失败，重新添加回列表
+    if (file.path) {
+      fileList.value.push(file)
+    }
+  }
+}
+
+// 上传失败
+function handleError(error, file, uploadedFileList) {
+  ElMessage.error('上传失败: ' + (error.message || '未知错误'))
+}
+
+// 暴露方法
 defineExpose({
-  /**
-   * 提交上传（手动上传模式）
-   */
-  submit() {
-    uploadRef.value?.submit()
-  },
-  
-  /**
-   * 清空文件列表
-   */
   clearFiles() {
     fileList.value = []
     emit('update:modelValue', [])
-  },
-  
-  /**
-   * 移除文件
-   */
-  removeFile(file) {
-    const index = fileList.value.findIndex(f => f.uid === file.uid)
-    if (index > -1) {
-      fileList.value.splice(index, 1)
-      emit('update:modelValue', fileList.value)
-    }
   }
 })
 </script>

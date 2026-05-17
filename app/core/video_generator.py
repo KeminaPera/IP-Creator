@@ -160,6 +160,7 @@ Return the response in JSON format with the following structure:
         channel_id: Optional[int] = None,
         lora_path: Optional[str] = None,
         reference_images: Optional[List[str]] = None,
+        negative_prompt: str = "",
         width: int = 512,
         height: int = 512,
         steps: int = 30,
@@ -247,6 +248,7 @@ Return the response in JSON format with the following structure:
                             reference_images=reference_images,
                             lora_path=lora_path,
                             lora_weight=lora_weight,
+                            negative_prompt=negative_prompt,
                             width=width,
                             height=height,
                             steps=steps,
@@ -258,6 +260,7 @@ Return the response in JSON format with the following structure:
                         result = await diffusion_service.generate_image_with_ip_adapter(
                             prompt=prompt,
                             reference_images=reference_images,
+                            negative_prompt=negative_prompt,
                             width=width,
                             height=height,
                             steps=steps,
@@ -268,6 +271,7 @@ Return the response in JSON format with the following structure:
                     # Standard generation with optional LoRA
                     result = await diffusion_service.generate_image(
                         prompt=prompt,
+                        negative_prompt=negative_prompt,
                         width=width,
                         height=height,
                         steps=steps,

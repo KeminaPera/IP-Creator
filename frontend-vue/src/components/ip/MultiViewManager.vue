@@ -18,9 +18,9 @@
       >
         <div class="view-image">
           <el-image 
-            :src="getImageUrl(view.image_path)" 
+            :src="getViewImageUrl(view.image_path)" 
             fit="cover"
-            :preview-src-list="[getImageUrl(view.image_path)]"
+            :preview-src-list="[getViewImageUrl(view.image_path)]"
           >
             <template #error>
               <div class="image-error">
@@ -95,17 +95,11 @@
           </el-radio-group>
         </el-form-item>
         <el-form-item label="上传图片" required>
-          <el-upload
-            :auto-upload="false"
+          <ImageUploader
+            v-model="imagePaths"
             :limit="1"
             accept="image/*"
-            @change="handleFileChange"
-          >
-            <el-button type="primary">选择图片</el-button>
-            <template #tip>
-              <div class="el-upload__tip">支持 JPG/PNG 格式</div>
-            </template>
-          </el-upload>
+          />
         </el-form-item>
       </el-form>
       <template #footer>
@@ -122,6 +116,7 @@
 import { ref, onMounted, watch } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Upload, Picture } from '@element-plus/icons-vue'
+import ImageUploader from '@/components/common/ImageUploader.vue'
 import { 
   getMultiViews, 
   createMultiView, 
@@ -141,7 +136,7 @@ const loading = ref(false)
 const uploading = ref(false)
 const views = ref([])
 const showUploadDialog = ref(false)
-const selectedFile = ref(null)
+const imagePaths = ref([])  // 存储资源路径
 
 const uploadForm = ref({
   view_type: 'front',
@@ -170,32 +165,31 @@ const loadViews = async () => {
   }
 }
 
-// 文件选择
-const handleFileChange = (file) => {
-  selectedFile.value = file.raw
-}
-
 // 上传
 const handleUpload = async () => {
   if (!uploadForm.value.view_type) {
     ElMessage.warning('请选择视图类型')
     return
   }
+  
+  if (imagePaths.value.length === 0) {
+    ElMessage.warning('请选择图片')
+    return
+  }
 
   uploading.value = true
   try {
-    // TODO: 实现文件上传到服务器
-    // 这里先使用占位路径
     const data = {
       view_type: uploadForm.value.view_type,
-      source: uploadForm.value.source,
-      image_path: '/uploads/multi-view-placeholder.jpg',
+      source: 'uploaded',
+      image_path: imagePaths.value[0],  // resource_path
       is_primary: views.value.length === 0
     }
 
     await createMultiView(props.ipId, data)
     ElMessage.success('上传成功')
     showUploadDialog.value = false
+    imagePaths.value = []  // 清空选择
     loadViews()
     emit('update')
   } catch (error) {
@@ -236,6 +230,31 @@ const handleDelete = async (view) => {
 
 // 工具函数
 import { getImageUrl } from '@/utils/image'
+
+// 获取多视图图片URL
+const getViewImageUrl = (imagePath) => {
+  if (!imagePath) return ''
+  
+  // 如果是完整URL，直接返回
+  if (imagePath.startsWith('http://') || imagePath.startsWith('https://')) {
+    return imagePath
+  }
+  
+  // 如果是/api/开头的相对路径，直接返回
+  if (imagePath.startsWith('/api/')) {
+    return imagePath
+  }
+  
+  // 如果是data/resources/开头的路径，拼接完整URL
+  if (imagePath.startsWith('data/resources/')) {
+    // URL编码路径
+    const encodedPath = encodeURIComponent(imagePath)
+    return `/api/v1/resources/${encodedPath}`
+  }
+  
+  // 其他情况使用getImageUrl
+  return getImageUrl(imagePath)
+}
 
 // 工具函数已移至 utils/image.js
 

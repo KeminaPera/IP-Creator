@@ -4,7 +4,7 @@ Training Dataset Router
 API endpoints for training dataset management including
 dataset CRUD, image uploads, and quality validation.
 """
-from fastapi import APIRouter, Depends, UploadFile, File, Form
+from fastapi import APIRouter, Depends, Form
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 from pydantic import BaseModel, Field
@@ -69,12 +69,70 @@ async def create_dataset(
     Create a new training dataset for an IP asset.
     
     Requires authentication.
+    
+    Args:
+        dataset_data: Dataset creation data including image_paths
+        current_user: Current authenticated user
+        db: Database session
+    
+    Returns:
+        Created dataset with ID
     """
-    dataset = await dataset_manager.create_dataset(dataset_data, db)
-    return created_response(
-        data=TrainingDatasetResponse.model_validate(dataset),
-        message="Training dataset created successfully"
-    )
+    from app.models.dataset_image import DatasetImage
+    
+    try:
+        # Verify IP asset exists
+        result = await db.execute(
+            select(IPAsset).where(IPAsset.id == dataset_data.ip_asset_id)
+        )
+        ip_asset = result.scalar_one_or_none()
+        
+        if not ip_asset:
+            raise NotFoundException(
+                message=f"IP asset {dataset_data.ip_asset_id} not found",
+                details={"ip_asset_id": dataset_data.ip_asset_id}
+            )
+        
+        # Create dataset
+        dataset = TrainingDataset(
+            ip_asset_id=dataset_data.ip_asset_id,
+            name=dataset_data.name,
+            description=dataset_data.description,
+            image_count=len(dataset_data.image_paths) if dataset_data.image_paths else 0,
+            status="pending",
+            version=1,
+        )
+        db.add(dataset)
+        await db.flush()  # Get dataset.id
+        
+        # Process image paths (already uploaded to data/resources/)
+        if dataset_data.image_paths:
+            for image_path in dataset_data.image_paths:
+                # image_path format: data/resources/2026/05/17/xxx.jpg
+                dataset_image = DatasetImage(
+                    dataset_id=dataset.id,
+                    file_path=image_path,
+                    quality_score=0,  # Will be evaluated later
+                    angle="unknown",
+                    expression="unknown",
+                    pose="unknown",
+                )
+                db.add(dataset_image)
+        
+        await db.commit()
+        
+        # Return response
+        return created_response(
+            data={"id": dataset.id},
+            message="Training dataset created successfully"
+        )
+        
+    except (NotFoundException, BadRequestException):
+        raise
+    except Exception as e:
+        await db.rollback()
+        logger.error(f"Failed to create dataset: {e}")
+        raise
 
 
 @router.get("/{dataset_id}")
@@ -176,224 +234,6 @@ async def add_image(
         data=DatasetImageResponse.model_validate(image),
         message="Image added to dataset successfully"
     )
-
-
-@router.post("/{dataset_id}/upload-images", status_code=201)
-async def upload_images(
-    dataset_id: int,
-    files: List[UploadFile] = File(...),
-    current_user: dict = Depends(get_current_user),
-    db: AsyncSession = Depends(get_db_session),
-):
-    """
-    Upload multiple images to dataset.
-    
-    Args:
-        dataset_id: Dataset ID
-        files: List of image files to upload
-    
-    Returns:
-        Upload result with image count and paths
-    """
-    from pathlib import Path
-    from app.config.settings import settings
-    from PIL import Image
-    import io
-    import uuid
-    import re
-    
-    try:
-        # Check if dataset exists
-        result = await db.execute(
-            select(TrainingDataset).where(TrainingDataset.id == dataset_id)
-        )
-        dataset = result.scalar_one_or_none()
-        
-        if not dataset:
-            raise NotFoundException(resource="Dataset", identifier=str(dataset_id))
-        
-        # Validate file count
-        if len(files) > settings.MAX_UPLOAD_FILES:
-            raise BadRequestException(
-                f"Too many files: {len(files)}. Maximum allowed: {settings.MAX_UPLOAD_FILES}"
-            )
-        
-        # Create upload directory
-        upload_dir = Path(settings.STORAGE_PATH) / "datasets" / f"dataset_{dataset_id}"
-        upload_dir.mkdir(parents=True, exist_ok=True)
-        
-        uploaded_images = []
-        skipped_count = 0
-        saved_files = []  # Track saved files for cleanup on failure
-        failed_files = []  # Track detailed failure information
-        
-        # Process each file
-        for file in files:
-            file_path = None
-            try:
-                # Check MIME type
-                if not file.content_type or file.content_type not in settings.ALLOWED_MIME_TYPES:
-                    logger.warning(f"Skipping file with invalid MIME type: {file.filename} ({file.content_type})")
-                    failed_files.append({
-                        "filename": file.filename,
-                        "error": f"Invalid file type: {file.content_type or 'unknown'}"
-                    })
-                    skipped_count += 1
-                    continue
-                
-                # Sanitize and validate file extension
-                if file.filename:
-                    file_extension = Path(file.filename).suffix.lower()
-                    # Validate extension is safe
-                    if not re.match(r'^\.(jpg|jpeg|png|webp)$', file_extension):
-                        file_extension = '.jpg'
-                else:
-                    file_extension = '.jpg'
-                
-                # Generate unique filename
-                unique_filename = f"{uuid.uuid4().hex}{file_extension}"
-                file_path = upload_dir / unique_filename
-                
-                # Read file content
-                content = await file.read()
-                
-                # Check file size BEFORE saving
-                if len(content) > settings.MAX_UPLOAD_SIZE:
-                    logger.warning(f"File {file.filename} exceeds size limit: {len(content)} bytes")
-                    failed_files.append({
-                        "filename": file.filename,
-                        "error": f"File too large: {len(content) / 1024 / 1024:.1f}MB (max: {settings.MAX_UPLOAD_SIZE / 1024 / 1024:.0f}MB)"
-                    })
-                    skipped_count += 1
-                    continue
-                
-                # Validate actual image content (not just MIME type)
-                try:
-                    img = Image.open(io.BytesIO(content))
-                    img.verify()  # Verify it's a valid, non-corrupted image
-                    
-                    # Re-open after verify() as it closes the image
-                    img = Image.open(io.BytesIO(content))
-                    width, height = img.size
-                    
-                    # Validate dimensions
-                    if width < settings.MIN_IMAGE_DIMENSION or height < settings.MIN_IMAGE_DIMENSION:
-                        logger.warning(f"Image {file.filename} too small: {width}x{height}")
-                        failed_files.append({
-                            "filename": file.filename,
-                            "error": f"Image too small: {width}x{height} (min: {settings.MIN_IMAGE_DIMENSION}px)"
-                        })
-                        skipped_count += 1
-                        continue
-                    
-                    if width > settings.MAX_IMAGE_DIMENSION or height > settings.MAX_IMAGE_DIMENSION:
-                        logger.warning(f"Image {file.filename} too large: {width}x{height}")
-                        failed_files.append({
-                            "filename": file.filename,
-                            "error": f"Image too large: {width}x{height} (max: {settings.MAX_IMAGE_DIMENSION}px)"
-                        })
-                        skipped_count += 1
-                        continue
-                        
-                except Exception as img_error:
-                    logger.warning(f"Invalid or corrupted image file {file.filename}: {img_error}")
-                    failed_files.append({
-                        "filename": file.filename,
-                        "error": f"Invalid image file: {str(img_error)}"
-                    })
-                    skipped_count += 1
-                    continue
-                
-                # Save file to disk
-                with open(file_path, 'wb') as f:
-                    f.write(content)
-                saved_files.append(file_path)  # Track for potential cleanup
-                
-                # Evaluate image quality automatically
-                from app.core.dataset_manager import dataset_manager
-                quality_score = await dataset_manager.evaluate_image_quality(str(file_path))
-                
-                # Create dataset image record with correct schema fields
-                dataset_image = DatasetImage(
-                    dataset_id=dataset_id,
-                    file_path=str(file_path),
-                    width=width,
-                    height=height,
-                    file_size_kb=len(content) // 1024,
-                    quality_score=quality_score,
-                    angle="unknown",
-                    expression="unknown",
-                    pose="unknown",
-                )
-                
-                db.add(dataset_image)
-                uploaded_images.append({
-                    "filename": file.filename,
-                    "path": str(file_path),
-                    "size": len(content),
-                    "width": width,
-                    "height": height,
-                })
-                
-            except BadRequestException:
-                # Re-raise validation errors
-                raise
-            except Exception as e:
-                logger.error(f"Failed to upload file {file.filename}: {e}")
-                failed_files.append({
-                    "filename": file.filename,
-                    "error": str(e)
-                })
-                skipped_count += 1
-                # Clean up this specific file if it was saved
-                if file_path and file_path.exists():
-                    try:
-                        file_path.unlink()
-                        saved_files.remove(file_path)
-                        logger.info(f"Cleaned up failed file: {file_path}")
-                    except Exception as cleanup_error:
-                        logger.error(f"Failed to cleanup file {file_path}: {cleanup_error}")
-                continue
-        
-        # Check if any files were successfully uploaded
-        if len(uploaded_images) == 0:
-            raise BadRequestException(
-                f"No valid images were uploaded. All {len(files)} files failed validation."
-            )
-        
-        # Update dataset image count (add to existing count, not replace)
-        dataset.image_count = (dataset.image_count or 0) + len(uploaded_images)
-        
-        # Commit to database
-        await db.commit()
-        
-        return created_response(
-            data={
-                "uploaded_count": len(uploaded_images),
-                "skipped_count": skipped_count,
-                "images": uploaded_images,
-                "failed_files": failed_files if failed_files else None,
-            },
-            message=f"Successfully uploaded {len(uploaded_images)} images"
-        )
-        
-    except (NotFoundException, BadRequestException):
-        raise
-    except Exception as e:
-        # Rollback database changes
-        await db.rollback()
-        
-        # Clean up all saved files to prevent orphans
-        for saved_file in saved_files:
-            if saved_file.exists():
-                try:
-                    saved_file.unlink()
-                    logger.warning(f"Cleaned up orphaned file during rollback: {saved_file}")
-                except Exception as cleanup_error:
-                    logger.error(f"Failed to cleanup orphaned file {saved_file}: {cleanup_error}")
-        
-        logger.error(f"Error uploading images: {e}")
-        raise BadRequestException(f"Failed to upload images: {str(e)}")
 
 
 @router.post("/{dataset_id}/validate")

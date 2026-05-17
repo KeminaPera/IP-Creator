@@ -59,6 +59,10 @@ class TrainingDatasetBase(BaseModel):
 class TrainingDatasetCreate(TrainingDatasetBase):
     """Schema for creating a training dataset."""
     ip_asset_id: int = Field(..., description="Which IP this dataset is for")
+    image_paths: Optional[List[str]] = Field(
+        default=[],
+        description="List of image resource paths (from ImageUploader)"
+    )
 
 
 class TrainingDatasetUpdate(BaseModel):

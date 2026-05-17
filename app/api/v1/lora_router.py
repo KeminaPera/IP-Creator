@@ -230,6 +230,21 @@ async def list_lora_models(
             query = query.where(LoRAModel.status == status)
             count_query = count_query.where(LoRAModel.status == status)
         
+        # Filter by ip_asset_id if provided
+        if ip_asset_id:
+            # Get dataset_ids that belong to this IP
+            dataset_result = await db.execute(
+                select(TrainingDataset.id).where(TrainingDataset.ip_asset_id == ip_asset_id)
+            )
+            dataset_ids = [row[0] for row in dataset_result.all()]
+            
+            if dataset_ids:
+                query = query.where(LoRAModel.dataset_id.in_(dataset_ids))
+                count_query = count_query.where(LoRAModel.dataset_id.in_(dataset_ids))
+            else:
+                # No datasets for this IP, return empty
+                return list_response(items=[], page=1, page_size=0, total=0)
+        
         # Get total count
         total_result = await db.execute(count_query)
         total = total_result.scalar()
@@ -302,6 +317,7 @@ async def list_lora_models(
             model_list.append({
                 "id": model.id,
                 "name": model.name,
+                "file_path": model.file_path,
                 "base_model": model.base_model,
                 "status": model.status,
                 "final_loss": model.final_loss,

@@ -10,6 +10,15 @@ IP-Adapter is ideal for:
 - Using IP Asset reference images for generation
 - Complementing LoRA for even better results
 """
+import os
+
+# ⚠️ 必须在import torch之前设置环境变量，确保Celery worker能正确使用MPS
+if os.environ.get('OBJC_DISABLE_INITIALIZE_FORK_SAFETY') != 'YES':
+    os.environ['OBJC_DISABLE_INITIALIZE_FORK_SAFETY'] = 'YES'
+    
+if os.environ.get('PYTORCH_ENABLE_MPS_FALLBACK') != '1':
+    os.environ['PYTORCH_ENABLE_MPS_FALLBACK'] = '1'
+
 import torch
 from typing import Optional, Dict, Any, List
 from pathlib import Path
@@ -19,6 +28,9 @@ from app.utils.logger import logger
 from app.core.gpu_cache import gpu_cache
 from app.utils.prompt_analyzer import prompt_analyzer, PromptAnalyzer
 from app.services.clip_similarity import CLIPSimilarityCalculator
+
+# 清除GPU缓存，确保Celery worker进程重新检测MPS
+gpu_cache.invalidate()
 
 
 class IPAdapterService:
@@ -38,7 +50,7 @@ class IPAdapterService:
         device_type = gpu_info.get("device_type", "cpu")
         if device_type == "mps":
             self.device = "mps"
-            self.dtype = torch.float16  # MPS支持float16
+            self.dtype = torch.float32  # ⚠️ MPS必须使用float32，float16会导致问题
         elif gpu_info["cuda_available"]:
             self.device = "cuda"
             self.dtype = torch.float16
@@ -51,7 +63,7 @@ class IPAdapterService:
         self.models_path = Path(settings.MODELS_PATH)
         self.clip_calculator = CLIPSimilarityCalculator()
         
-        logger.info(f"IPAdapterService initialized on {self.device}")
+        logger.info(f"IPAdapterService initialized on {self.device} with {self.dtype}")
     
     def _get_ip_adapter_pipeline(self):
         """
@@ -137,12 +149,9 @@ class IPAdapterService:
                 if self.device == "cuda":
                     self._ip_adapter_pipe.enable_model_cpu_offload()
                 elif self.device == "mps":
-                    # MPS使用内存优化
-                    try:
-                        self._ip_adapter_pipe.enable_attention_slicing()
-                        logger.info("Enabled attention slicing for MPS (IP-Adapter)")
-                    except Exception as e:
-                        logger.warning(f"Failed to enable attention slicing: {e}")
+                    # ⚠️ 禁用attention slicing，它在MPS上会导致IP-Adapter返回tuple而不是tensor
+                    # 这会引发 'tuple' object has no attribute 'shape' 错误
+                    logger.info("Attention slicing disabled for MPS (IP-Adapter compatibility)")
                 
             except Exception as e:
                 logger.error(f"Failed to load IP-Adapter pipeline: {e}")
@@ -341,7 +350,8 @@ class IPAdapterService:
             if lora_path and Path(lora_path).exists():
                 try:
                     pipe.load_lora_weights(lora_path)
-                    logger.info(f"Loaded LoRA: {lora_path}")
+                    pipe.fuse_lora(lora_scale=lora_weight)
+                    logger.info(f"Loaded LoRA: {lora_path} with weight {lora_weight}")
                 except Exception as e:
                     logger.warning(f"Failed to load LoRA: {e}")
             
@@ -392,6 +402,7 @@ class IPAdapterService:
             # Unload LoRA
             if lora_path and Path(lora_path).exists():
                 try:
+                    pipe.unfuse_lora()
                     pipe.unload_lora_weights()
                 except Exception as e:
                     logger.warning(f"Failed to unload LoRA weights: {e}")

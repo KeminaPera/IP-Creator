@@ -134,6 +134,7 @@ async def generate_three_views(
                     "lora_weight": lora_weight,
                     "use_ip_adapter": True,
                     "reference_images": reference_images,
+                    "negative_prompt": view_data["negative_prompt"],
                     "ip_adapter_scale": ip_adapter_scale,
                     "width": width,
                     "height": height,
@@ -152,6 +153,7 @@ async def generate_three_views(
                 status="pending",
                 parameters={
                     "prompt": view_data["prompt"],
+                    "negative_prompt": view_data["negative_prompt"],
                     "view_type": view_name,
                     "use_ip_adapter": True,
                     "reference_images": reference_images,

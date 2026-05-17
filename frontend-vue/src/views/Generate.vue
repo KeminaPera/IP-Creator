@@ -29,12 +29,6 @@
         <el-descriptions-item :label="$t('generate.ip_lora_status')" :span="3">
           <el-tag v-if="currentIP.lora_model_id" type="success" size="small">{{ $t('generate.lora_trained') }}</el-tag>
           <el-tag v-else type="info" size="small">{{ $t('generate.lora_not_trained') }}</el-tag>
-          <el-switch
-            v-model="loraEnabled"
-            :disabled="!currentIP.lora_model_id"
-            :active-text="$t('generate.enable_lora')"
-            style="margin-left: 12px;"
-          />
           <router-link v-if="!currentIP.lora_model_id" to="/lora" style="margin-left: 12px;">
             <el-link type="primary" size="small">{{ $t('generate.go_to_lora') }}</el-link>
           </router-link>
@@ -109,8 +103,21 @@
 
         <!-- Image Tab -->
         <el-tab-pane :label="$t('generate.image')" name="image">
-          <el-form label-width="100px">
-            <el-form-item :label="$t('generate.select_model')">
+          <el-form label-width="120px">
+            <!-- 生成方式选择 -->
+            <el-form-item :label="$t('generate.gen_mode')">
+              <el-radio-group v-model="imageGenMode" @change="onGenModeChange">
+                <el-radio value="cloud">{{ $t('generate.gen_mode_cloud') }}</el-radio>
+                <el-radio value="local">{{ $t('generate.gen_mode_local') }}</el-radio>
+              </el-radio-group>
+              <div style="margin-top: 8px; color: #909399; font-size: 12px;">
+                <span v-if="imageGenMode === 'cloud'">{{ $t('generate.gen_mode_cloud_hint') }}</span>
+                <span v-else>{{ $t('generate.gen_mode_local_hint') }}</span>
+              </div>
+            </el-form-item>
+
+            <!-- 云端模型选择（仅云端模式） -->
+            <el-form-item v-if="imageGenMode === 'cloud'" :label="$t('generate.select_model')">
               <el-select v-model="imageChannelId" :placeholder="$t('generate.select_model_placeholder')" style="width:100%">
                 <el-option v-for="ch in imageChannels" :key="ch.id" :label="formatChannelLabel(ch)" :value="ch.id">
                   <span>{{ ch.name }}</span>
@@ -120,6 +127,44 @@
                 </el-option>
               </el-select>
             </el-form-item>
+
+            <!-- LoRA模型选择（仅本地模式） -->
+            <el-form-item v-if="imageGenMode === 'local'" :label="$t('generate.select_lora')">
+              <el-select 
+                v-model="selectedLoraId" 
+                :placeholder="$t('generate.select_lora_placeholder')"
+                clearable
+                style="width:100%"
+                @change="onLoraChange"
+              >
+                <el-option 
+                  v-for="lora in availableLoras" 
+                  :key="lora.id"
+                  :label="lora.name"
+                  :value="lora.id"
+                  :disabled="lora.status !== 'completed'"
+                >
+                  <div style="display: flex; justify-content: space-between; align-items: center;">
+                    <span>{{ lora.name }}</span>
+                    <div>
+                      <el-tag size="small" :type="lora.status === 'completed' ? 'success' : 'info'">
+                        {{ lora.status }}
+                      </el-tag>
+                      <span style="margin-left: 8px; color: #909399; font-size: 12px;">
+                        {{ lora.base_model }}
+                      </span>
+                    </div>
+                  </div>
+                </el-option>
+              </el-select>
+              <div v-if="availableLoras.length === 0" style="margin-top: 8px; color: #909399; font-size: 12px;">
+                {{ $t('generate.no_lora_available') }}
+                <router-link to="/lora" style="margin-left: 8px;">
+                  <el-link type="primary" size="small">{{ $t('generate.go_to_train_lora') }}</el-link>
+                </router-link>
+              </div>
+            </el-form-item>
+
             <el-form-item :label="$t('generate.image_prompt')">
               <el-input v-model="imagePrompt" type="textarea" :rows="3" :placeholder="$t('generate.image_prompt_placeholder')" />
             </el-form-item>
@@ -157,7 +202,7 @@
                     </el-form-item>
                   </el-col>
                   <el-col :span="8">
-                    <el-form-item :label="$t('generate.lora_weight')" v-if="loraEnabled">
+                    <el-form-item v-if="imageGenMode === 'local' && selectedLoraId" :label="$t('generate.lora_weight')">
                       <el-slider v-model="loraWeight" :min="0" :max="1" :step="0.1" show-input />
                     </el-form-item>
                   </el-col>
@@ -276,6 +321,7 @@ import { ElMessage } from 'element-plus'
 import { getIPList } from '@/api/ip'
 import { getChannelsByCapability } from '@/api/llm'
 import { generateStory, generateStoryAsync, generateImage, generateImageAsync, generateVideo, generateVideoAsync, getSmartReferences, getAdaptiveScale } from '@/api/generate'
+import { getLoraList } from '@/api/lora'
 
 const router = useRouter()
 
@@ -287,8 +333,15 @@ const ipAssetsLoaded = ref(false)
 const selectedIPId = ref(null)
 const currentIP = ref(null)
 const ipAdapterEnabled = ref(false)
-const loraEnabled = ref(false)
 const loraWeight = ref(0.8)
+
+// 生成方式选择
+const imageGenMode = ref('cloud')  // 'cloud' 或 'local'
+
+// LoRA模型选择
+const selectedLoraId = ref(null)
+const selectedLoraPath = ref(null)
+const availableLoras = ref([])
 
 // Channel state
 const textChannels = ref([])
@@ -413,10 +466,69 @@ async function loadChannels() {
   }
 }
 
-function onIPChange(ipId) {
+async function onIPChange(ipId) {
   currentIP.value = ipAssets.value.find(ip => ip.id === ipId) || null
+  
+  // 清空之前的LoRA选择
+  selectedLoraId.value = null
+  selectedLoraPath.value = null
+  availableLoras.value = []
+  
   if (currentIP.value) {
-    loraEnabled.value = !!currentIP.value.lora_model_id
+    // 加载该IP的所有LoRA模型
+    await loadLorasForIP(ipId)
+  }
+}
+
+// 加载IP关联的LoRA模型
+async function loadLorasForIP(ipId) {
+  try {
+    const { data } = await getLoraList({
+      ip_asset_id: ipId
+    })
+    
+    // API返回格式：{ success: true, data: [...] }
+    // data可能是数组或包含items的对象
+    if (Array.isArray(data.data)) {
+      availableLoras.value = data.data
+    } else if (data.data?.items) {
+      availableLoras.value = data.data.items
+    } else {
+      availableLoras.value = []
+    }
+    
+    if (import.meta.env.DEV) {
+      console.log(`Loaded ${availableLoras.value.length} LoRA models for IP ${ipId}`)
+    }
+    
+    // 如果IP有默认LoRA，自动选择
+    if (currentIP.value?.lora_model_id) {
+      selectedLoraId.value = currentIP.value.lora_model_id
+      onLoraChange(selectedLoraId.value)
+    }
+  } catch (err) {
+    if (import.meta.env.DEV) {
+      console.error('Failed to load LoRA models:', err)
+    }
+  }
+}
+
+// LoRA选择变化时
+function onLoraChange(loraId) {
+  const lora = availableLoras.value.find(l => l.id === loraId)
+  if (lora) {
+    selectedLoraPath.value = lora.file_path
+  } else {
+    selectedLoraPath.value = null
+  }
+}
+
+// 生成方式变化时
+function onGenModeChange(mode) {
+  if (mode === 'cloud') {
+    // 切换到云端时，清空LoRA选择
+    selectedLoraId.value = null
+    selectedLoraPath.value = null
   }
 }
 
@@ -536,15 +648,17 @@ async function handleGenerateImage() {
     const { data } = await generateImage({
       prompt: imagePrompt.value,
       negative_prompt: imageNegativePrompt.value,
-      ip_id: selectedIPId.value,
-      channel_id: imageChannelId.value,
+      ip_asset_id: selectedIPId.value,
+      // 云端模式传channel_id，本地模式不传
+      channel_id: imageGenMode.value === 'cloud' ? imageChannelId.value : null,
+      // 本地模式才传LoRA相关参数
+      lora_path: imageGenMode.value === 'local' ? selectedLoraPath.value : undefined,
+      lora_weight: imageGenMode.value === 'local' ? loraWeight.value : undefined,
       width: imageWidth.value,
       height: imageHeight.value,
       num_inference_steps: imageSteps.value,
       guidance_scale: imageCfgScale.value,
       seed: imageSeed.value,
-      use_lora: loraEnabled.value,
-      lora_weight: loraWeight.value,
       use_ip_adapter: ipAdapterEnabled.value,
       ip_adapter_scale: ipAdapterEnabled.value ? ipAdapterScale.value : scale,
       reference_images: selectedRefs.length > 0 ? selectedRefs : undefined,
@@ -588,14 +702,16 @@ async function handleGenerateImageAsync() {
       prompt: imagePrompt.value,
       negative_prompt: imageNegativePrompt.value,
       ip_asset_id: selectedIPId.value,
-      channel_id: imageChannelId.value,
+      // 云端模式传channel_id，本地模式不传
+      channel_id: imageGenMode.value === 'cloud' ? imageChannelId.value : null,
+      // 本地模式才传LoRA相关参数
+      lora_path: imageGenMode.value === 'local' ? selectedLoraPath.value : undefined,
+      lora_weight: imageGenMode.value === 'local' ? loraWeight.value : undefined,
       width: imageWidth.value,
       height: imageHeight.value,
       steps: imageSteps.value,
       cfg_scale: imageCfgScale.value,
       seed: imageSeed.value,
-      use_lora: loraEnabled.value,
-      lora_weight: loraWeight.value,
       use_ip_adapter: ipAdapterEnabled.value,
       ip_adapter_scale: ipAdapterEnabled.value ? ipAdapterScale.value : scale,
       reference_images: selectedRefs.length > 0 ? selectedRefs : undefined,

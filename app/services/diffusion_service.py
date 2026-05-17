@@ -4,6 +4,15 @@ Diffusion Service
 Handles AI image and video generation using Diffusers library.
 Supports Stable Diffusion for images and CogVideoX for video generation.
 """
+import os
+
+# ⚠️ 必须在import torch之前设置环境变量，确保Celery worker能正确使用MPS
+if os.environ.get('OBJC_DISABLE_INITIALIZE_FORK_SAFETY') != 'YES':
+    os.environ['OBJC_DISABLE_INITIALIZE_FORK_SAFETY'] = 'YES'
+    
+if os.environ.get('PYTORCH_ENABLE_MPS_FALLBACK') != '1':
+    os.environ['PYTORCH_ENABLE_MPS_FALLBACK'] = '1'
+
 import io
 import torch
 from typing import Optional, Dict, Any, List
@@ -13,6 +22,9 @@ from app.config.settings import settings
 from app.utils.logger import logger
 from app.services.ip_adapter_service import ip_adapter_service
 from app.core.gpu_cache import gpu_cache
+
+# 清除GPU缓存，确保Celery worker进程重新检测MPS（而不是使用错误的CPU缓存）
+gpu_cache.invalidate()
 
 
 class DiffusionService:
@@ -32,7 +44,8 @@ class DiffusionService:
         device_type = gpu_info.get("device_type", "cpu")
         if device_type == "mps":
             self.device = "mps"
-            self.dtype = torch.float16  # MPS支持float16
+            # ⚠️ MPS必须使用float32，float16会导致生成黑图！
+            self.dtype = torch.float32
         elif gpu_info["cuda_available"]:
             self.device = "cuda"
             self.dtype = torch.float16
@@ -54,7 +67,7 @@ class DiffusionService:
                 from diffusers import StableDiffusionPipeline, DPMSolverMultistepScheduler
                 
                 model_id = "runwayml/stable-diffusion-v1-5"
-                logger.info(f"Loading image pipeline: {model_id}")
+                logger.info(f"Loading image pipeline: {model_id} on {self.device}")
                 
                 self._image_pipe = StableDiffusionPipeline.from_pretrained(
                     model_id,
@@ -73,17 +86,15 @@ class DiffusionService:
                 # Enable memory efficient attention if available
                 if hasattr(self._image_pipe, "enable_xformers_memory_efficient_attention"):
                     try:
-                        # xformers不适用于MPS
                         if self.device != "mps":
                             self._image_pipe.enable_xformers_memory_efficient_attention()
                     except Exception as e:
                         logger.warning(f"Failed to enable xformers: {e}")
                 
-                # Enable CPU offloading for low VRAM (不适用于MPS)
+                # Enable CPU offloading for low VRAM (not for MPS)
                 if self.device == "cuda":
                     self._image_pipe.enable_model_cpu_offload()
                 elif self.device == "mps":
-                    # MPS使用内存优化
                     try:
                         self._image_pipe.enable_attention_slicing()
                         logger.info("Enabled attention slicing for MPS")
@@ -93,7 +104,7 @@ class DiffusionService:
                 logger.info("Image pipeline loaded successfully")
                 
             except Exception as e:
-                logger.error(f"Failed to load image pipeline: {e}")
+                logger.error(f"Failed to load image pipeline: {e}", exc_info=True)
                 raise
         
         return self._image_pipe
@@ -112,39 +123,31 @@ class DiffusionService:
     ) -> Dict[str, Any]:
         """
         Generate an image using Stable Diffusion.
-        
-        Args:
-            prompt: Image generation prompt
-            negative_prompt: Negative prompt
-            width: Image width
-            height: Image height
-            steps: Sampling steps
-            cfg_scale: CFG guidance scale
-            seed: Random seed for reproducibility
-            lora_path: Path to LoRA weights
-            lora_weight: LoRA weight (0.0-1.0)
-            
-        Returns:
-            Dictionary with image bytes and metadata
         """
         try:
+            logger.info(f"Generating image: {prompt[:50]}...")
+            logger.info(f"Device: {self.device}, dtype: {self.dtype}, LoRA: {lora_path}")
+            
             pipe = self._get_image_pipeline()
             
             # Load LoRA if provided
+            lora_loaded = False
             if lora_path and Path(lora_path).exists():
                 try:
                     from diffusers import LoraLoaderMixin
                     pipe.load_lora_weights(lora_path)
-                    logger.info(f"Loaded LoRA weights: {lora_path}")
+                    pipe.fuse_lora(lora_scale=lora_weight)
+                    lora_loaded = True
+                    logger.info(f"Loaded LoRA: {lora_path} with weight {lora_weight}")
                 except Exception as e:
-                    logger.warning(f"Failed to load LoRA weights: {e}")
+                    logger.error(f"Failed to load LoRA: {e}")
+            elif lora_path:
+                logger.warning(f"LoRA file not found: {lora_path}")
             
             # Set generator for reproducibility
             generator = None
             if seed is not None:
                 generator = torch.Generator(device=self.device).manual_seed(seed)
-            
-            logger.info(f"Generating image: {prompt[:50]}...")
             
             # Generate image
             result = pipe(
@@ -160,17 +163,26 @@ class DiffusionService:
             
             image = result.images[0]
             
+            # Validate image quality
+            import numpy as np
+            img_array = np.array(image)
+            if img_array.mean() < 10:
+                logger.error(f"Generated image is almost completely black! Mean pixel: {img_array.mean():.2f}")
+            elif img_array.mean() < 50:
+                logger.warning(f"Generated image is very dark. Mean pixel: {img_array.mean():.2f}")
+            
             # Convert to bytes
             img_byte_arr = io.BytesIO()
             image.save(img_byte_arr, format='PNG')
             img_byte_arr.seek(0)
             
             # Unload LoRA if loaded
-            if lora_path and Path(lora_path).exists():
+            if lora_loaded:
                 try:
+                    pipe.unfuse_lora()
                     pipe.unload_lora_weights()
                 except Exception as e:
-                    logger.warning(f"Failed to unload LoRA weights: {e}")
+                    logger.warning(f"Failed to unload LoRA: {e}")
             
             logger.info("Image generated successfully")
             

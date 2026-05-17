@@ -5,7 +5,7 @@
  * - 完整 URL（http/https）直接返回
  * - 相对路径（/api/...）直接返回
  * - 绝对路径（/Users/.../data/...）转换为相对路径
- * - 各种存储路径（ip_assets, test_images, images, videos等）
+ * - 各种存储路径（resources, ip_assets, images, videos等）
  */
 
 // 基础路径映射 - 支持多种格式
@@ -18,26 +18,29 @@ const BASE_PATHS = [
   // API 路径直接返回
   { match: /^\/api\//, handler: (path) => path },
   
-  // 绝对路径中的各种存储路径
-  { match: /\/ip_assets\//, handler: (path) => `/api/v1/generate/files${path.match(/(\/ip_assets\/.*)/)[1]}` },
-  { match: /\/test_images\//, handler: (path) => `/api/v1/generate/files${path.match(/(\/test_images\/.*)/)[1]}` },
-  { match: /\/datasets\//, handler: (path) => `/api/v1/generate/files${path.match(/(\/datasets\/.*)/)[1]}` },
-  { match: /\/images\//, handler: (path) => `/api/v1/generate/files${path.match(/(\/images\/.*)/)[1]}` },
-  { match: /\/videos\//, handler: (path) => `/api/v1/generate/files${path.match(/(\/videos\/.*)/)[1]}` },
-  { match: /\/lora_models\//, handler: (path) => `/api/v1/generate/files${path.match(/(\/lora_models\/.*)/)[1]}` },
-  
-  // data/xxx 格式的相对路径
+  // data/xxx 格式的相对路径（优先匹配，更精确）
+  { match: /^data\/resources\//, handler: (path) => `/api/v1/resources/${path}` },
   { match: /^data\/ip_assets\//, handler: (path) => `/api/v1/generate/files/${path.substring(5)}` },
-  { match: /^data\/test_images\//, handler: (path) => `/api/v1/generate/files/${path.substring(5)}` },
-  { match: /^data\/datasets\//, handler: (path) => `/api/v1/generate/files/${path.substring(5)}` },
   { match: /^data\/images\//, handler: (path) => `/api/v1/generate/files/${path.substring(5)}` },
   { match: /^data\/videos\//, handler: (path) => `/api/v1/generate/files/${path.substring(5)}` },
   { match: /^data\/lora_models\//, handler: (path) => `/api/v1/generate/files/${path.substring(5)}` },
   
+  // 绝对路径中的各种存储路径
+  { match: /\/resources\//, handler: (path) => {
+    // 提取resources及后续路径
+    const match = path.match(/\/(resources\/.*)/)
+    if (match) {
+      return `/api/v1/resources/${match[1]}`
+    }
+    return path
+  }},
+  { match: /\/ip_assets\//, handler: (path) => `/api/v1/generate/files${path.match(/(\/ip_assets\/.*)/)[1]}` },
+  { match: /\/images\//, handler: (path) => `/api/v1/generate/files${path.match(/(\/images\/.*)/)[1]}` },
+  { match: /\/videos\//, handler: (path) => `/api/v1/generate/files${path.match(/(\/videos\/.*)/)[1]}` },
+  { match: /\/lora_models\//, handler: (path) => `/api/v1/generate/files${path.match(/(\/lora_models\/.*)/)[1]}` },
+  
   // 纯相对路径 (如 images/ip_1/xxx.png)
   { match: /^ip_assets\//, handler: (path) => `/api/v1/generate/files/${path}` },
-  { match: /^test_images\//, handler: (path) => `/api/v1/generate/files/${path}` },
-  { match: /^datasets\//, handler: (path) => `/api/v1/generate/files/${path}` },
   { match: /^images\//, handler: (path) => `/api/v1/generate/files/${path}` },
   { match: /^videos\//, handler: (path) => `/api/v1/generate/files/${path}` },
   { match: /^lora_models\//, handler: (path) => `/api/v1/generate/files/${path}` },
@@ -55,12 +58,12 @@ const BASE_PATHS = [
  * 
  * @example
  * // 返回相对路径
- * getImageUrl('/api/v1/generate/files/xxx.jpg')
+ * getImageUrl('/api/v1/resources/data/resources/2026/05/18/xxx.jpg')
  * 
  * @example
  * // 转换绝对路径为相对路径
- * getImageUrl('/Users/yanglin/Codes/IP-Creator/data/test_images/test_1.png')
- * // 返回: /api/v1/generate/files/test_images/test_1.png
+ * getImageUrl('/Users/yanglin/Codes/IP-Creator/data/resources/2026/05/18/xxx.jpg')
+ * // 返回: /api/v1/resources/data/resources/2026/05/18/xxx.jpg
  */
 export function getImageUrl(path) {
   if (!path) return ''

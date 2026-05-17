@@ -54,6 +54,9 @@
       </template>
 
       <template #actions="{ row }">
+        <el-button size="small" type="primary" @click="openDetail(row)">
+          <el-icon><View /></el-icon> 详情
+        </el-button>
         <el-button size="small" type="warning" @click="openEditDialog(row)">{{ $t('common.edit') }}</el-button>
         <el-dropdown trigger="click" style="margin-left: 8px;">
           <el-button size="small">
@@ -120,12 +123,9 @@
         </el-form-item>
         <el-form-item :label="$t('ip.reference_images')">
           <ImageUploader
-            v-model="fileList"
+            v-model="formData.reference_images"
             :limit="4"
             accept="image/*"
-            :show-tip="false"
-            @change="handleFileChange"
-            @remove="handleFileRemove"
           />
         </el-form-item>
         <el-form-item :label="$t('ip.positive_tags')">
@@ -294,9 +294,10 @@
 
 <script setup>
 import { ref, computed, onUnmounted, watch } from 'vue'
+import { useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import { ElMessage } from 'element-plus'
-import { Picture, ArrowDown, Delete, InfoFilled } from '@element-plus/icons-vue'
+import { View, Picture, ArrowDown, Delete, InfoFilled } from '@element-plus/icons-vue'
 import { getIPList, createIP, updateIP, deleteIP, uploadFile } from '@/api/ip'
 import request from '@/api/request'
 import { useDeleteConfirm } from '../composables/useDeleteConfirm'
@@ -308,6 +309,7 @@ import DataTable from '../components/common/DataTable.vue'
 import ImageUploader from '../components/common/ImageUploader.vue'
 import CRUDDialog from '../components/common/CRUDDialog.vue'
 
+const router = useRouter()
 const { t } = useI18n()
 
 // Keep as ref for template reactivity
@@ -331,8 +333,6 @@ const searchText = ref('')
 const debouncedSearchText = ref('')
 const dialogVisible = ref(false)
 const isEdit = ref(false)
-const fileList = ref([])
-const pendingFiles = ref([])
 
 // Timer for three views polling
 let pollTimeoutId = null
@@ -439,6 +439,7 @@ const styleMap = { '3d_cartoon': 'ip.style_3d_cartoon', blind_box: 'ip.style_bli
 
 function getCategoryLabel(cat) { return t(categoryMap[cat] || cat) }
 function getStyleLabel(style) { return t(styleMap[style] || style) }
+
 function getRefImageUrl(imgPath) {
   // Handle object format: { angle: 'front', path: '/placeholder.jpg' }
   if (imgPath && typeof imgPath === 'object' && imgPath.path) {
@@ -450,28 +451,34 @@ function getRefImageUrl(imgPath) {
   }
   
   try {
-    // Handle both relative paths and full URLs
+    // 新资源路径格式: data/resources/2026/05/17/xxx.jpg
+    if (imgPath.startsWith('data/resources/')) {
+      const encodedPath = encodeURIComponent(imgPath)
+      return `/api/v1/resources/${encodedPath}`
+    }
+    
+    // 旧路径格式: data/ip_assets/xxx.jpg (向后兼容)
     let cleanPath = imgPath;
-
-    // If it's a full URL, extract the path part
+    
+    // 如果是完整URL，提取路径部分
     if (imgPath.startsWith('http://') || imgPath.startsWith('https://')) {
       try {
         const url = new URL(imgPath);
         cleanPath = url.pathname;
       } catch (e) {
-        // If URL parsing fails, use original path
+        // 如果URL解析失败，使用原始路径
       }
     }
-
-    // Replace Windows backslashes with forward slashes
+    
+    // 替换Windows反斜杠
     cleanPath = cleanPath.replace(/\\/g, '/');
-
-    // Remove leading slash if present
+    
+    // 移除前导斜杠
     if (cleanPath.startsWith('/')) {
       cleanPath = cleanPath.substring(1);
     }
-
-    // Extract the last two segments for files
+    
+    // 提取最后两个段用于文件
     const parts = cleanPath.split('/').filter(p => p.length > 0);
     if (parts.length >= 2) {
       const result = `/api/v1/generate/files/${parts[parts.length - 2]}/${parts[parts.length - 1]}`;
@@ -490,12 +497,8 @@ function getRefImageUrl(imgPath) {
 
 // loadIPs is now provided by useAsyncData
 
-function handleFileChange(file, uploadFileList) {
-  pendingFiles.value = uploadFileList
-}
-
-function handleFileRemove(file, uploadFileList) {
-  pendingFiles.value = uploadFileList
+function openDetail(row) {
+  router.push(`/ip/${row.id}`)
 }
 
 function openAddDialog() {
@@ -504,8 +507,6 @@ function openAddDialog() {
     name: '', category: '', trigger_word: '', description: '',
     style_template: '', positive_tags: '', negative_tags: '', reference_images: [],
   }
-  fileList.value = []
-  pendingFiles.value = []
   dialogVisible.value = true
 }
 
@@ -530,67 +531,20 @@ function openEditDialog(row) {
     negative_tags: row.negative_tags || '',
     reference_images: row.reference_images || [],
   }
-  
-  // Convert reference images to fileList format for el-upload
-  // Handle both string paths and object format {angle, path}
-  const refImages = row.reference_images || []
-  
-  fileList.value = refImages.map((img, i) => {
-    let imgPath = img
-    
-    // If it's an object, extract the path
-    if (typeof img === 'object' && img !== null && img.path) {
-      imgPath = img.path
-    }
-    
-    const imageUrl = getRefImageUrl(imgPath)
-    
-    return {
-      name: `image-${i}`,
-      url: imageUrl,
-      status: 'success',
-    }
-  })
-  
-  pendingFiles.value = []
   dialogVisible.value = true
 }
 
 async function handleSubmit(formData) {
   submitting.value = true
   try {
-    logger.debug('[IPAssets] Submit - formData.reference_images:', formData.reference_images)
-    logger.debug('[IPAssets] Submit - pendingFiles:', pendingFiles.value)
-    
-    // Upload new files first
-    const uploadedPaths = [...(formData.reference_images || [])]
-    logger.debug('[IPAssets] Submit - initial uploadedPaths:', uploadedPaths)
-    
-    for (const file of pendingFiles.value) {
-      if (file.raw && file.status !== 'success') {
-        const fd = new FormData()
-        fd.append('file', file.raw)
-        const { data } = await uploadFile(fd)
-        // Unified response format
-        logger.debug('[IPAssets] Submit - upload response:', data)
-        if (data.data?.file_path) {
-          uploadedPaths.push(data.data.file_path)
-          logger.debug('[IPAssets] Submit - added path:', data.data.file_path)
-        }
-      }
-    }
-
-    logger.debug('[IPAssets] Submit - final uploadedPaths:', uploadedPaths)
-    
-    const payload = { ...formData, reference_images: uploadedPaths }
+    // formData.reference_images已经是路径数组，直接提交
+    const payload = { ...formData }
     delete payload.id
-
-    logger.debug('[IPAssets] Submit - payload:', payload)
-
+    
     // Convert empty strings to null for list fields
     if (payload.positive_tags === '') payload.positive_tags = null
     if (payload.negative_tags === '') payload.negative_tags = null
-
+    
     if (isEdit.value) {
       await updateIP(formData.id, payload)
       ElMessage.success(t('ip.update_success'))
@@ -601,10 +555,8 @@ async function handleSubmit(formData) {
     dialogVisible.value = false
     loadIPs()
   } catch (err) {
-    if (import.meta.env.DEV) {
-      console.error('[IPAssets] Submit error:', err)
-    }
-    ElMessage.error(err.response?.data?.detail || 'Operation failed')
+    logger.error('[IPAssets] Submit error:', err)
+    ElMessage.error(err.response?.data?.detail || err.message || 'Operation failed')
   } finally {
     submitting.value = false
   }

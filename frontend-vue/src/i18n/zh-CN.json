@@ -21,6 +21,7 @@
     "actions": "操作",
     "more": "更多",
     "retry": "重试",
+    "view_detail": "查看详情",
     "no": "序号",
     "created_at": "创建时间",
     "updated_at": "更新时间",
@@ -626,7 +627,16 @@
       "karras": "Karras",
       "normal": "Normal",
       "exponential": "Exponential"
-    }
+    },
+    "gen_mode": "生成方式",
+    "gen_mode_cloud": "云端AI生成",
+    "gen_mode_local": "本地模型生成",
+    "gen_mode_cloud_hint": "使用通义万相、智谱等云端API，不支持LoRA",
+    "gen_mode_local_hint": "使用本地Stable Diffusion模型，支持LoRA和IP-Adapter",
+    "select_lora": "选择LoRA模型",
+    "select_lora_placeholder": "-- 选择LoRA模型 --",
+    "no_lora_available": "该IP暂无可用的LoRA模型",
+    "go_to_train_lora": "去训练"
   },
   "tasks": {
     "title": "任务监控",

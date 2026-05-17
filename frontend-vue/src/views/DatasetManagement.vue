@@ -161,19 +161,19 @@
 
         <el-form-item :label="$t('dataset.training_images')">
           <ImageUploader
-            v-model="uploadFileList"
+            v-model="formData.image_paths"
             :limit="50"
             accept="image/jpeg,image/png,image/webp"
           />
           
-          <div v-if="uploadFileList.length > 0" style="margin-top: 12px; padding: 12px; background: #f0f9ff; border-radius: 4px;">
+          <div v-if="formData.image_paths.length > 0" style="margin-top: 12px; padding: 12px; background: #f0f9ff; border-radius: 4px;">
             <el-icon style="color: #409eff; vertical-align: middle;"><InfoFilled /></el-icon>
             <span style="margin-left: 8px; color: #606266;">
-              {{ $t('dataset.selected_images', { count: uploadFileList.length }) }}
-              <span v-if="uploadFileList.length < 15" style="color: #E6A23C; margin-left: 8px;">
+              {{ $t('dataset.selected_images', { count: formData.image_paths.length }) }}
+              <span v-if="formData.image_paths.length < 15" style="color: #E6A23C; margin-left: 8px;">
                 {{ $t('dataset.suggest_min') }}
               </span>
-              <span v-else-if="uploadFileList.length >= 15 && uploadFileList.length <= 30" style="color: #67C23A; margin-left: 8px;">
+              <span v-else-if="formData.image_paths.length >= 15 && formData.image_paths.length <= 30" style="color: #67C23A; margin-left: 8px;">
                 {{ $t('dataset.count_ok') }}
               </span>
               <span v-else style="color: #F56C6C; margin-left: 8px;">
@@ -303,7 +303,6 @@ import {
   augmentDataset,
   createDatasetVersion,
   getDatasetDetail,
-  uploadDatasetImages,
 } from '@/api/dataset'
 import { getIPList } from '@/api/ip'
 import { useAsyncList } from '@/composables/useAsyncData'
@@ -342,11 +341,11 @@ const {
 // Create Dialog
 const createDialogVisible = ref(false)
 const creating = ref(false)
-const uploadFileList = ref([])
 const createForm = reactive({
   ip_asset_id: null,
   name: '',
   description: '',
+  image_paths: [],
 })
 const createRules = {
   ip_asset_id: [{ required: true, message: t('dataset.ip_asset_required'), trigger: 'change' }],
@@ -391,34 +390,25 @@ const openCreateDialog = () => {
   createForm.ip_asset_id = null
   createForm.name = ''
   createForm.description = ''
-  uploadFileList.value = []
+  createForm.image_paths = []
 }
 
 const handleCreate = async (formData) => {
-  if (!uploadFileList.value || uploadFileList.value.length === 0) {
+  if (!formData.image_paths || formData.image_paths.length === 0) {
     ElMessage.warning(t('dataset.upload_images_first'))
     return
   }
 
   creating.value = true
   try {
-    // Step 1: Create dataset
+    // Step 1: Create dataset with image paths
     const res = await createDataset(formData)
     const datasetId = res.data.id || res.data.data?.id
     
     ElMessage.success(t('dataset.creating_success'))
-    
-    // Step 2: Upload images
-    if (uploadFileList.value && uploadFileList.value.length > 0) {
-      const files = uploadFileList.value.map(f => f.raw).filter(Boolean)
-      await uploadDatasetImages(datasetId, files)
-      ElMessage.success(t('dataset.upload_success', { count: files.length }))
-    }
-    
     createDialogVisible.value = false
-    loadDatasets()
     
-    // Step 3: Redirect to annotation page
+    // Step 2: Redirect to annotation page
     ElMessageBox.confirm(
       t('dataset.go_annotate_message'),
       t('dataset.go_annotate_title'),
