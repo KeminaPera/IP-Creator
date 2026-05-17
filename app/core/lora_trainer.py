@@ -8,6 +8,8 @@ from typing import Optional, Dict, Any
 from pathlib import Path
 import subprocess
 import asyncio
+import json
+import time
 from datetime import datetime
 from app.models.lora_model import LoRAModel
 from app.config.settings import settings
@@ -33,6 +35,19 @@ class LoRATrainer:
         self.lora_path.mkdir(parents=True, exist_ok=True)
         self.kohya_detector = KohyaDetector()
         self.dataset_converter = DatasetConverter()
+        # Progress reporter (injected by celery_worker)
+        self.progress_reporter = None
+        # Track active training processes for cancellation
+        self._active_processes = {}  # {lora_id: subprocess.Popen}
+    
+    def set_progress_reporter(self, reporter):
+        """
+        Set progress reporter (dependency injection).
+        
+        Args:
+            reporter: ProgressReporter instance
+        """
+        self.progress_reporter = reporter
     
     async def create_training_task(
         self,
@@ -78,14 +93,14 @@ class LoRATrainer:
         """
         Start LoRA training process.
         
-        This would typically call Kohya-sd training scripts.
-        For now, it's a placeholder for the actual implementation.
+        Note: Status management (training/failed/completed) is handled by celery_worker.
+        This method only executes the training logic and updates completion fields.
         
         Args:
             lora_id: LoRA model ID
             
         Returns:
-            True if training started successfully
+            True if training completed successfully
         """
         async with async_session_factory() as session:
             lora_model = await session.get(LoRAModel, lora_id)
@@ -94,12 +109,7 @@ class LoRATrainer:
                 return False
             
             try:
-                # Update status to training
-                lora_model.status = "training"
-                lora_model.started_at = datetime.now()
-                await session.commit()
-                
-                # Log training start
+                # Log training start (status already set by celery_worker)
                 await training_logger.log(
                     lora_id,
                     f"Starting training for {lora_model.name}",
@@ -110,9 +120,9 @@ class LoRATrainer:
                 success = await self._run_kohya_training(lora_model)
                 
                 if success:
-                    lora_model.status = "completed"
-                    lora_model.completed_at = datetime.now()
+                    # Only update completion fields (status managed by celery_worker)
                     lora_model.progress = 100.0
+                    lora_model.completed_at = datetime.now()
                     await session.commit()
                     
                     await training_logger.log(
@@ -142,10 +152,6 @@ class LoRATrainer:
                         logger.warning(f"Auto quality assessment failed: {e}")
                         # Don't fail training if assessment fails
                 else:
-                    lora_model.status = "failed"
-                    lora_model.error_message = "Training process failed"
-                    await session.commit()
-                    
                     await training_logger.log(
                         lora_id,
                         f"Training failed",
@@ -157,10 +163,7 @@ class LoRATrainer:
                 return success
             
             except Exception as e:
-                lora_model.status = "failed"
-                lora_model.error_message = str(e)
-                await session.commit()
-                
+                # Don't update status here, let celery_worker handle it
                 await training_logger.log(
                     lora_id,
                     f"Training error: {str(e)}",
@@ -168,7 +171,8 @@ class LoRATrainer:
                 )
                 
                 logger.error(f"Training failed for {lora_model.name}: {e}")
-                return False
+                # Re-raise for celery_worker to handle
+                raise
     
     async def _run_kohya_training(self, lora_model: LoRAModel) -> bool:
         """
@@ -195,6 +199,7 @@ class LoRATrainer:
         
         # 2. Prepare training parameters
         params = lora_model.training_params or {}
+        logger.info(f"📋 Training params from DB: {json.dumps(params, ensure_ascii=False, indent=2) if params else 'None'}")
         output_dir = Path(lora_model.file_path).parent
         output_dir.mkdir(parents=True, exist_ok=True)
         
@@ -225,6 +230,21 @@ class LoRATrainer:
         # 5. Create training configuration with absolute paths
         # Note: Kohya-ss expects certain fields as strings, not integers
         resolution_value = params.get("resolution", 512)
+        epochs = params.get("epochs", 10)
+        
+        # Calculate max_train_steps based on epochs if not explicitly set
+        # Kohya uses: max_train_steps = epochs * (dataset_size / batch_size)
+        # If max_train_steps is set, it overrides epochs
+        max_train_steps = params.get("max_train_steps")
+        if not max_train_steps:
+            # Estimate steps: epochs * (estimated images / batch_size)
+            # Note: Frontend uses 'batch_size', Kohya config uses 'train_batch_size'
+            batch_size = params.get("train_batch_size") or params.get("batch_size", 1)
+            estimated_images = 20  # Default estimate
+            max_train_steps = epochs * (estimated_images // batch_size)
+            logger.info(f"Auto-calculated max_train_steps: {max_train_steps} (epochs={epochs}, batch_size={batch_size})")
+        else:
+            logger.info(f"Using explicit max_train_steps: {max_train_steps}")
         
         config = {
             "general": {
@@ -232,11 +252,11 @@ class LoRATrainer:
                 "train_data_dir": dataset_path,
                 "output_dir": str(output_dir.resolve()),
                 "output_name": lora_model.name,
-                "max_train_steps": params.get("max_train_steps", 1000),
+                "max_train_steps": max_train_steps,
                 "save_every_n_steps": params.get("save_every_n_steps", 100),
                 "learning_rate": params.get("learning_rate", 1e-4),
                 "resolution": str(resolution_value),  # Must be string for Kohya-ss
-                "train_batch_size": params.get("train_batch_size", 1),
+                "train_batch_size": params.get("train_batch_size") or params.get("batch_size", 1),
                 "gradient_accumulation_steps": params.get("gradient_accumulation_steps", 4),
                 "mixed_precision": params.get("mixed_precision", "fp16"),
                 # Disable DataLoader workers on macOS to avoid multiprocessing issues
@@ -320,10 +340,16 @@ class LoRATrainer:
                 env=env,  # Pass modified environment
             )
             
+            # Track process for cancellation
+            self._active_processes[lora_model.id] = process
+            
             # Read output line by line in real-time
             full_output = []
             error_detected = False
             error_messages = []
+            current_epoch = 0
+            total_epochs = params.get("epochs", 10)
+            current_loss = None
             
             for line in process.stdout:
                 line = line.strip()
@@ -345,26 +371,96 @@ class LoRATrainer:
                     error_detected = True
                     error_messages.append(line)
                 
-                # Extract progress if available
-                if 'epoch' in line.lower() and ('/' in line or '%' in line):
+                # Extract and publish progress if available
+                # Priority: 1) steps percentage (most accurate), 2) epoch progress
+                import re
+                
+                # Try to parse steps percentage first (e.g., "steps: 3%| | 26/1000")
+                steps_percent_match = re.search(r'steps:\s*(\d+\.?\d*)%\|.*?(\d+)/(\d+)', line)
+                if steps_percent_match:
                     try:
-                        # Parse epoch and loss if available
-                        await training_logger.log(
-                            lora_model.id,
-                            line,
-                            level="PROGRESS"
-                        )
-                    except:
-                        pass
+                        progress = float(steps_percent_match.group(1))
+                        current_step = int(steps_percent_match.group(2))
+                        total_steps = int(steps_percent_match.group(3))
+                        
+                        # Clamp to 0-100
+                        progress = min(100.0, max(0.0, progress))
+                        
+                        # Try to extract loss from the same line
+                        loss_match = re.search(r'avr_loss[=:]\s*([0-9.]+)', line)
+                        if loss_match:
+                            current_loss = float(loss_match.group(1))
+                        
+                        # Report progress via ProgressReporter
+                        if self.progress_reporter:
+                            await self.progress_reporter.report(
+                                lora_id=lora_model.id,
+                                progress=progress,
+                                epoch=current_epoch,
+                                total_epochs=total_epochs,
+                                loss=current_loss,
+                                message=f"Step {current_step}/{total_steps} ({progress:.1f}%)"
+                            )
+                        
+                        logger.debug(f"📊 Steps progress: {current_step}/{total_steps} ({progress:.1f}%), loss: {current_loss}")
+                    except Exception as e:
+                        logger.debug(f"Failed to parse steps progress: {e}")
+                
+                # Fallback: Try to parse epoch progress
+                elif 'epoch' in line.lower():
+                    try:
+                        # Match patterns like "Epoch 1/10" or "epoch: 1/10"
+                        epoch_match = re.search(r'[Ee]poch[:\s]+(\d+)\s*/\s*(\d+)', line)
+                        if epoch_match:
+                            current_epoch = int(epoch_match.group(1))
+                            total_epochs = int(epoch_match.group(2))
+                            
+                            # Try to extract loss from the same line
+                            loss_match = re.search(r'loss[:\s]+([0-9.]+)', line, re.IGNORECASE)
+                            if loss_match:
+                                current_loss = float(loss_match.group(1))
+                            
+                            # Calculate progress percentage
+                            progress = (current_epoch / total_epochs) * 100
+                            
+                            # Report progress via ProgressReporter
+                            if self.progress_reporter:
+                                await self.progress_reporter.report(
+                                    lora_id=lora_model.id,
+                                    progress=progress,
+                                    epoch=current_epoch,
+                                    total_epochs=total_epochs,
+                                    loss=current_loss,
+                                    message=f"Epoch {current_epoch}/{total_epochs} ({progress:.1f}%)"
+                                )
+                            
+                            logger.info(f"📊 Epoch progress: {current_epoch}/{total_epochs} ({progress:.1f}%), loss: {current_loss}")
+                    except Exception as e:
+                        logger.warning(f"Failed to parse epoch progress: {e}")
             
             # Wait for process to complete
             returncode = process.wait()
             
+            # Remove from active processes
+            if lora_model.id in self._active_processes:
+                del self._active_processes[lora_model.id]
+            
             if returncode == 0 and not error_detected:
                 logger.info(f"Training completed successfully")
-                lora_model.final_loss = 0.05
-                lora_model.training_steps = config["max_train_steps"]
+                lora_model.final_loss = current_loss if current_loss is not None else 0.05
+                lora_model.training_steps = config["general"].get("max_train_steps", 1000)
                 lora_model.training_time_minutes = 30.0
+                
+                # Report completion via ProgressReporter
+                if self.progress_reporter:
+                    await self.progress_reporter.report(
+                        lora_id=lora_model.id,
+                        progress=100.0,
+                        epoch=current_epoch if current_epoch > 0 else total_epochs,
+                        total_epochs=total_epochs,
+                        loss=current_loss,
+                        message="Training completed successfully"
+                    )
                 
                 await training_logger.log(
                     lora_model.id,
@@ -375,17 +471,17 @@ class LoRATrainer:
                 # Auto-trigger quality assessment
                 try:
                     from app.services.quality_assessor import QualityAssessor
-                    from sqlalchemy.ext.asyncio import AsyncSession
-                    from app.core.database import AsyncSessionLocal
                     
-                    async with AsyncSessionLocal() as db:
-                        assessor = QualityAssessor()
-                        await assessor.assess_model_quality(
-                            lora_model=lora_model,
-                            db=db,
-                            num_test_images=5
-                        )
-                        logger.info(f"Auto quality assessment triggered for LoRA {lora_model.id}")
+                    async with async_session_factory() as assess_db:
+                        # Refresh model in new session
+                        assess_model = await assess_db.get(LoRAModel, lora_model.id)
+                        if assess_model:
+                            assessor = QualityAssessor()
+                            await assessor.assess_model_quality(
+                                lora_id=lora_model.id,
+                                num_test_images=5
+                            )
+                            logger.info(f"Auto quality assessment completed for LoRA {lora_model.id}")
                 except Exception as e:
                     logger.warning(f"Auto quality assessment failed: {e}")
                 
@@ -469,7 +565,21 @@ class LoRATrainer:
                 logger.warning(f"Cannot cancel: model {lora_model.name} is not training")
                 return False
             
+            # Revoke the Celery task to terminate the Kohya subprocess in the worker
+            if lora_model.celery_task_id:
+                try:
+                    from celery_worker import celery_app
+                    logger.info(f"Revoking Celery task {lora_model.celery_task_id} for LoRA {lora_id}")
+                    # terminate=True sends SIGTERM to the worker process
+                    celery_app.control.revoke(lora_model.celery_task_id, terminate=True)
+                    logger.info(f"✅ Celery task {lora_model.celery_task_id} revoked")
+                except Exception as e:
+                    logger.error(f"Failed to revoke Celery task: {e}")
+                    # Continue to update status even if revoke fails
+            
+            # Update status to cancelled
             lora_model.status = "cancelled"
+            lora_model.completed_at = datetime.now()
             await session.commit()
             
             logger.info(f"Cancelled training for: {lora_model.name}")

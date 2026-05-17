@@ -84,6 +84,17 @@
           <el-slider v-model="customConfig.epochs" :min="1" :max="100" show-input />
         </el-form-item>
 
+        <el-form-item :label="$t('lora.training_wizard.max_train_steps')" prop="max_train_steps">
+          <el-input-number
+            v-model="customConfig.max_train_steps"
+            :min="40"
+            :max="10000"
+            :step="100"
+            style="width: 100%;"
+          />
+          <div class="form-hint">{{ $t('lora.training_wizard.max_train_steps_hint') }}</div>
+        </el-form-item>
+
         <el-form-item :label="$t('lora.training_wizard.learning_rate')" prop="learning_rate">
           <el-input-number
             v-model="customConfig.learning_rate"
@@ -248,6 +259,7 @@ const configFormRef = ref(null)
 
 const customConfig = ref({
   epochs: 10,
+  max_train_steps: 40,  // 默认40步，适合快速测试
   learning_rate: 0.0001,
   network_dim: 64,
   batch_size: 1,

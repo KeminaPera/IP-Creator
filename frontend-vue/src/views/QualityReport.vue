@@ -328,8 +328,14 @@ const loadReport = async () => {
     const response = await getQualityReport(loraId.value)
     report.value = response.data
   } catch (err) {
-    error.value = err.message || t('quality_report.load_failed')
-    ElMessage.error(error.value)
+    // Handle 404 - no report found
+    if (err.response?.status === 404) {
+      error.value = t('quality_report.no_report')
+      report.value = null
+    } else {
+      error.value = err.message || t('quality_report.load_failed')
+      ElMessage.error(error.value)
+    }
   } finally {
     loading.value = false
   }

@@ -12,6 +12,10 @@ export function createLora(data) {
   return request.post('/lora/create', data)
 }
 
+export function updateLora(id, data) {
+  return request.put(`/lora/update/${id}`, data)
+}
+
 export function trainLora(id) {
   return request.post(`/lora/${id}/train`)
 }

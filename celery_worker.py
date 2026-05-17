@@ -4,14 +4,18 @@ Defines all asynchronous task definitions for background processing
 including LLM calls, LoRA training, and video generation.
 """
 import asyncio
+import logging
 from datetime import datetime
 from celery import Celery
 from celery.signals import worker_process_init, worker_ready
 from app.config.settings import settings
 from typing import Optional
 from sqlalchemy.sql import func
+from sqlalchemy import update, select
 from app.utils.time_utils import format_datetime_full
 from sqlalchemy.ext.asyncio import AsyncSession
+
+logger = logging.getLogger(__name__)
 
 # Eager-import all ORM models so SQLAlchemy mappers can resolve string-based
 # relationships (e.g. LoRAModel.quality_reports -> 'QualityReport') in workers.
@@ -21,6 +25,43 @@ from app.models import (  # noqa: F401
 )
 
 # Task modules are defined directly in this file
+
+# =============================================================================
+# Helper Functions
+# =============================================================================
+
+def update_task_status(task_id: str, status: str, progress: int = 0, 
+                       started_at=None, completed_at=None, error_message=None):
+    """
+    Update task status using connection pool.
+    
+    Args:
+        task_id: Celery task ID
+        status: New status (running, completed, failed)
+        progress: Progress percentage (0-100)
+        started_at: datetime object or None
+        completed_at: datetime object or None
+        error_message: Error message or None
+    """
+    from app.config.database import get_sync_session
+    from app.models.task import TaskRecord
+    
+    values = {'status': status, 'progress': progress}
+    if started_at:
+        values['started_at'] = started_at
+    if completed_at:
+        values['completed_at'] = completed_at
+    if error_message:
+        values['error_message'] = error_message
+    
+    with get_sync_session() as session:
+        session.execute(
+            update(TaskRecord)
+            .where(TaskRecord.task_id == task_id)
+            .values(**values)
+        )
+        session.commit()
+
 
 # =============================================================================
 # Celery 队列 SSOT (Single Source of Truth)
@@ -50,6 +91,7 @@ TASK_ROUTES = {
     "celery_worker.generate_story_task": {"queue": "story_generation"},
     "celery_worker.generate_video_task": {"queue": "video_generation"},
     "celery_worker.download_model_task": {"queue": "default"},  # 下载任务走默认队列
+    "celery_worker.train_lora_task": {"queue": "training"},  # LoRA训练任务走training队列
 }
 
 # Celery application instance
@@ -95,17 +137,15 @@ def _verify_queue_consistency(sender=None, **kwargs):
         routed = {v["queue"] for v in TASK_ROUTES.values()}
         missing = routed - listening
         if missing:
-            print(
-                f"[Celery Worker] ⚠️  WARNING: task_routes 路由到 {sorted(missing)} "
-                f"但 worker 未监听这些队列！请检查启动命令的 -Q 参数。"
-                f" (当前监听: {sorted(listening)})"
+            logger.warning(
+                f"Task routes routing to {sorted(missing)} "
+                f"but worker not listening! Check -Q parameter. "
+                f"(Currently listening: {sorted(listening)})"
             )
         else:
-            print(
-                f"[Celery Worker] ✅ 队列一致性校验通过，监听 {sorted(listening)}"
-            )
+            logger.info(f"Queue consistency check passed, listening {sorted(listening)}")
     except Exception as e:
-        print(f"[Celery Worker] 队列一致性校验异常: {e}")
+        logger.error(f"Queue consistency check exception: {e}")
 
 
 @worker_process_init.connect
@@ -118,9 +158,9 @@ def init_worker_process(**kwargs):
         
         from app.core.llm_manager import llm_manager
         loop.run_until_complete(llm_manager.initialize_models())
-        print(f"[Celery Worker] LLM manager initialized, active model: {llm_manager.registry.get_active_model_id()}")
+        logger.info(f"LLM manager initialized, active model: {llm_manager.registry.get_active_model_id()}")
     except Exception as e:
-        print(f"[Celery Worker] Failed to initialize LLM manager: {e}")
+        logger.error(f"Failed to initialize LLM manager: {e}")
 
 
 def create_content_record(
@@ -141,12 +181,11 @@ def create_content_record(
         execution_time: Execution time in seconds
     """
     try:
-        import sqlite3
         import json
         from datetime import datetime
         from pathlib import Path
-        
-        db_path = './data/ip_creator.db'
+        from app.config.database import get_sync_session
+        from app.models.generated_content import GeneratedContent
         
         # Extract metadata from result
         title = result_data.get('title', f"{content_type.capitalize()} - {task_id[:8]}")
@@ -178,29 +217,29 @@ def create_content_record(
         # Parameters used for generation
         parameters = result_data.get('params', result_data.get('input_params', {}))
         
-        conn = sqlite3.connect(db_path)
-        cursor = conn.cursor()
-        
-        cursor.execute("""
-            INSERT INTO generated_contents (
-                task_id, task_type, content_type, title, description,
-                file_path, thumbnail_path, file_size,
-                duration_seconds, resolution, word_count,
-                ip_asset_id, parameters, content_metadata,
-                status, execution_time_seconds, channel_id,
-                created_at, updated_at
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'), datetime('now'))
-        """, (
-            task_id, task_type, content_type, title, description,
-            file_path, thumbnail_path, file_size,
-            duration_seconds, resolution, word_count,
-            ip_asset_id, json.dumps(parameters) if parameters else None,
-            json.dumps(content_metadata),
-            'completed', execution_time, channel_id
-        ))
-        
-        conn.commit()
-        conn.close()
+        # Use connection pool
+        with get_sync_session() as session:
+            content = GeneratedContent(
+                task_id=task_id,
+                task_type=task_type,
+                content_type=content_type,
+                title=title,
+                description=description,
+                file_path=file_path,
+                thumbnail_path=thumbnail_path,
+                file_size=file_size,
+                duration_seconds=duration_seconds,
+                resolution=resolution,
+                word_count=word_count,
+                ip_asset_id=ip_asset_id,
+                parameters=parameters if parameters else None,
+                content_metadata=content_metadata,
+                status='completed',
+                execution_time_seconds=execution_time,
+                channel_id=channel_id
+            )
+            session.add(content)
+            session.commit()
         
         from app.utils.logger import logger
         logger.info(f"Created content record: {content_type} - {title} (ID: {task_id})")
@@ -309,20 +348,21 @@ def generate_story_task(self, prompt: str, ip_name: Optional[str] = None, ip_ass
     try:
         import asyncio
         from app.core.video_generator import video_generator
-        import sqlite3
+        from app.config.database import get_sync_session
+        from app.models.task import TaskRecord
         
-        # Update task status to running and set started_at using local time
-        db_path = './data/ip_creator.db'
-        now = format_datetime_full()
-        
-        conn = sqlite3.connect(db_path)
-        cursor = conn.cursor()
-        cursor.execute(
-            "UPDATE task_records SET status='running', started_at=?, progress=10 WHERE task_id=?",
-            (now, self.request.id)
-        )
-        conn.commit()
-        conn.close()
+        # Update task status to running
+        with get_sync_session() as session:
+            session.execute(
+                update(TaskRecord)
+                .where(TaskRecord.task_id == self.request.id)
+                .values(
+                    status='running',
+                    started_at=datetime.now(),
+                    progress=10
+                )
+            )
+            session.commit()
         
         # 复用 worker_process_init 中创建的全局事件循环
         loop = asyncio.get_event_loop()
@@ -338,26 +378,27 @@ def generate_story_task(self, prompt: str, ip_name: Optional[str] = None, ip_ass
         
         if result["status"] == "failed":
             # Update task status to failed
-            conn = sqlite3.connect(db_path)
-            cursor = conn.cursor()
-            cursor.execute(
-                "UPDATE task_records SET status='failed', progress=0 WHERE task_id=?",
-                (self.request.id,)
-            )
-            conn.commit()
-            conn.close()
+            with get_sync_session() as session:
+                session.execute(
+                    update(TaskRecord)
+                    .where(TaskRecord.task_id == self.request.id)
+                    .values(status='failed', progress=0)
+                )
+                session.commit()
             raise Exception(result.get("error", "Story generation failed"))
         
-        # Update task status to completed and set completed_at
-        completed_at = format_datetime_full()
-        conn = sqlite3.connect(db_path)
-        cursor = conn.cursor()
-        cursor.execute(
-            "UPDATE task_records SET status='completed', completed_at=?, progress=100 WHERE task_id=?",
-            (completed_at, self.request.id)
-        )
-        conn.commit()
-        conn.close()
+        # Update task status to completed
+        with get_sync_session() as session:
+            session.execute(
+                update(TaskRecord)
+                .where(TaskRecord.task_id == self.request.id)
+                .values(
+                    status='completed',
+                    completed_at=datetime.now(),
+                    progress=100
+                )
+            )
+            session.commit()
         
         # Create content record with complete metadata
         execution_time = time.time() - start_time
@@ -388,14 +429,13 @@ def generate_story_task(self, prompt: str, ip_name: Optional[str] = None, ip_ass
     except Exception as exc:
         # Update task status to failed on error
         try:
-            conn = sqlite3.connect(db_path)
-            cursor = conn.cursor()
-            cursor.execute(
-                "UPDATE task_records SET status='failed', progress=0 WHERE task_id=?",
-                (self.request.id,)
-            )
-            conn.commit()
-            conn.close()
+            with get_sync_session() as session:
+                session.execute(
+                    update(TaskRecord)
+                    .where(TaskRecord.task_id == self.request.id)
+                    .values(status='failed', progress=0)
+                )
+                session.commit()
         except:
             pass
         raise self.retry(exc=exc, countdown=60 * (2 ** self.request.retries))
@@ -406,24 +446,14 @@ def generate_image_task(self, prompt: str, ip_asset_id: int = 0, **kwargs) -> di
     """Async image generation task with Diffusers."""
     import time
     from datetime import datetime
-    import sqlite3
     start_time = time.time()
-    db_path = './data/ip_creator.db'
     
     try:
         import asyncio
         from app.core.video_generator import video_generator
         
         # Update task status to running
-        now = format_datetime_full()
-        conn = sqlite3.connect(db_path)
-        cursor = conn.cursor()
-        cursor.execute(
-            "UPDATE task_records SET status='running', started_at=?, progress=10 WHERE task_id=?",
-            (now, self.request.id)
-        )
-        conn.commit()
-        conn.close()
+        update_task_status(self.request.id, 'running', 10, started_at=datetime.now())
         
         # 复用全局事件循环
         loop = asyncio.get_event_loop()
@@ -439,20 +469,11 @@ def generate_image_task(self, prompt: str, ip_asset_id: int = 0, **kwargs) -> di
             error_msg = result.get("error", "Image generation failed")
             
             # Update task status to failed with error message
-            completed_at = format_datetime_full()
-            conn = sqlite3.connect(db_path)
-            cursor = conn.cursor()
-            cursor.execute(
-                """UPDATE task_records 
-                   SET status='failed', 
-                       error_message=?, 
-                       progress=0, 
-                       completed_at=?
-                   WHERE task_id=?""",
-                (error_msg, completed_at, self.request.id)
+            update_task_status(
+                self.request.id, 'failed', 0,
+                completed_at=datetime.now(),
+                error_message=error_msg
             )
-            conn.commit()
-            conn.close()
             
             from app.utils.logger import logger
             logger.error(f"Task {self.request.id} failed: {error_msg}")
@@ -460,20 +481,10 @@ def generate_image_task(self, prompt: str, ip_asset_id: int = 0, **kwargs) -> di
         
         # Update task status to completed
         execution_time = time.time() - start_time
-        completed_at = format_datetime_full()
-        conn = sqlite3.connect(db_path)
-        cursor = conn.cursor()
-        cursor.execute(
-            """UPDATE task_records 
-               SET status='completed', 
-                   progress=100, 
-                   completed_at=?,
-                   execution_time_seconds=?
-               WHERE task_id=?""",
-            (completed_at, execution_time, self.request.id)
+        update_task_status(
+            self.request.id, 'completed', 100,
+            completed_at=datetime.now()
         )
-        conn.commit()
-        conn.close()
         
         # Auto-trigger IP consistency check if using IP-Adapter
         try:
@@ -537,20 +548,11 @@ def generate_image_task(self, prompt: str, ip_asset_id: int = 0, **kwargs) -> di
         else:
             # Final retry failed, update task status
             error_msg = str(exc)
-            completed_at = format_datetime_full()
-            conn = sqlite3.connect(db_path)
-            cursor = conn.cursor()
-            cursor.execute(
-                """UPDATE task_records 
-                   SET status='failed', 
-                       error_message=?, 
-                       progress=0, 
-                       completed_at=?
-                   WHERE task_id=?""",
-                (error_msg, completed_at, self.request.id)
+            update_task_status(
+                self.request.id, 'failed', 0,
+                completed_at=datetime.now(),
+                error_message=error_msg
             )
-            conn.commit()
-            conn.close()
             
             from app.utils.logger import logger
             logger.error(f"Task {self.request.id} permanently failed after {self.max_retries} retries: {error_msg}")
@@ -562,25 +564,15 @@ def generate_video_task(self, prompt: str, image_path: str, ip_asset_id: int = 0
     """Async video generation task with Diffusers."""
     import time
     from datetime import datetime
-    import sqlite3
     
     start_time = time.time()
-    db_path = './data/ip_creator.db'
     
     try:
         import asyncio
         from app.core.video_generator import video_generator
         
         # Update task status to running
-        now = format_datetime_full()
-        conn = sqlite3.connect(db_path)
-        cursor = conn.cursor()
-        cursor.execute(
-            "UPDATE task_records SET status='running', started_at=?, progress=10 WHERE task_id=?",
-            (now, self.request.id)
-        )
-        conn.commit()
-        conn.close()
+        update_task_status(self.request.id, 'running', 10, started_at=datetime.now())
         
         # 复用全局事件循环
         loop = asyncio.get_event_loop()
@@ -597,20 +589,11 @@ def generate_video_task(self, prompt: str, image_path: str, ip_asset_id: int = 0
             error_msg = result.get("error", "Video generation failed")
             
             # Update task status to failed with error message
-            completed_at = format_datetime_full()
-            conn = sqlite3.connect(db_path)
-            cursor = conn.cursor()
-            cursor.execute(
-                """UPDATE task_records 
-                   SET status='failed', 
-                       error_message=?, 
-                       progress=0, 
-                       completed_at=?
-                   WHERE task_id=?""",
-                (error_msg, completed_at, self.request.id)
+            update_task_status(
+                self.request.id, 'failed', 0,
+                completed_at=datetime.now(),
+                error_message=error_msg
             )
-            conn.commit()
-            conn.close()
             
             from app.utils.logger import logger
             logger.error(f"Task {self.request.id} failed: {error_msg}")
@@ -618,20 +601,10 @@ def generate_video_task(self, prompt: str, image_path: str, ip_asset_id: int = 0
         
         # Update task status to completed
         execution_time = time.time() - start_time
-        completed_at = format_datetime_full()
-        conn = sqlite3.connect(db_path)
-        cursor = conn.cursor()
-        cursor.execute(
-            """UPDATE task_records 
-               SET status='completed', 
-                   progress=100, 
-                   completed_at=?,
-                   execution_time_seconds=?
-               WHERE task_id=?""",
-            (completed_at, execution_time, self.request.id)
+        update_task_status(
+            self.request.id, 'completed', 100,
+            completed_at=datetime.now()
         )
-        conn.commit()
-        conn.close()
         
         # Create content record with complete metadata
         execution_time = time.time() - start_time
@@ -660,20 +633,11 @@ def generate_video_task(self, prompt: str, image_path: str, ip_asset_id: int = 0
         else:
             # Final retry failed, update task status
             error_msg = str(exc)
-            completed_at = format_datetime_full()
-            conn = sqlite3.connect(db_path)
-            cursor = conn.cursor()
-            cursor.execute(
-                """UPDATE task_records 
-                   SET status='failed', 
-                       error_message=?, 
-                       progress=0, 
-                       completed_at=?
-                   WHERE task_id=?""",
-                (error_msg, completed_at, self.request.id)
+            update_task_status(
+                self.request.id, 'failed', 0,
+                completed_at=datetime.now(),
+                error_message=error_msg
             )
-            conn.commit()
-            conn.close()
             
             from app.utils.logger import logger
             logger.error(f"Task {self.request.id} failed after {self.max_retries} retries: {error_msg}")
@@ -697,108 +661,124 @@ def train_lora_task(self, lora_id: int, training_params: dict) -> dict:
 
 def _mock_training(self, lora_id: int, training_params: dict) -> dict:
     """Mock LoRA training task - for workflow validation only."""
-    import sqlite3
     import time
     import os
-    import redis
-    import json
     from datetime import datetime
+    from app.config.database import get_sync_session
     from app.config.settings import settings
-    
-    db_path = './data/ip_creator.db'
-    
-    # Initialize Redis client for progress publishing (use settings config)
-    # Change db from 0 to 3 for WebSocket progress
-    redis_url = settings.REDIS_URL.rsplit('/', 1)[0] + '/3'
-    redis_client = redis.from_url(redis_url, decode_responses=True)
-    
-    def publish_progress(progress: float, epoch: int, loss: float = None):
-        """发布进度到Redis"""
-        try:
-            data = {
-                'progress': progress,
-                'current_epoch': epoch,
-                'current_loss': loss,
-                'timestamp': time.time()
-            }
-            redis_client.publish(
-                f'training_progress:{lora_id}',
-                json.dumps(data)
-            )
-        except Exception as e:
-            print(f"Failed to publish progress: {e}")
+    from app.services.progress_reporter import progress_reporter
+    from app.models.lora_model import LoRAModel
+    from app.models.ip_asset import IPAsset
+    from app.models.training_dataset import TrainingDataset
+    from sqlalchemy import select, update
     
     try:
-        # Update status to training
-        conn = sqlite3.connect(db_path)
-        cursor = conn.cursor()
-        now = format_datetime_full()
-        
-        cursor.execute(
-            "UPDATE lora_models SET status='training', started_at=?, progress=0 WHERE id=?",
-            (now, lora_id)
-        )
-        conn.commit()
-        
-        # Mock training with progress updates
-        total_epochs = training_params.get('epochs', 10)
-        
-        for epoch in range(1, total_epochs + 1):
-            # Calculate progress
-            progress = (epoch / total_epochs) * 100
-            # Simulate loss decreasing
-            current_loss = 0.15 - (epoch * 0.012)
+        # Use sync session with connection pool
+        with get_sync_session() as session:
+            now = datetime.now()  # 使用datetime对象
             
-            # Update progress in database
-            cursor.execute(
-                """UPDATE lora_models 
-                   SET progress=?, 
-                       current_loss=?,
-                       current_epoch=?,
-                       updated_at=?
-                   WHERE id=?""",
-                (progress, current_loss, epoch, now, lora_id)
+            # Update status to training
+            session.execute(
+                update(LoRAModel)
+                .where(LoRAModel.id == lora_id)
+                .values(
+                    status='training',
+                    started_at=now,
+                    progress=0
+                )
             )
-            conn.commit()
+            session.commit()
             
-            # Publish progress to Redis
-            publish_progress(progress, epoch, current_loss)
+            # Mock training with progress updates
+            total_epochs = training_params.get('epochs', 10)
             
-            # Simulate training time (5 seconds per epoch)
-            time.sleep(5)
-        
-        # Generate mock LoRA model file
-        mock_lora_dir = './data/lora_models'
-        os.makedirs(mock_lora_dir, exist_ok=True)
-        
-        mock_lora_path = f"{mock_lora_dir}/mock_lora_{lora_id}_{int(time.time())}.safetensors"
-        
-        # Create placeholder file
-        with open(mock_lora_path, 'w') as f:
-            f.write(f"MOCK_LORA_MODEL\nlora_id: {lora_id}\ncreated: {now}\nepochs: {total_epochs}")
-        
-        # Update completion status
-        completed_at = format_datetime_full()
-        cursor.execute(
-            """UPDATE lora_models 
-               SET status='completed',
-                   progress=100,
-                   current_epoch=?,
-                   file_path=?,
-                   final_loss=?,
-                   training_steps=?,
-                   training_time_minutes=?,
-                   completed_at=?,
-                   updated_at=?
-               WHERE id=?""",
-            (total_epochs, mock_lora_path, current_loss, total_epochs * 100, 
-             total_epochs * 5 / 60, completed_at, completed_at, lora_id)
-        )
-        conn.commit()
-        conn.close()
-        
-        # Publish completion to Redis
-        publish_progress(100, total_epochs, current_loss)
+            for epoch in range(1, total_epochs + 1):
+                # Calculate progress
+                progress = (epoch / total_epochs) * 100
+                # Simulate loss decreasing
+                current_loss = 0.15 - (epoch * 0.012)
+                
+                # ✅ Use ProgressReporter (updates DB + Redis asynchronously)
+                progress_reporter.report(
+                    lora_id=lora_id,
+                    progress=progress,
+                    epoch=epoch,
+                    total_epochs=total_epochs,
+                    loss=current_loss,
+                    message=f"Mock training: Epoch {epoch}/{total_epochs}"
+                )
+                
+                # Simulate training time (5 seconds per epoch)
+                time.sleep(5)
+            
+            # ✅ Report completion
+            progress_reporter.report(
+                lora_id=lora_id,
+                progress=100.0,
+                epoch=total_epochs,
+                total_epochs=total_epochs,
+                loss=current_loss,
+                message="Mock training completed"
+            )
+            
+            # Generate mock LoRA model file
+            mock_lora_dir = './data/lora_models'
+            os.makedirs(mock_lora_dir, exist_ok=True)
+            
+            mock_lora_path = f"{mock_lora_dir}/mock_lora_{lora_id}_{int(time.time())}.safetensors"
+            
+            # Create placeholder file
+            with open(mock_lora_path, 'w') as f:
+                f.write(f"MOCK_LORA_MODEL\nlora_id: {lora_id}\ncreated: {now}\nepochs: {total_epochs}")
+            
+            # Update completion status
+            completed_at = datetime.now()
+            session.execute(
+                update(LoRAModel)
+                .where(LoRAModel.id == lora_id)
+                .values(
+                    status='completed',
+                    progress=100,
+                    current_epoch=total_epochs,
+                    file_path=mock_lora_path,
+                    final_loss=current_loss,
+                    training_steps=total_epochs * 100,
+                    training_time_minutes=total_epochs * 5 / 60,
+                    completed_at=completed_at,
+                    updated_at=completed_at
+                )
+            )
+            session.commit()
+            
+            # Update IP asset association after training completes
+            try:
+                # Get the dataset_id from lora_models
+                lora_result = session.execute(
+                    select(LoRAModel.dataset_id).where(LoRAModel.id == lora_id)
+                )
+                dataset_id = lora_result.scalar_one_or_none()
+                
+                if dataset_id:
+                    # Get ip_asset_id from training_datasets
+                    dataset_result = session.execute(
+                        select(TrainingDataset.ip_asset_id).where(TrainingDataset.id == dataset_id)
+                    )
+                    ip_asset_id = dataset_result.scalar_one_or_none()
+                    
+                    if ip_asset_id:
+                        # Update ip_assets.lora_model_id
+                        session.execute(
+                            update(IPAsset)
+                            .where(IPAsset.id == ip_asset_id)
+                            .values(
+                                lora_model_id=lora_id,
+                                updated_at=now
+                            )
+                        )
+                        session.commit()
+                        logger.info(f"Updated IP asset {ip_asset_id} with LoRA model {lora_id}")
+            except Exception as e:
+                logger.error(f"Failed to update IP association: {e}")
         
         # Auto-trigger quality assessment after training completes
         try:
@@ -837,14 +817,10 @@ def _mock_training(self, lora_id: int, training_params: dict) -> dict:
     except Exception as exc:
         # Update failed status
         try:
-            conn = sqlite3.connect(db_path)
-            cursor = conn.cursor()
-            cursor.execute(
-                "UPDATE lora_models SET status='failed', error_message=? WHERE id=?",
-                (str(exc), lora_id)
+            update_task_status(
+                lora_id, 'failed',
+                error_message=str(exc)
             )
-            conn.commit()
-            conn.close()
         except:
             pass
         
@@ -853,53 +829,70 @@ def _mock_training(self, lora_id: int, training_params: dict) -> dict:
 
 def _real_training(self, lora_id: int, training_params: dict) -> dict:
     """Real LoRA training task with Kohya-ss."""
-    import sqlite3
-    import redis
-    import json
-    import time
+    import signal
+    from datetime import datetime
     from app.utils.time_utils import format_datetime_full
-    from app.config.settings import settings
+    from app.core.lora_trainer import lora_trainer
+    from app.services.progress_reporter import progress_reporter
+    from app.config.database import get_sync_session
+    from app.models.lora_model import LoRAModel
+    from app.models.ip_asset import IPAsset
+    from app.models.training_dataset import TrainingDataset
+    from sqlalchemy import select, update
     
-    db_path = './data/ip_creator.db'
+    # Track if training was cancelled
+    training_cancelled = False
     
-    # Initialize Redis client for progress publishing (use settings config)
-    # Change db from 0 to 3 for WebSocket progress
-    redis_url = settings.REDIS_URL.rsplit('/', 1)[0] + '/3'
-    redis_client = redis.from_url(redis_url, decode_responses=True)
+    def handle_revoke_signal(signum, frame):
+        """Handle SIGTERM/SIGINT from Celery revoke"""
+        nonlocal training_cancelled
+        training_cancelled = True
+        logger.warning(f"Received revoke signal for LoRA {lora_id}, cancelling training...")
+        
+        # Terminate the Kohya subprocess
+        if lora_id in lora_trainer._active_processes:
+            process = lora_trainer._active_processes[lora_id]
+            try:
+                logger.info(f"Terminating Kohya process {process.pid}")
+                process.terminate()
+                try:
+                    process.wait(timeout=10)
+                except subprocess.TimeoutExpired:
+                    logger.warning("Process didn't terminate gracefully, killing...")
+                    process.kill()
+                    process.wait(timeout=5)
+                del lora_trainer._active_processes[lora_id]
+                logger.info("✅ Kohya process terminated")
+            except Exception as e:
+                logger.error(f"Failed to terminate Kohya process: {e}")
     
-    def publish_progress(progress: float, epoch: int, loss: float = None):
-        """发布进度到Redis"""
-        try:
-            data = {
-                'progress': progress,
-                'current_epoch': epoch,
-                'current_loss': loss,
-                'timestamp': time.time()
-            }
-            redis_client.publish(
-                f'training_progress:{lora_id}',
-                json.dumps(data)
-            )
-        except Exception as e:
-            print(f"Failed to publish progress: {e}")
+    # Register signal handlers
+    old_sigterm = signal.getsignal(signal.SIGTERM)
+    old_sigint = signal.getsignal(signal.SIGINT)
+    signal.signal(signal.SIGTERM, handle_revoke_signal)
+    signal.signal(signal.SIGINT, handle_revoke_signal)
     
     try:
-        from app.core.lora_trainer import lora_trainer
+        # Use sync session with connection pool
+        with get_sync_session() as session:
+            now = datetime.now()  # 使用datetime对象而不是字符串
+            
+            # Update status to training
+            session.execute(
+                update(LoRAModel)
+                .where(LoRAModel.id == lora_id)
+                .values(
+                    status='training',
+                    started_at=now,
+                    progress=0
+                )
+            )
+            session.commit()
         
-        # Update status to training
-        conn = sqlite3.connect(db_path)
-        cursor = conn.cursor()
-        now = format_datetime_full()
-        cursor.execute(
-            "UPDATE lora_models SET status='training', started_at=?, progress=0 WHERE id=?",
-            (now, lora_id)
-        )
-        conn.commit()
+        # ✅ Inject ProgressReporter into lora_trainer
+        lora_trainer.set_progress_reporter(progress_reporter)
         
-        # Publish start progress
-        publish_progress(0, 0)
-        
-        # Run training - fix: use new_event_loop instead of get_event_loop
+        # Run training
         loop = asyncio.new_event_loop()
         asyncio.set_event_loop(loop)
         try:
@@ -909,27 +902,65 @@ def _real_training(self, lora_id: int, training_params: dict) -> dict:
         finally:
             loop.close()
         
-        conn.close()
+        # Check if training was cancelled
+        if training_cancelled:
+            logger.info(f"Training was cancelled for LoRA {lora_id}")
+            # Restore original signal handlers
+            signal.signal(signal.SIGTERM, old_sigterm)
+            signal.signal(signal.SIGINT, old_sigint)
+            raise Exception("Training was cancelled by user")
         
-        # Publish completion
-        publish_progress(100, training_params.get('epochs', 10))
+        # Update IP asset association after training completes
+        try:
+            with get_sync_session() as session:
+                # Get the dataset_id from lora_models
+                lora_result = session.execute(
+                    select(LoRAModel.dataset_id).where(LoRAModel.id == lora_id)
+                )
+                dataset_id = lora_result.scalar_one_or_none()
+                
+                if dataset_id:
+                    # Get ip_asset_id from training_datasets
+                    dataset_result = session.execute(
+                        select(TrainingDataset.ip_asset_id).where(TrainingDataset.id == dataset_id)
+                    )
+                    ip_asset_id = dataset_result.scalar_one_or_none()
+                    
+                    if ip_asset_id:
+                        # Update ip_assets.lora_model_id
+                        session.execute(
+                            update(IPAsset)
+                            .where(IPAsset.id == ip_asset_id)
+                            .values(
+                                lora_model_id=lora_id,
+                                updated_at=datetime.now()
+                            )
+                        )
+                        session.commit()
+                        logger.info(f"Updated IP asset {ip_asset_id} with LoRA model {lora_id}")
+        except Exception as e:
+            logger.error(f"Failed to update IP association: {e}")
+        
+        # Update to completed status
+        update_task_status(lora_id, 'completed', progress=100)
+        logger.info(f"LoRA training completed: {lora_id}")
         
         return {"status": "success", "data": result}
     
     except Exception as exc:
+        # Restore original signal handlers
+        signal.signal(signal.SIGTERM, old_sigterm)
+        signal.signal(signal.SIGINT, old_sigint)
+        
         # Update failed status with error message
         error_msg = f"Real training failed: {str(exc)}"
         try:
-            conn = sqlite3.connect(db_path)
-            cursor = conn.cursor()
-            cursor.execute(
-                "UPDATE lora_models SET status='failed', error_message=? WHERE id=?",
-                (error_msg, lora_id)
+            update_task_status(
+                lora_id, 'failed',
+                error_message=error_msg
             )
-            conn.commit()
-            conn.close()
         except Exception as db_exc:
-            print(f"Failed to update error in database: {db_exc}")
+            logger.error(f"Failed to update error in database: {db_exc}")
         
         raise Exception(error_msg)
 

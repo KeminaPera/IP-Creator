@@ -85,31 +85,26 @@ class Settings(BaseSettings):
             Training mode: "mock" or "real"
         """
         try:
-            # Use sync SQLite to avoid async context issues in Celery
-            import sqlite3
-            from pathlib import Path
+            # Use sync session with connection pool
+            from app.config.database import get_sync_session
+            from app.models.system_setting import SystemSetting
+            from sqlalchemy import select
             
-            db_path = Path("./data/ip_creator.db")
-            if not db_path.exists():
-                return self.LORA_TRAINING_MODE
+            with get_sync_session() as session:
+                result = session.execute(
+                    select(SystemSetting.setting_value)
+                    .where(
+                        SystemSetting.category == 'system_feature',
+                        SystemSetting.setting_key == 'lora_training_mode',
+                        SystemSetting.is_active == True
+                    )
+                )
+                mode_value = result.scalar_one_or_none()
             
-            conn = sqlite3.connect(str(db_path))
-            cursor = conn.cursor()
-            
-            cursor.execute(
-                "SELECT setting_value FROM system_settings "
-                "WHERE category='system_feature' AND setting_key='lora_training_mode' "
-                "AND is_active=1"
-            )
-            
-            result = cursor.fetchone()
-            conn.close()
-            
-            if result and result[0]:
-                mode = result[0]
+            if mode_value:
                 # Validate mode
-                if mode in ["mock", "real"]:
-                    return mode
+                if mode_value in ["mock", "real"]:
+                    return mode_value
             
             return self.LORA_TRAINING_MODE
         except Exception as e:

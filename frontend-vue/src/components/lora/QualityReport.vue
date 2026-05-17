@@ -208,25 +208,30 @@ const gradeClass = computed(() => {
 })
 
 // 打开对话框
-async function open() {
-  if (!props.loraId) {
+async function open(loraId) {
+  // 优先使用传入的参数，其次使用prop
+  const id = loraId || props.loraId
+  
+  if (!id) {
     ElMessage.error(t('lora.invalid_model_id'))
     return
   }
   visible.value = true
-  await loadReport()
+  await loadReport(id)
 }
 
 // 加载质量报告
-async function loadReport() {
-  if (!props.loraId) {
+async function loadReport(loraId) {
+  const id = loraId || props.loraId
+  
+  if (!id) {
     ElMessage.error(t('lora.invalid_model_id'))
     return
   }
   
   loading.value = true
   try {
-    const { data } = await getQualityReport(props.loraId)
+    const { data } = await getQualityReport(id)
     report.value = data.data
   } catch (err) {
     if (err.response?.status === 404) {
@@ -242,19 +247,20 @@ async function loadReport() {
 
 // 重新评估
 async function handleReassess() {
-  if (!props.loraId) {
+  const id = props.loraId
+  if (!id) {
     ElMessage.error(t('lora.invalid_model_id'))
     return
   }
   
   try {
     loading.value = true
-    const { data } = await assessQuality(props.loraId, { num_test_images: 5 })
+    const { data } = await assessQuality(id, { num_test_images: 5 })
     ElMessage.success(t('lora.quality.assess_success', {
       score: data.data.overall_score,
       grade: data.data.grade,
     }))
-    await loadReport()
+    await loadReport(id)
     emit('update')
   } catch (err) {
     ElMessage.error(t('lora.quality.assess_failed'))
@@ -265,19 +271,20 @@ async function handleReassess() {
 
 // 首次评估
 async function handleFirstAssess() {
-  if (!props.loraId) {
+  const id = props.loraId
+  if (!id) {
     ElMessage.error(t('lora.invalid_model_id'))
     return
   }
   
   assessing.value = true
   try {
-    const { data } = await assessQuality(props.loraId, { num_test_images: 5 })
+    const { data } = await assessQuality(id, { num_test_images: 5 })
     ElMessage.success(t('lora.quality.assess_success', {
       score: data.data.overall_score,
       grade: data.data.grade,
     }))
-    await loadReport()
+    await loadReport(id)
     emit('update')
   } catch (err) {
     ElMessage.error(t('lora.quality.assess_failed'))

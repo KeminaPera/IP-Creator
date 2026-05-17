@@ -45,46 +45,168 @@ async def create_lora_model(
     db: AsyncSession = Depends(get_db_session),
 ):
     """
-    Create a new LoRA model.
+    Create a new LoRA model with IP and dataset association.
+    
+    Required fields:
+    - name: LoRA model name
+    - base_model: Base model (sd1.5 or sdxl)
+    
+    Optional fields:
+    - ip_asset_id: Associated IP asset ID
+    - dataset_id: Training dataset ID (must belong to the specified IP)
+    - description: Model description
+    - epochs: Training epochs
     """
     try:
         from pathlib import Path
         from app.config.settings import settings
         
-        # Generate default file path
-        output_path = Path(settings.LORA_MODELS_PATH) / f"{lora_data.get('name')}.safetensors"
+        # Validate required fields
+        name = lora_data.get("name")
+        base_model = lora_data.get("base_model", "sd1.5")
         
-        # Create LoRA model
+        if not name:
+            raise BadRequestException("Model name is required")
+        
+        # Validate dataset association if provided
+        dataset_id = lora_data.get("dataset_id")
+        ip_asset_id = lora_data.get("ip_asset_id")
+        
+        if dataset_id:
+            # Verify dataset exists
+            dataset_result = await db.execute(
+                select(TrainingDataset).where(TrainingDataset.id == dataset_id)
+            )
+            dataset = dataset_result.scalar_one_or_none()
+            
+            if not dataset:
+                raise NotFoundException(f"Dataset with ID {dataset_id} not found")
+            
+            # Verify dataset is ready for training
+            if dataset.status != "ready":
+                raise BadRequestException(
+                    f"Dataset '{dataset.name}' is not ready for training (current status: {dataset.status})"
+                )
+            
+            # Verify IP association if both provided
+            if ip_asset_id and dataset.ip_asset_id != ip_asset_id:
+                raise BadRequestException(
+                    f"Dataset belongs to IP {dataset.ip_asset_id}, but you specified IP {ip_asset_id}"
+                )
+            
+            # Use dataset's IP if ip_asset_id not specified
+            if not ip_asset_id:
+                ip_asset_id = dataset.ip_asset_id
+        
+        # Validate IP association if provided
+        if ip_asset_id:
+            ip_result = await db.execute(
+                select(IPAsset).where(IPAsset.id == ip_asset_id)
+            )
+            ip_asset = ip_result.scalar_one_or_none()
+            
+            if not ip_asset:
+                raise NotFoundException(f"IP asset with ID {ip_asset_id} not found")
+        
+        # Generate default file path
+        output_path = Path(settings.LORA_MODELS_PATH) / f"{name}.safetensors"
+        
+        # Create LoRA model with associations
         new_model = LoRAModel(
-            name=lora_data.get("name"),
+            name=name,
             file_path=str(output_path),
-            base_model=lora_data.get("base_model", "sd1.5"),
+            base_model=base_model,
             description=lora_data.get("description", ""),
             status="not_trained",
             total_epochs=lora_data.get("epochs", 10),
+            dataset_id=dataset_id,
         )
         
         db.add(new_model)
         await db.commit()
         await db.refresh(new_model)
         
+        # Build response
+        response_data = {
+            "id": new_model.id,
+            "name": new_model.name,
+            "base_model": new_model.base_model,
+            "status": new_model.status,
+            "description": new_model.description,
+        }
+        
+        if dataset_id:
+            response_data["dataset_id"] = dataset_id
+            response_data["dataset_name"] = dataset.name if dataset else None
+        
+        if ip_asset_id:
+            response_data["ip_asset_id"] = ip_asset_id
+        
         return created_response(
-            data={
-                "id": new_model.id,
-                "name": new_model.name,
-                "base_model": new_model.base_model,
-                "status": new_model.status,
-                "description": new_model.description,
-            },
+            data=response_data,
             message="LoRA model created successfully"
         )
         
+    except (BadRequestException, NotFoundException):
+        raise
+    except Exception as e:
+        await db.rollback()
+        logger.error(f"Create LoRA error: {str(e)}")
+        raise AppException(
+            status_code=500,
+            error="DatabaseError",
+            message="Failed to create LoRA model"
+        )
+
+
+@router.put("/update/{lora_id}")
+async def update_lora_model(
+    lora_id: int,
+    lora_data: dict,
+    current_user: dict = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db_session),
+):
+    """
+    Update an existing LoRA model.
+    """
+    try:
+        # Get existing LoRA model
+        result = await db.execute(select(LoRAModel).where(LoRAModel.id == lora_id))
+        lora_model = result.scalar_one_or_none()
+        
+        if not lora_model:
+            raise NotFoundException(f"LoRA model with ID {lora_id} not found")
+        
+        # Update fields
+        if "name" in lora_data:
+            lora_model.name = lora_data["name"]
+        if "description" in lora_data:
+            lora_model.description = lora_data["description"]
+        if "weight_default" in lora_data:
+            lora_model.weight_default = lora_data["weight_default"]
+        if "base_model" in lora_data:
+            lora_model.base_model = lora_data["base_model"]
+        
+        await db.commit()
+        await db.refresh(lora_model)
+        
+        return updated_response(
+            data={
+                "id": lora_model.id,
+                "name": lora_model.name,
+                "description": lora_model.description,
+            },
+            message=f"LoRA model '{lora_model.name}' updated successfully"
+        )
+        
+    except NotFoundException:
+        raise
     except Exception as e:
         await db.rollback()
         raise AppException(
             status_code=500,
             error="DatabaseError",
-            message="Failed to create LoRA model"
+            message="Failed to update LoRA model"
         )
 
 
@@ -117,23 +239,53 @@ async def list_lora_models(
         result = await db.execute(query)
         items = result.scalars().all()
         
-        # Fetch associated IP assets
-        ip_ids = [lora.id for lora in items if lora.id]
+        # Fetch associated IP assets (via dataset)
+        lora_ids = [model.id for model in items]
         ip_map = {}
-        if ip_ids:
+        if lora_ids:
+            # Get dataset_id for each LoRA model
+            dataset_ids = [model.dataset_id for model in items if model.dataset_id]
+            
+            if dataset_ids:
+                # Query TrainingDataset to get ip_asset_id
+                dataset_result = await db.execute(
+                    select(TrainingDataset.id, TrainingDataset.ip_asset_id)
+                    .where(TrainingDataset.id.in_(dataset_ids))
+                )
+                dataset_ip_map = {row[0]: row[1] for row in dataset_result.all()}
+                
+                # Get IP names
+                ip_asset_ids = [ip_id for ip_id in dataset_ip_map.values() if ip_id]
+                if ip_asset_ids:
+                    ip_name_result = await db.execute(
+                        select(IPAsset.id, IPAsset.name).where(IPAsset.id.in_(ip_asset_ids))
+                    )
+                    ip_name_map = {row[0]: row[1] for row in ip_name_result.all()}
+                    
+                    # Build final map: lora_id -> ip_name
+                    for model in items:
+                        if model.dataset_id and model.dataset_id in dataset_ip_map:
+                            ip_asset_id = dataset_ip_map[model.dataset_id]
+                            if ip_asset_id and ip_asset_id in ip_name_map:
+                                ip_map[model.id] = ip_name_map[ip_asset_id]
+            
+            # Also check for direct IP association (after training completes)
             ip_result = await db.execute(
-                select(IPAsset.id, IPAsset.name).where(IPAsset.lora_model_id.in_(ip_ids))
+                select(IPAsset.lora_model_id, IPAsset.name)
+                .where(IPAsset.lora_model_id.in_(lora_ids))
             )
-            ip_map = {row[0]: row[1] for row in ip_result.all()}
+            for row in ip_result.all():
+                if row[0] not in ip_map:
+                    ip_map[row[0]] = row[1]
         
         # Fetch latest quality reports for each LoRA model
         from app.models.quality_report import QualityReport
         quality_map = {}
-        if ip_ids:
+        if lora_ids:
             # Get the latest quality report for each lora_id
             quality_result = await db.execute(
                 select(QualityReport.lora_id, QualityReport.grade, QualityReport.overall_score)
-                .where(QualityReport.lora_id.in_(ip_ids))
+                .where(QualityReport.lora_id.in_(lora_ids))
                 .order_by(QualityReport.lora_id, QualityReport.created_at.desc())
             )
             # Keep only the latest report for each lora_id
@@ -145,11 +297,7 @@ async def list_lora_models(
         model_list = []
         for model in items:
             # Find associated IP name
-            ip_name = None
-            for ip_id, name in ip_map.items():
-                if model.id == ip_id:
-                    ip_name = name
-                    break
+            ip_name = ip_map.get(model.id)
             
             model_list.append({
                 "id": model.id,
@@ -425,34 +573,54 @@ async def start_training(
                 logger.info(f"Applied custom configuration for LoRA {lora_id}")
         
         # Handle dataset association and conversion
-        if lora_model.dataset_id:
-            # Load dataset
-            dataset = await db.get(TrainingDataset, lora_model.dataset_id)
-            if dataset:
-                dataset_info = {
-                    "dataset_id": dataset.id,
-                    "dataset_name": dataset.name,
-                    "image_count": dataset.image_count,
-                }
-                
-                # Convert to Kohya format if not already done
-                converter = DatasetConverter()
-                from pathlib import Path
-                from app.config.settings import settings
-                kohya_dir = Path(settings.STORAGE_PATH) / "datasets" / f"kohya_dataset_{dataset.id}"
-                
-                if not kohya_dir.exists():
-                    logger.info(f"Converting dataset {dataset.id} to Kohya format")
-                    conversion_result = await converter.convert_to_kohya_format(
-                        dataset_id=dataset.id
-                    )
-                    dataset_info["kohya_directory"] = conversion_result["kohya_directory"]
-                    dataset_info["converted_images"] = conversion_result["converted_images"]
-                else:
-                    dataset_info["kohya_directory"] = str(kohya_dir)
-                    dataset_info["already_converted"] = True
-                
-                logger.info(f"Dataset associated: {dataset.name} with {dataset.image_count} images")
+        if not lora_model.dataset_id:
+            raise BadRequestException(
+                "No dataset associated with this LoRA model. Please create a LoRA model with a dataset first."
+            )
+        
+        # Load and validate dataset
+        dataset = await db.get(TrainingDataset, lora_model.dataset_id)
+        if not dataset:
+            raise NotFoundException(f"Dataset with ID {lora_model.dataset_id} not found")
+        
+        # Verify dataset is ready
+        if dataset.status != "ready":
+            raise BadRequestException(
+                f"Dataset '{dataset.name}' is not ready for training (status: {dataset.status}). "
+                "Please ensure the dataset has been validated."
+            )
+        
+        # Verify dataset has images
+        if dataset.image_count == 0 or dataset.image_count is None:
+            raise BadRequestException(
+                f"Dataset '{dataset.name}' has no images. Please add images to the dataset first."
+            )
+        
+        dataset_info = {
+            "dataset_id": dataset.id,
+            "dataset_name": dataset.name,
+            "image_count": dataset.image_count,
+            "ip_asset_id": dataset.ip_asset_id,
+        }
+        
+        # Convert to Kohya format if not already done
+        converter = DatasetConverter()
+        from pathlib import Path
+        from app.config.settings import settings
+        kohya_dir = Path(settings.STORAGE_PATH) / "datasets" / f"kohya_dataset_{dataset.id}"
+        
+        if not kohya_dir.exists():
+            logger.info(f"Converting dataset {dataset.id} to Kohya format")
+            conversion_result = await converter.convert_to_kohya_format(
+                dataset_id=dataset.id
+            )
+            dataset_info["kohya_directory"] = conversion_result["kohya_directory"]
+            dataset_info["converted_images"] = conversion_result["converted_images"]
+        else:
+            dataset_info["kohya_directory"] = str(kohya_dir)
+            dataset_info["already_converted"] = True
+        
+        logger.info(f"Dataset associated: {dataset.name} with {dataset.image_count} images")
         
         # Start training via Celery (真正的异步)
         from celery_worker import train_lora_task
@@ -461,9 +629,17 @@ async def start_training(
         training_params = {}
         if request and request.custom_config:
             training_params = request.custom_config.dict()
+            # 过滤掉None值的可选字段（base_model, dataset_id, output_name）
+            training_params = {k: v for k, v in training_params.items() if v is not None}
         elif request and request.use_preset:
             # 使用预设时会从数据库加载
             training_params = {"use_preset": request.use_preset}
+        
+        # 先将training_params保存到数据库，这样Celery任务才能读取到
+        lora_model.training_params = training_params
+        lora_model.celery_task_id = celery_task.id if 'celery_task' in locals() else None
+        lora_model.status = "pending"
+        await db.commit()
         
         # 调用Celery任务
         celery_task = train_lora_task.delay(
@@ -471,9 +647,8 @@ async def start_training(
             training_params=training_params
         )
         
-        # 保存Celery任务ID到数据库
+        # 更新Celery任务ID到数据库
         lora_model.celery_task_id = celery_task.id
-        lora_model.status = "pending"
         await db.commit()
         
         logger.info(f"🚀 Training task queued for LoRA {lora_id}, celery_task_id={celery_task.id}")

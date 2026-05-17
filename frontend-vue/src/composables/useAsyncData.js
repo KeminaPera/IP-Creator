@@ -149,11 +149,14 @@ export function useAsyncList(fetchFn, options = {}) {
       const result = await fetchFn(requestParams)
       
       // Support different response structures
-      if (result.data?.data) {
+      if (result.data?.data && Array.isArray(result.data.data)) {
+        // Response: {data: {data: [...]}}
         list.value = result.data.data
-      } else if (result.data?.items) {
+      } else if (result.data?.items && Array.isArray(result.data.items)) {
+        // Response: {data: {items: [...]}}
         list.value = result.data.items
       } else if (Array.isArray(result.data)) {
+        // Response: {data: [...]} (list_response format)
         list.value = result.data
       } else {
         list.value = []

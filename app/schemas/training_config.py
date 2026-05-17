@@ -68,24 +68,24 @@ class LoRATrainingConfig(BaseModel):
     sensible defaults for common use cases.
     """
     
-    # Base Model
-    base_model: str = Field(
-        ...,
+    # Base Model (optional - can be obtained from LoRA model)
+    base_model: Optional[str] = Field(
+        default=None,
         min_length=1,
         max_length=200,
         description="Base model path or identifier"
     )
     
-    # Dataset
-    dataset_id: int = Field(
-        ...,
+    # Dataset (optional - can be obtained from LoRA model)
+    dataset_id: Optional[int] = Field(
+        default=None,
         gt=0,
         description="Training dataset ID"
     )
     
-    # Output Configuration
-    output_name: str = Field(
-        ...,
+    # Output Configuration (optional)
+    output_name: Optional[str] = Field(
+        default=None,
         min_length=1,
         max_length=100,
         description="Output model name",
