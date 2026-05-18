@@ -21,7 +21,7 @@
     "actions": "操作",
     "more": "更多",
     "retry": "重试",
-    "view_detail": "查看详情",
+    "view_detail": "详情",
     "no": "序号",
     "created_at": "创建时间",
     "updated_at": "更新时间",
@@ -64,7 +64,11 @@
     "delete_failed": "删除失败",
     "enable_success": "启用成功",
     "disable_success": "禁用成功",
-    "request_failed": "请求失败"
+    "request_failed": "请求失败",
+    "upload_limit_reached": "已达到上传数量上限（{limit}个）",
+    "upload_only_images": "只能上传图片文件",
+    "upload_file_too_large": "文件大小不能超过50MB",
+    "removed_pending_save": "已移除（保存后生效）"
   },
   "validation": {
     "required": "此项为必填项",
@@ -110,6 +114,7 @@
     "validate": "验证数据集",
     "augment": "数据增强",
     "create_version": "创建版本",
+    "filter_quality": "质量过滤",
     "delete": "删除",
     "all": "全部",
     "pending": "待处理",
@@ -137,7 +142,7 @@
     "suggest_min": "（建议至少 15 张）",
     "count_ok": "✓ 数量合适",
     "suggest_max": "（超过 30 张，可能训练较慢）",
-    "confirm_btn": "创建并上传图片",
+    "confirm_btn": "创建",
     "augment_dialog_title": "数据增强",
     "augment_factor": "增强倍数",
     "augment_strategies": "增强策略",

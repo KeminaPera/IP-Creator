@@ -21,7 +21,7 @@
     "actions": "Actions",
     "more": "More",
     "retry": "Retry",
-    "view_detail": "View Details",
+    "view_detail": "Details",
     "no": "No.",
     "created_at": "Created At",
     "updated_at": "Updated At",
@@ -64,7 +64,11 @@
     "delete_failed": "Delete failed",
     "enable_success": "Enabled successfully",
     "disable_success": "Disabled successfully",
-    "request_failed": "Request failed"
+    "request_failed": "Request failed",
+    "upload_limit_reached": "Upload limit reached ({limit} files)",
+    "upload_only_images": "Only image files are allowed",
+    "upload_file_too_large": "File size cannot exceed 50MB",
+    "removed_pending_save": "Removed (will take effect after saving)"
   },
   "validation": {
     "required": "This field is required",
@@ -110,6 +114,7 @@
     "validate": "Validate Dataset",
     "augment": "Data Augmentation",
     "create_version": "Create Version",
+    "filter_quality": "Filter Quality",
     "delete": "Delete",
     "all": "All",
     "pending": "Pending",
@@ -137,7 +142,7 @@
     "suggest_min": "(Recommended at least 15)",
     "count_ok": "✓ Good count",
     "suggest_max": "(More than 30, training may be slower)",
-    "confirm_btn": "Create and Upload Images",
+    "confirm_btn": "Create",
     "augment_dialog_title": "Data Augmentation",
     "augment_factor": "Augmentation Factor",
     "augment_strategies": "Augmentation Strategies",

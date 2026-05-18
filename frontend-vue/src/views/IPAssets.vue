@@ -55,10 +55,12 @@
 
       <template #actions="{ row }">
         <el-button size="small" type="primary" @click="openDetail(row)">
-          <el-icon><View /></el-icon> 详情
+          <el-icon><View /></el-icon> {{ $t('common.view_detail') }}
         </el-button>
-        <el-button size="small" type="warning" @click="openEditDialog(row)">{{ $t('common.edit') }}</el-button>
-        <el-dropdown trigger="click" style="margin-left: 8px;">
+        <el-button size="small" type="warning" @click="openEditDialog(row)">
+          <el-icon><Edit /></el-icon> {{ $t('common.edit') }}
+        </el-button>
+        <el-dropdown trigger="click">
           <el-button size="small">
             {{ $t('common.more') }}<el-icon class="el-icon--right"><arrow-down /></el-icon>
           </el-button>
@@ -123,7 +125,9 @@
         </el-form-item>
         <el-form-item :label="$t('ip.reference_images')">
           <ImageUploader
+            ref="imageUploaderRef"
             v-model="formData.reference_images"
+            :mode="isEdit ? 'edit' : 'create'"
             :limit="4"
             accept="image/*"
           />
@@ -297,8 +301,9 @@ import { ref, computed, onUnmounted, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import { ElMessage } from 'element-plus'
-import { View, Picture, ArrowDown, Delete, InfoFilled } from '@element-plus/icons-vue'
-import { getIPList, createIP, updateIP, deleteIP, uploadFile } from '@/api/ip'
+import { View, Picture, ArrowDown, Delete, InfoFilled, Edit } from '@element-plus/icons-vue'
+import { getIPList, createIP, updateIP, deleteIP } from '@/api/ip'
+import { deleteResource } from '@/api/resource'
 import request from '@/api/request'
 import { useDeleteConfirm } from '../composables/useDeleteConfirm'
 import { useDebounce } from '../composables/useDebounce'
@@ -333,6 +338,7 @@ const searchText = ref('')
 const debouncedSearchText = ref('')
 const dialogVisible = ref(false)
 const isEdit = ref(false)
+const imageUploaderRef = ref(null)  // ImageUploader组件引用
 
 // Timer for three views polling
 let pollTimeoutId = null
@@ -503,10 +509,17 @@ function openDetail(row) {
 
 function openAddDialog() {
   isEdit.value = false
-  ipForm.value = {
-    name: '', category: '', trigger_word: '', description: '',
-    style_template: '', positive_tags: '', negative_tags: '', reference_images: [],
-  }
+  Object.assign(ipForm.value, {
+    id: undefined,
+    name: '',
+    category: '',
+    trigger_word: '',
+    description: '',
+    style_template: '',
+    positive_tags: '',
+    negative_tags: '',
+    reference_images: [],
+  })
   dialogVisible.value = true
 }
 
@@ -519,8 +532,14 @@ function openEditDialog(row) {
     ElMessage.error('IP asset ID is missing. Cannot edit.')
     return
   }
+  
+  // 清空上一个编辑的待删除状态，防止状态残留
+  if (imageUploaderRef.value) {
+    imageUploaderRef.value.clearPendingDeletePaths()
+  }
+  
   isEdit.value = true
-  ipForm.value = {
+  Object.assign(ipForm.value, {
     id: row.id,
     name: row.name || '',
     category: row.category || '',
@@ -530,13 +549,19 @@ function openEditDialog(row) {
     positive_tags: row.positive_tags || '',
     negative_tags: row.negative_tags || '',
     reference_images: row.reference_images || [],
-  }
+  })
   dialogVisible.value = true
 }
 
 async function handleSubmit(formData) {
   submitting.value = true
   try {
+    // 编辑模式：准备延迟删除的路径（但不立即删除）
+    let pathsToDelete = []
+    if (isEdit.value && imageUploaderRef.value) {
+      pathsToDelete = imageUploaderRef.value.getPendingDeletePaths() || []
+    }
+    
     // formData.reference_images已经是路径数组，直接提交
     const payload = { ...formData }
     delete payload.id
@@ -545,6 +570,7 @@ async function handleSubmit(formData) {
     if (payload.positive_tags === '') payload.positive_tags = null
     if (payload.negative_tags === '') payload.negative_tags = null
     
+    // 1. 先更新数据库
     if (isEdit.value) {
       await updateIP(formData.id, payload)
       ElMessage.success(t('ip.update_success'))
@@ -552,11 +578,30 @@ async function handleSubmit(formData) {
       await createIP(payload)
       ElMessage.success(t('ip.add_success'))
     }
+    
+    // 2. 数据库更新成功后，再删除文件
+    if (isEdit.value && pathsToDelete.length > 0) {
+      for (const path of pathsToDelete) {
+        try {
+          await deleteResource(path)
+        } catch (error) {
+          // 文件删除失败不影响数据一致性，仅记录警告
+          logger.warn('[IPAssets] Failed to delete resource after update:', path, error)
+        }
+      }
+      
+      // 3. 清空待删除列表
+      if (imageUploaderRef.value) {
+        imageUploaderRef.value.clearPendingDeletePaths()
+      }
+    }
+    
     dialogVisible.value = false
     loadIPs()
   } catch (err) {
     logger.error('[IPAssets] Submit error:', err)
     ElMessage.error(err.response?.data?.detail || err.message || 'Operation failed')
+    // 注意：如果失败，pendingDeletePaths保持不变，用户可重新尝试保存
   } finally {
     submitting.value = false
   }

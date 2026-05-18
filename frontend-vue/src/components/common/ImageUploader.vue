@@ -1,28 +1,45 @@
 <template>
-  <el-upload
-    ref="uploadRef"
-    :file-list="fileList"
-    :auto-upload="true"
-    :action="uploadAction"
-    :headers="uploadHeaders"
-    :on-success="handleSuccess"
-    :on-remove="handleRemove"
-    :on-error="handleError"
-    :before-upload="beforeUpload"
-    :multiple="multiple"
-    :limit="limit"
-    :accept="accept"
-    :list-type="listType"
-  >
-    <el-button v-if="listType !== 'picture-card'" type="primary">
-      <el-icon><Upload /></el-icon>
-      {{ buttonText }}
-    </el-button>
+  <div class="image-uploader-wrapper" :class="{ 'upload-limit-reached': modelValue.length >= limit }">
+    <el-upload
+      ref="uploadRef"
+      :file-list="fileList"
+      :auto-upload="true"
+      :action="uploadAction"
+      :headers="uploadHeaders"
+      :on-success="handleSuccess"
+      :on-remove="handleRemove"
+      :on-error="handleError"
+      :on-preview="handlePreview"
+      :before-upload="beforeUpload"
+      :multiple="multiple"
+      :limit="limit"
+      :accept="accept"
+      :list-type="listType"
+      :show-file-list="true"
+    >
+      <el-button v-if="listType !== 'picture-card'" type="primary">
+        <el-icon><Upload /></el-icon>
+        {{ buttonText }}
+      </el-button>
+      
+      <!-- picture-card模式下显示➕号用于上传新图片 -->
+      <template v-if="listType === 'picture-card'" #default>
+        <div>
+          <el-icon><Plus /></el-icon>
+        </div>
+      </template>
+    </el-upload>
     
-    <template v-if="listType === 'picture-card'" #default>
-      <el-icon><Plus /></el-icon>
-    </template>
-  </el-upload>
+    <!-- 达到限制时的提示 -->
+    <div v-if="modelValue.length >= limit" class="upload-limit-tip">
+      {{ t('common.upload_limit_reached', { limit: limit }) }}
+    </div>
+
+    <!-- 图片预览对话框 -->
+    <el-dialog v-model="previewDialogVisible" title="图片预览" width="800px">
+      <img w-full :src="previewImageUrl" alt="Preview" class="preview-image" />
+    </el-dialog>
+  </div>
 </template>
 
 <script setup>
@@ -44,6 +61,9 @@ import { ref, computed, watch } from 'vue'
 import { ElMessage } from 'element-plus'
 import { Plus, Upload } from '@element-plus/icons-vue'
 import { deleteResource, getResourceUrl, extractResourceName } from '@/api/resource'
+import { useI18n } from 'vue-i18n'
+
+const { t } = useI18n()
 
 const props = defineProps({
   // 数据模型（v-model）
@@ -51,6 +71,13 @@ const props = defineProps({
   modelValue: {
     type: Array,
     default: () => []
+  },
+  
+  // 操作模式：create-创建模式（立即删除）| edit-编辑模式（延迟删除）
+  mode: {
+    type: String,
+    default: 'create',
+    validator: (value) => ['create', 'edit'].includes(value)
   },
   
   // 是否支持多选
@@ -87,7 +114,13 @@ const props = defineProps({
 
 const emit = defineEmits(['update:modelValue', 'upload-success'])
 
+// 延迟删除状态管理（仅edit模式使用）
+const pendingDeletePaths = ref([])  // 标记为待删除的路径
+
 const fileList = ref([])
+const previewDialogVisible = ref(false)
+const previewImageUrl = ref('')
+
 const uploadAction = computed(() => {
   // 使用完整URL，确保在Nginx环境下也能正确上传
   return `${window.location.origin}/api/v1/resources/upload`
@@ -103,6 +136,10 @@ const uploadHeaders = computed(() => {
 watch(() => props.modelValue, (value) => {
   if (!value || value.length === 0) {
     fileList.value = []
+    // 如果是edit模式且modelValue被清空，也应该清空pendingDeletePaths
+    if (props.mode === 'edit') {
+      pendingDeletePaths.value = []
+    }
     return
   }
   
@@ -125,11 +162,11 @@ function beforeUpload(file) {
   const isLt50M = file.size / 1024 / 1024 < 50
   
   if (!isImage) {
-    ElMessage.error('只能上传图片文件!')
+    ElMessage.error(t('common.upload_only_images'))
     return false
   }
   if (!isLt50M) {
-    ElMessage.error('图片大小不能超过50MB!')
+    ElMessage.error(t('common.upload_file_too_large'))
     return false
   }
   return true
@@ -169,23 +206,47 @@ function handleSuccess(response, file, uploadedFileList) {
 
 // 删除文件
 async function handleRemove(file, uploadedFileList) {
-  // 调用后端删除
-  try {
-    if (file.path) {
-      await deleteResource(file.path)
+  if (!file.path) return
+  
+  if (props.mode === 'edit') {
+    // 编辑模式：延迟删除，只标记不真正删除
+    try {
+      // 先标记待删除（去重）
+      if (!pendingDeletePaths.value.includes(file.path)) {
+        pendingDeletePaths.value.push(file.path)
+      }
+      
+      // 从modelValue中移除（更新UI显示）
+      const newPaths = props.modelValue.filter(p => p !== file.path)
+      emit('update:modelValue', newPaths)
+      
+      ElMessage.success(t('common.removed_pending_save'))
+    } catch (error) {
+      // 恢复pendingDeletePaths
+      const idx = pendingDeletePaths.value.indexOf(file.path)
+      if (idx !== -1) {
+        pendingDeletePaths.value.splice(idx, 1)
+      }
+      ElMessage.error('移除失败')
     }
-    
-    // 从modelValue中移除
-    const newPaths = props.modelValue.filter(p => p !== file.path)
-    emit('update:modelValue', newPaths)
-    
-    ElMessage.success('删除成功')
-  } catch (error) {
-    ElMessage.error(error.response?.data?.message || '删除失败')
-    
-    // 删除失败，重新添加回列表
-    if (file.path) {
-      fileList.value.push(file)
+  } else {
+    // 创建模式：立即删除
+    try {
+      await deleteResource(file.path)
+      
+      // 从modelValue中移除
+      const newPaths = props.modelValue.filter(p => p !== file.path)
+      emit('update:modelValue', newPaths)
+      
+      ElMessage.success('删除成功')
+    } catch (error) {
+      ElMessage.error(error.response?.data?.message || '删除失败')
+      
+      // 删除失败，重新添加回列表（去重）
+      const exists = fileList.value.some(f => f.uid === file.uid)
+      if (!exists) {
+        fileList.value.push(file)
+      }
     }
   }
 }
@@ -195,19 +256,61 @@ function handleError(error, file, uploadedFileList) {
   ElMessage.error('上传失败: ' + (error.message || '未知错误'))
 }
 
+// 预览图片
+function handlePreview(file) {
+  previewImageUrl.value = file.url || getResourceUrl(file.path)
+  previewDialogVisible.value = true
+}
+
 // 暴露方法
 defineExpose({
+  // 清空文件
   clearFiles() {
     fileList.value = []
+    pendingDeletePaths.value = []
     emit('update:modelValue', [])
+  },
+  
+  // 获取待删除的路径列表（供父组件保存时使用）
+  getPendingDeletePaths() {
+    return pendingDeletePaths.value
+  },
+  
+  // 清空待删除列表（保存后调用）
+  clearPendingDeletePaths() {
+    pendingDeletePaths.value = []
   }
 })
 </script>
 
 <style scoped>
+.image-uploader-wrapper {
+  width: 100%;
+}
+
+.upload-limit-tip {
+  margin-top: 8px;
+  font-size: 12px;
+  color: #f56c6c;
+  line-height: 1.5;
+}
+
 .el-upload__tip {
   color: #909399;
   font-size: 12px;
   margin-top: 8px;
+}
+
+.preview-image {
+  width: 100%;
+  max-height: 70vh;
+  object-fit: contain;
+}
+
+/* 达到限制时隐藏上传框 */
+.image-uploader-wrapper.upload-limit-reached {
+  :deep(.el-upload--picture-card) {
+    display: none !important;
+  }
 }
 </style>
