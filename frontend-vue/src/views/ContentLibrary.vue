@@ -393,12 +393,13 @@
         <el-table-column 
           v-if="visibleColumns.actions"
           :label="$t('common.actions')" 
-          width="220"
+          min-width="200"
           fixed="right"
+          align="center"
         >
           <template #default="{ row }">
             <el-button size="small" type="primary" @click="viewDetails(row)">
-              {{ $t('content.view_details') }}
+              <el-icon><View /></el-icon> {{ $t('common.view_detail') }}
             </el-button>
             <el-button 
               v-if="row.file_path" 
@@ -410,7 +411,7 @@
               {{ $t('content.download') }}
             </el-button>
             <el-button size="small" type="danger" @click="deleteContent(row)">
-              {{ $t('common.delete') }}
+              <el-icon><Delete /></el-icon> {{ $t('common.delete') }}
             </el-button>
           </template>
         </el-table-column>
@@ -527,7 +528,7 @@ import { ref, onMounted, nextTick, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useRoute } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { Document, Picture, VideoCamera, Download, Star, StarFilled, Delete, Filter, Grid, List, Setting } from '@element-plus/icons-vue'
+import { Document, Picture, VideoCamera, Download, Star, StarFilled, Delete, Filter, Grid, List, Setting, View } from '@element-plus/icons-vue'
 import { getIPList } from '@/api/ip'
 import request from '@/api/request'
 import { formatTime } from '../utils/time'
@@ -1223,6 +1224,21 @@ async function bulkDelete() {
   flex: 1;
   overflow: hidden;
   text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* 操作列按钮容器 - 统一样式 */
+:deep(.el-table__row td:last-child .cell) {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  flex-wrap: nowrap;
+  padding: 0 8px;
+}
+
+:deep(.el-table__row td:last-child .cell .el-button) {
+  margin: 0;
   white-space: nowrap;
 }
 </style>

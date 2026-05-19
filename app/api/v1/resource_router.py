@@ -80,8 +80,7 @@ async def upload_resource(
             f.write(file_content)
         
         # 9. 构建响应
-        # 使用正斜杠确保跨平台兼容性（Windows Path 默认使用反斜杠）
-        relative_path = str(file_path.relative_to(Path("."))).replace('\\', '/')
+        relative_path = str(file_path.relative_to(Path(".")))
         # URL编码路径，确保特殊字符正确处理
         from urllib.parse import quote
         encoded_path = quote(relative_path, safe='')

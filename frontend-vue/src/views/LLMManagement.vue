@@ -138,27 +138,20 @@
       </template>
 
       <template #actions="{ row }">
-        <el-button size="small" type="warning" @click="openEditDialog(row)">{{ $t('common.edit') }}</el-button>
-        <el-dropdown trigger="click" style="margin-left: 8px;">
-          <el-button size="small">
-            {{ $t('common.more') }}<el-icon class="el-icon--right"><arrow-down /></el-icon>
-          </el-button>
-          <template #dropdown>
-            <el-dropdown-menu>
-              <el-dropdown-item 
-                @click="testConnection(row)" 
-                :disabled="!row.is_active"
-                :title="!row.is_active ? $t('llm.test_connection_disabled_hint') : ''"
-                class="text-info"
-              >
-                <el-icon><Connection /></el-icon> {{ $t('llm.test_connection') }}
-              </el-dropdown-item>
-              <el-dropdown-item divided @click="handleDelete(row, deleteChannel)" class="text-danger">
-                <el-icon><Delete /></el-icon> {{ $t('common.delete') }}
-              </el-dropdown-item>
-            </el-dropdown-menu>
-          </template>
-        </el-dropdown>
+        <el-button size="small" type="warning" @click="openEditDialog(row)">
+          <el-icon><Edit /></el-icon> {{ $t('common.edit') }}
+        </el-button>
+        <el-button 
+          size="small" 
+          type="info" 
+          @click="testConnection(row)" 
+          :disabled="!row.is_active"
+        >
+          <el-icon><Connection /></el-icon> {{ $t('llm.test_connection') }}
+        </el-button>
+        <el-button size="small" type="danger" @click="handleDelete(row, deleteChannel)">
+          <el-icon><Delete /></el-icon> {{ $t('common.delete') }}
+        </el-button>
       </template>
     </DataTable>
 
@@ -223,7 +216,7 @@
 import { ref, computed, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { ElMessage } from 'element-plus'
-import { Connection, ArrowDown, Delete, Monitor, CircleCheck, CircleClose } from '@element-plus/icons-vue'
+import { Connection, ArrowDown, Delete, Monitor, CircleCheck, CircleClose, Edit } from '@element-plus/icons-vue'
 import { getChannels, registerChannel, updateChannel, deleteChannel } from '@/api/llm'
 import { getProviders } from '@/api/settings'
 import { formatTime } from '../utils/time'
@@ -460,17 +453,24 @@ function onModelChange(modelCode) {
 
 function openAddDialog() {
   isEdit.value = false
-  channelForm.value = {
-    provider: '', model_name: '', name: '', model_type: 'cloud',
-    api_endpoint: '', api_key: '',
-    temperature: 0.7, max_tokens: 2048, timeout: 120,
-  }
+  Object.assign(channelForm.value, {
+    id: undefined,
+    provider: '',
+    model_name: '',
+    name: '',
+    model_type: 'cloud',
+    api_endpoint: '',
+    api_key: '',
+    temperature: 0.7,
+    max_tokens: 2048,
+    timeout: 120,
+  })
   dialogVisible.value = true
 }
 
 function openEditDialog(row) {
   isEdit.value = true
-  channelForm.value = {
+  Object.assign(channelForm.value, {
     id: row.id,
     provider: row.provider,
     model_name: row.model_name,
@@ -481,7 +481,7 @@ function openEditDialog(row) {
     temperature: row.temperature || 0.7,
     max_tokens: row.max_tokens || 2048,
     timeout: row.timeout || 120,
-  }
+  })
   dialogVisible.value = true
 }
 

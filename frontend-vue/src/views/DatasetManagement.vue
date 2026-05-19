@@ -77,18 +77,20 @@
       </template>
 
       <template #actions="{ row }">
-        <el-button size="small" type="primary" @click="openDetailDialog(row)">{{ $t('dataset.detail') }}</el-button>
-        <el-button size="small" type="success" @click="openAnnotationPage(row)">
+        <el-button size="small" type="primary" @click="openDetailDialog(row)">
+          <el-icon><View /></el-icon> {{ $t('common.view_detail') }}
+        </el-button>
+        <el-button size="small" type="warning" @click="openAnnotationPage(row)">
           <el-icon><Edit /></el-icon> {{ $t('dataset.annotate') }}
         </el-button>
-        <el-dropdown trigger="click" style="margin-left: 8px;">
+        <el-dropdown trigger="click">
           <el-button size="small">
-            {{ $t('dataset.more') }}<el-icon class="el-icon--right"><arrow-down /></el-icon>
+            {{ $t('common.more') }}<el-icon class="el-icon--right"><arrow-down /></el-icon>
           </el-button>
           <template #dropdown>
             <el-dropdown-menu>
               <el-dropdown-item @click="handleFilterQuality(row)">
-                <el-icon><Filter /></el-icon> 质量过滤
+                <el-icon><Filter /></el-icon> {{ $t('dataset.filter_quality') }}
               </el-dropdown-item>
               <el-dropdown-item @click="handleEvaluateQuality(row)">
                 <el-icon><Star /></el-icon> {{ $t('dataset.evaluate_quality') }}

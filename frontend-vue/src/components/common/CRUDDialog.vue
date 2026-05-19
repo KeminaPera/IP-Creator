@@ -9,12 +9,12 @@
   >
     <el-form
       ref="formRef"
-      :model="formData"
+      :model="reactiveFormData"
       :rules="rules"
       :label-width="labelWidth"
       :size="size"
     >
-      <slot :form-data="formData" :form-ref="formRef" />
+      <slot :form-data="reactiveFormData" :form-ref="formRef" />
     </el-form>
     
     <template #footer>
@@ -127,7 +127,7 @@ const props = defineProps({
   }
 })
 
-const emit = defineEmits(['update:modelValue', 'submit', 'cancel', 'close'])
+const emit = defineEmits(['update:modelValue', 'update:formData', 'submit', 'cancel', 'close'])
 
 const formRef = ref(null)
 
@@ -135,6 +135,12 @@ const formRef = ref(null)
 const visible = computed({
   get: () => props.modelValue,
   set: (val) => emit('update:modelValue', val)
+})
+
+// 响应式formData包装
+const reactiveFormData = computed({
+  get: () => props.formData,
+  set: (val) => emit('update:formData', val)
 })
 
 // 提交表单

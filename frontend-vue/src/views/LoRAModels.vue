@@ -67,56 +67,61 @@
       </template>
 
       <template #actions="{ row }">
+        <!-- 主要按钮1：编辑（始终显示） -->
         <el-button
           size="small"
-          type="info"
-          plain
+          type="warning"
           @click="showEditDialog(row)"
         >
           <el-icon><Edit /></el-icon>
           {{ $t('common.edit') }}
         </el-button>
-        <el-button
-          v-if="row.status === 'failed' && row.error_message"
-          size="small"
-          type="warning"
-          plain
-          @click="showErrorReason(row)"
-        >
-          <el-icon><WarningFilled /></el-icon>
-          {{ $t('lora.view_error') }}
-        </el-button>
+        
+        <!-- 主要按钮2：根据状态显示训练或监控 -->
         <el-button
           v-if="row.status === 'not_trained' || row.status === 'pending' || row.status === 'failed' || row.status === 'cancelled'"
           size="small"
           type="primary"
           @click="showTrainingWizard(row)"
         >
-          {{ $t('lora.train') }}
+          <el-icon><Upload /></el-icon> {{ $t('lora.train') }}
         </el-button>
         <el-button
-          v-if="row.status === 'training'"
+          v-else-if="row.status === 'training'"
           size="small"
           type="success"
           @click="showTrainingMonitor(row)"
         >
-          {{ $t('lora.monitor') }}
+          <el-icon><Monitor /></el-icon> {{ $t('lora.monitor') }}
         </el-button>
-        <el-button
-          v-if="row.status === 'completed' || row.status === 'trained'"
-          size="small"
-          type="warning"
-          @click="showQualityReport(row)"
-        >
-          {{ $t('lora.quality_report') }}
-        </el-button>
-        <el-button
-          size="small"
-          type="danger"
-          @click="handleDelete(row)"
-        >
-          {{ $t('lora.delete') }}
-        </el-button>
+        
+        <!-- 更多操作 -->
+        <el-dropdown trigger="click">
+          <el-button size="small">
+            {{ $t('common.more') }}<el-icon class="el-icon--right"><arrow-down /></el-icon>
+          </el-button>
+          <template #dropdown>
+            <el-dropdown-menu>
+              <el-dropdown-item 
+                v-if="row.status === 'failed' && row.error_message"
+                @click="showErrorReason(row)" 
+                class="text-warning"
+              >
+                <el-icon><WarningFilled /></el-icon> {{ $t('lora.view_error') }}
+              </el-dropdown-item>
+              <el-dropdown-item 
+                v-if="row.status === 'completed' || row.status === 'trained'"
+                @click="showQualityReport(row)"
+                class="text-success"
+              >
+                <el-icon><Document /></el-icon> {{ $t('lora.quality_report') }}
+              </el-dropdown-item>
+              <el-dropdown-item divided @click="handleDelete(row)" class="text-danger">
+                <el-icon><Delete /></el-icon> {{ $t('lora.delete') }}
+              </el-dropdown-item>
+            </el-dropdown-menu>
+          </template>
+        </el-dropdown>
       </template>
     </DataTable>
 
@@ -225,7 +230,7 @@
 import { ref, computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { Plus, WarningFilled, Edit } from '@element-plus/icons-vue'
+import { Plus, WarningFilled, Edit, Upload, Monitor } from '@element-plus/icons-vue'
 import { getLoraList, deleteLora, createLora, updateLora } from '@/api/lora'
 import { getIPList } from '@/api/ip'
 import { getDatasetList } from '@/api/dataset'

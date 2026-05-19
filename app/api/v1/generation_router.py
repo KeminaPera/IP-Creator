@@ -334,41 +334,6 @@ async def generate_video(
         )
 
 
-@router.post("/upload")
-async def upload_file(
-    file: UploadFile = File(...),
-    directory: str = "ip_assets",
-    current_user: dict = Depends(get_current_user),
-):
-    """
-    Upload a file for use in generation.
-    
-    Supports reference images, LoRA models, etc.
-    """
-    try:
-        file_path, file_url = await storage_service.save_upload_file(
-            upload_file=file,
-            directory=directory,
-        )
-        
-        return created_response(
-            data={
-                "file_path": file_path,
-                "file_url": file_url,
-                "filename": file.filename,
-            },
-            message="File uploaded successfully"
-        )
-    
-    except Exception as e:
-        logger.error(f"File upload error: {e}")
-        raise AppException(
-            status_code=500,
-            error="UploadError",
-            message="File upload failed"
-        )
-
-
 @router.get("/files/{file_path:path}")
 async def get_file(
     file_path: str,

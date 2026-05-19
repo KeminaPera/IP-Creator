@@ -56,9 +56,12 @@
 
       <template #actions="{ row }">
         <el-button size="small" type="primary" @click="handleView(row)">
-          {{ $t('tasks.view_details') }}
+          <el-icon><View /></el-icon> {{ $t('common.view_detail') }}
         </el-button>
-        <el-dropdown trigger="click" style="margin-left: 8px;">
+        <el-button size="small" type="danger" @click="handleDelete(row, deleteTask)">
+          <el-icon><Delete /></el-icon> {{ $t('common.delete') }}
+        </el-button>
+        <el-dropdown trigger="click">
           <el-button size="small">
             {{ $t('common.more') }}<el-icon class="el-icon--right"><arrow-down /></el-icon>
           </el-button>
@@ -72,9 +75,6 @@
               </el-dropdown-item>
               <el-dropdown-item v-if="row.status === 'failed'" @click="handleRetry(row)" class="text-warning">
                 <el-icon><RefreshRight /></el-icon> {{ $t('tasks.retry') }}
-              </el-dropdown-item>
-              <el-dropdown-item divided @click="handleDelete(row, deleteTask)" class="text-danger">
-                <el-icon><Delete /></el-icon> {{ $t('tasks.delete') }}
               </el-dropdown-item>
             </el-dropdown-menu>
           </template>

@@ -5,6 +5,17 @@
       <slot name="toolbar" />
     </div>
 
+    <!-- Batch Actions Toolbar -->
+    <div v-if="$slots['batch-actions'] && selectedRows.length > 0" class="data-table-batch-toolbar">
+      <div class="batch-info">
+        <el-icon><Check /></el-icon>
+        <span>已选择 <strong>{{ selectedRows.length }}</strong> 项</span>
+      </div>
+      <div class="batch-actions">
+        <slot name="batch-actions" :selected="selectedRows" />
+      </div>
+    </div>
+
     <!-- Data Table -->
     <el-table
       :data="paginatedData"
@@ -42,7 +53,7 @@
       <el-table-column
         v-if="$slots.actions"
         :label="$t('common.actions')"
-        :width="actionsWidth"
+        min-width="200"
         fixed="right"
         align="center"
       >
@@ -104,6 +115,7 @@
  */
 import { ref, computed, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
+import { Check } from '@element-plus/icons-vue'
 
 useI18n() // Ensure i18n is available
 
@@ -202,7 +214,7 @@ const props = defineProps({
    */
   actionsWidth: {
     type: Number,
-    default: 200
+    default: 280
   },
   
   /**
@@ -317,7 +329,10 @@ function handlePageChange() {
 }
 
 // Handle selection change
+const selectedRows = ref([])
+
 function handleSelectionChange(selection) {
+  selectedRows.value = selection
   emit('selection-change', selection)
 }
 
@@ -339,6 +354,49 @@ function handleSortChange(sortInfo) {
   align-items: center;
 }
 
+.data-table-batch-toolbar {
+  margin-bottom: 16px;
+  padding: 12px 16px;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  border-radius: 8px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  color: white;
+  box-shadow: 0 2px 8px rgba(102, 126, 234, 0.3);
+}
+
+.batch-info {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 14px;
+}
+
+.batch-info .el-icon {
+  font-size: 18px;
+}
+
+.batch-info strong {
+  font-size: 16px;
+  margin: 0 4px;
+}
+
+.batch-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.batch-actions :deep(.el-button) {
+  border-color: rgba(255, 255, 255, 0.5);
+  color: white;
+}
+
+.batch-actions :deep(.el-button:hover) {
+  border-color: white;
+  background: rgba(255, 255, 255, 0.2);
+}
+
 .data-table {
   width: 100%;
 }
@@ -353,5 +411,20 @@ function handleSortChange(sortInfo) {
 
 .data-table-empty {
   margin-top: 16px;
+}
+
+/* 操作列按钮容器 - 只针对操作列 */
+:deep(.el-table__row td:last-child .cell) {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  flex-wrap: nowrap;
+  padding: 0 8px;
+}
+
+:deep(.el-table__row td:last-child .cell .el-button) {
+  margin: 0;
+  white-space: nowrap;
 }
 </style>
