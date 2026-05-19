@@ -457,27 +457,27 @@ function getRefImageUrl(imgPath) {
   }
   
   try {
+    // 统一转换反斜杠为正斜杠（跨平台兼容，只转换一次）
+    const normalizedPath = imgPath.replace(/\\/g, '/')
+    
     // 新资源路径格式: data/resources/2026/05/17/xxx.jpg
-    if (imgPath.startsWith('data/resources/')) {
-      const encodedPath = encodeURIComponent(imgPath)
+    if (normalizedPath.startsWith('data/resources/')) {
+      const encodedPath = encodeURIComponent(normalizedPath)
       return `/api/v1/resources/${encodedPath}`
     }
     
     // 旧路径格式: data/ip_assets/xxx.jpg (向后兼容)
-    let cleanPath = imgPath;
+    let cleanPath = normalizedPath; // 使用已转换的路径
     
     // 如果是完整URL，提取路径部分
-    if (imgPath.startsWith('http://') || imgPath.startsWith('https://')) {
+    if (normalizedPath.startsWith('http://') || normalizedPath.startsWith('https://')) {
       try {
-        const url = new URL(imgPath);
+        const url = new URL(normalizedPath);
         cleanPath = url.pathname;
       } catch (e) {
         // 如果URL解析失败，使用原始路径
       }
     }
-    
-    // 替换Windows反斜杠
-    cleanPath = cleanPath.replace(/\\/g, '/');
     
     // 移除前导斜杠
     if (cleanPath.startsWith('/')) {
@@ -487,11 +487,9 @@ function getRefImageUrl(imgPath) {
     // 提取最后两个段用于文件
     const parts = cleanPath.split('/').filter(p => p.length > 0);
     if (parts.length >= 2) {
-      const result = `/api/v1/generate/files/${parts[parts.length - 2]}/${parts[parts.length - 1]}`;
-      return result;
+      return `/api/v1/generate/files/${parts[parts.length - 2]}/${parts[parts.length - 1]}`;
     } else if (parts.length === 1) {
-      const result = `/api/v1/generate/files/${parts[0]}`;
-      return result;
+      return `/api/v1/generate/files/${parts[0]}`;
     } else {
       return '';
     }

@@ -80,7 +80,8 @@ async def upload_resource(
             f.write(file_content)
         
         # 9. 构建响应
-        relative_path = str(file_path.relative_to(Path(".")))
+        # 使用正斜杠确保跨平台兼容性（Windows Path 默认使用反斜杠）
+        relative_path = str(file_path.relative_to(Path("."))).replace('\\', '/')
         # URL编码路径，确保特殊字符正确处理
         from urllib.parse import quote
         encoded_path = quote(relative_path, safe='')
@@ -128,10 +129,14 @@ async def delete_resource(
         # 1. 解码路径
         resource_path = unquote(resource_path)
         
-        # 2. 安全检查：确保在resources目录内
-        full_path = Path(resource_path)
+        # 2. 安全检查：使用 resolve() 防御路径遍历攻击
+        full_path = Path(resource_path).resolve()
+        resource_base = Path("data/resources").resolve()
         
-        if not str(full_path).startswith("data/resources/"):
+        # 确保文件在 resources 目录内（防御 ..\..\ 攻击）
+        try:
+            full_path.relative_to(resource_base)
+        except ValueError:
             raise HTTPException(
                 status_code=403,
                 detail="Invalid resource path"
@@ -178,10 +183,14 @@ async def get_resource(resource_path: str):
         # 1. 解码路径
         resource_path = unquote(resource_path)
         
-        # 2. 安全检查
-        full_path = Path(resource_path)
+        # 2. 安全检查：使用 resolve() 防御路径遍历攻击
+        full_path = Path(resource_path).resolve()
+        resource_base = Path("data/resources").resolve()
         
-        if not str(full_path).startswith("data/resources/"):
+        # 确保文件在 resources 目录内（防御 ..\..\ 攻击）
+        try:
+            full_path.relative_to(resource_base)
+        except ValueError:
             raise HTTPException(status_code=403, detail="Invalid resource path")
         
         # 3. 验证文件存在

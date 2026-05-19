@@ -19,31 +19,89 @@ const BASE_PATHS = [
   { match: /^\/api\//, handler: (path) => path },
   
   // data/xxx 格式的相对路径（优先匹配，更精确）
-  { match: /^data\/resources\//, handler: (path) => `/api/v1/resources/${path}` },
-  { match: /^data\/ip_assets\//, handler: (path) => `/api/v1/generate/files/${path.substring(5)}` },
-  { match: /^data\/images\//, handler: (path) => `/api/v1/generate/files/${path.substring(5)}` },
-  { match: /^data\/videos\//, handler: (path) => `/api/v1/generate/files/${path.substring(5)}` },
-  { match: /^data\/lora_models\//, handler: (path) => `/api/v1/generate/files/${path.substring(5)}` },
+  // 兼容 Windows 反斜杠和 Unix 正斜杠
+  { match: /^data[\/\\]resources[\/\\]/, handler: (path) => {
+    // 统一转换为正斜杠
+    const normalizedPath = path.replace(/\\/g, '/')
+    return `/api/v1/resources/${normalizedPath}`
+  }},
+  { match: /^data[\/\\]ip_assets[\/\\]/, handler: (path) => {
+    const normalizedPath = path.replace(/\\/g, '/')
+    return `/api/v1/generate/files/${normalizedPath.substring(5)}`
+  }},
+  { match: /^data[\/\\]images[\/\\]/, handler: (path) => {
+    const normalizedPath = path.replace(/\\/g, '/')
+    return `/api/v1/generate/files/${normalizedPath.substring(5)}`
+  }},
+  { match: /^data[\/\\]videos[\/\\]/, handler: (path) => {
+    const normalizedPath = path.replace(/\\/g, '/')
+    return `/api/v1/generate/files/${normalizedPath.substring(5)}`
+  }},
+  { match: /^data[\/\\]lora_models[\/\\]/, handler: (path) => {
+    const normalizedPath = path.replace(/\\/g, '/')
+    return `/api/v1/generate/files/${normalizedPath.substring(5)}`
+  }},
   
   // 绝对路径中的各种存储路径
-  { match: /\/resources\//, handler: (path) => {
+  { match: /[\/]resources[\/]/, handler: (path) => {
     // 提取resources及后续路径
-    const match = path.match(/\/(resources\/.*)/)
+    const match = path.match(/[/\\](resources[/\\].*)/)
     if (match) {
-      return `/api/v1/resources/${match[1]}`
+      const normalizedPath = match[1].replace(/\\/g, '/')
+      return `/api/v1/resources/${normalizedPath}`
     }
     return path
   }},
-  { match: /\/ip_assets\//, handler: (path) => `/api/v1/generate/files${path.match(/(\/ip_assets\/.*)/)[1]}` },
-  { match: /\/images\//, handler: (path) => `/api/v1/generate/files${path.match(/(\/images\/.*)/)[1]}` },
-  { match: /\/videos\//, handler: (path) => `/api/v1/generate/files${path.match(/(\/videos\/.*)/)[1]}` },
-  { match: /\/lora_models\//, handler: (path) => `/api/v1/generate/files${path.match(/(\/lora_models\/.*)/)[1]}` },
+  { match: /[\/]ip_assets[\/]/, handler: (path) => {
+    const match = path.match(/[/\\](ip_assets[/\\].*)/)
+    if (match) {
+      const normalizedPath = match[1].replace(/\\/g, '/')
+      return `/api/v1/generate/files/${normalizedPath}`
+    }
+    return path
+  }},
+  { match: /[\/]images[\/]/, handler: (path) => {
+    const match = path.match(/[/\\](images[/\\].*)/)
+    if (match) {
+      const normalizedPath = match[1].replace(/\\/g, '/')
+      return `/api/v1/generate/files/${normalizedPath}`
+    }
+    return path
+  }},
+  { match: /[\/]videos[\/]/, handler: (path) => {
+    const match = path.match(/[/\\](videos[/\\].*)/)
+    if (match) {
+      const normalizedPath = match[1].replace(/\\/g, '/')
+      return `/api/v1/generate/files/${normalizedPath}`
+    }
+    return path
+  }},
+  { match: /[\/]lora_models[\/]/, handler: (path) => {
+    const match = path.match(/[/\\](lora_models[/\\].*)/)
+    if (match) {
+      const normalizedPath = match[1].replace(/\\/g, '/')
+      return `/api/v1/generate/files/${normalizedPath}`
+    }
+    return path
+  }},
   
   // 纯相对路径 (如 images/ip_1/xxx.png)
-  { match: /^ip_assets\//, handler: (path) => `/api/v1/generate/files/${path}` },
-  { match: /^images\//, handler: (path) => `/api/v1/generate/files/${path}` },
-  { match: /^videos\//, handler: (path) => `/api/v1/generate/files/${path}` },
-  { match: /^lora_models\//, handler: (path) => `/api/v1/generate/files/${path}` },
+  { match: /^ip_assets[\/\\]/, handler: (path) => {
+    const normalizedPath = path.replace(/\\/g, '/')
+    return `/api/v1/generate/files/${normalizedPath}`
+  }},
+  { match: /^images[\/\\]/, handler: (path) => {
+    const normalizedPath = path.replace(/\\/g, '/')
+    return `/api/v1/generate/files/${normalizedPath}`
+  }},
+  { match: /^videos[\/\\]/, handler: (path) => {
+    const normalizedPath = path.replace(/\\/g, '/')
+    return `/api/v1/generate/files/${normalizedPath}`
+  }},
+  { match: /^lora_models[\/\\]/, handler: (path) => {
+    const normalizedPath = path.replace(/\\/g, '/')
+    return `/api/v1/generate/files/${normalizedPath}`
+  }},
 ]
 
 /**

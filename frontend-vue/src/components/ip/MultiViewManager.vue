@@ -246,9 +246,11 @@ const getViewImageUrl = (imagePath) => {
   }
   
   // 如果是data/resources/开头的路径，拼接完整URL
-  if (imagePath.startsWith('data/resources/')) {
+  // 统一转换反斜杠为正斜杠（跨平台兼容）
+  const normalizedPath = imagePath.replace(/\\/g, '/')
+  if (normalizedPath.startsWith('data/resources/')) {
     // URL编码路径
-    const encodedPath = encodeURIComponent(imagePath)
+    const encodedPath = encodeURIComponent(normalizedPath)
     return `/api/v1/resources/${encodedPath}`
   }
   

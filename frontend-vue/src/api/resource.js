@@ -32,8 +32,10 @@ export function deleteResource(resourcePath) {
     return Promise.reject(new Error('Resource path is required'))
   }
   
+  // 统一转换反斜杠为正斜杠（跨平台兼容）
+  const normalizedPath = resourcePath.replace(/\\/g, '/')
   // URL编码路径
-  const encodedPath = encodeURIComponent(resourcePath)
+  const encodedPath = encodeURIComponent(normalizedPath)
   return request.delete(`/resources/${encodedPath}`)
 }
 
@@ -45,7 +47,9 @@ export function deleteResource(resourcePath) {
 export function getResourceUrl(resourcePath) {
   if (!resourcePath) return ''
   
-  const encodedPath = encodeURIComponent(resourcePath)
+  // 统一转换反斜杠为正斜杠（跨平台兼容）
+  const normalizedPath = resourcePath.replace(/\\/g, '/')
+  const encodedPath = encodeURIComponent(normalizedPath)
   return `/api/v1/resources/${encodedPath}`
 }
 
