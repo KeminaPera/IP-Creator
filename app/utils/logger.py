@@ -7,12 +7,14 @@ Features:
 - Separate error log for easier monitoring
 - Performance timing helper
 - Thread-safe async logging
+- Trace ID injection for request tracking
 """
 from loguru import logger
 import sys
 import time
 from pathlib import Path
 from app.config.settings import settings
+from app.core.trace import get_trace_id
 
 
 class PerformanceTimer:
@@ -62,6 +64,7 @@ def setup_logger():
     - Daily rotating file log with compression
     - Separate error log for monitoring
     - Thread-safe async logging
+    - Trace ID injection in all logs
     """
     # Remove default handler
     logger.remove()
@@ -75,26 +78,39 @@ def setup_logger():
     import sys
     is_celery_worker = 'celery' in sys.modules or 'celery_worker' in sys.argv[0] if sys.argv else False
     
+    # Trace ID filter - injects Trace ID into all log records
+    def trace_id_filter(record):
+        """Log filter: automatically inject Trace ID"""
+        trace_id = get_trace_id()
+        record["extra"]["traceId"] = trace_id if trace_id else "no-trace-id"
+        return True
+    
     # Console handler
     if settings.DEBUG:
-        # Development: colorful, detailed
+        # Development: colorful, detailed with Trace ID
         logger.add(
             sys.stderr,
             level="DEBUG",
             format=(
                 "<green>{time:YYYY-MM-DD HH:mm:ss.SSS}</green> | "
                 "<level>{level: <8}</level> | "
+                "<yellow>{extra[traceId]: <32}</yellow> | "
                 "<cyan>{name}</cyan>:<cyan>{function}</cyan>:<cyan>{line}</cyan> | "
                 "<level>{message}</level>"
             ),
             colorize=True,
         )
     else:
-        # Production: plain, concise
+        # Production: plain, concise with Trace ID
         logger.add(
             sys.stderr,
             level="INFO",
-            format="{time:YYYY-MM-DD HH:mm:ss} | {level: <8} | {message}",
+            format=(
+                "{time:YYYY-MM-DD HH:mm:ss.SSS} | "
+                "{level: <8} | "
+                "{extra[traceId]: <32} | "
+                "{message}"
+            ),
         )
     
     # File handler - Daily rotation with compression
@@ -108,6 +124,13 @@ def setup_logger():
         enqueue=False,  # ✅ 修复：禁用enqueue避免沙箱环境PermissionError
         backtrace=True,
         diagnose=settings.DEBUG,
+        format=(
+            "{time:YYYY-MM-DD HH:mm:ss.SSS} | "
+            "{level: <8} | "
+            "{extra[traceId]: <32} | "
+            "{name}:{function}:{line} | "
+            "{message}"
+        ),
     )
     
     # Separate error log for easier monitoring
@@ -121,7 +144,17 @@ def setup_logger():
         enqueue=False,  # ✅ 修复：禁用enqueue避免沙箱环境PermissionError
         backtrace=True,
         diagnose=settings.DEBUG,
+        format=(
+            "{time:YYYY-MM-DD HH:mm:ss.SSS} | "
+            "{level: <8} | "
+            "{extra[traceId]: <32} | "
+            "{name}:{function}:{line} | "
+            "{message}\n{exception}"
+        ),
     )
+    
+    # Apply Trace ID filter
+    logger.configure(patcher=lambda record: trace_id_filter(record))
     
     return logger
 

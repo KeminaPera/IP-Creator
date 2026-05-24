@@ -3,6 +3,18 @@ Unified Error Handling System
 
 Provides consistent error response models and exception handlers
 across the entire API.
+
+All error responses follow this unified format:
+{
+    "success": false,
+    "message": "Error message",
+    "error": {
+        "type": "ErrorType",
+        "code": "ERROR_CODE",
+        "details": {...}
+    },
+    "traceId": "a1b2c3d4..."
+}
 """
 from typing import Optional, Any, Dict
 from fastapi import HTTPException, Request, status
@@ -10,6 +22,7 @@ from fastapi.responses import JSONResponse
 from fastapi.exceptions import RequestValidationError
 from pydantic import BaseModel
 from app.utils.logger import logger
+from app.utils.response import error_response
 
 
 # ==========================================
@@ -182,15 +195,19 @@ class InternalServerError(AppException):
 async def app_exception_handler(request: Request, exc: AppException):
     """
     Handle custom AppException with unified error response.
-    """
-    error_response = APIError(
-        error=exc.error_type,
-        message=exc.detail,
-        code=exc.error_code,
-        details=exc.error_details,
-        request_id=getattr(request.state, "request_id", None)
-    )
     
+    Response format:
+    {
+        "success": false,
+        "message": "Error detail",
+        "error": {
+            "type": "AppException error_type",
+            "code": "AppException error_code",
+            "details": {...}
+        },
+        "traceId": "current_trace_id"
+    }
+    """
     # Log with full exception details for server errors
     if exc.status_code >= 500:
         logger.error(
@@ -206,9 +223,16 @@ async def app_exception_handler(request: Request, exc: AppException):
             f"Status: {exc.status_code}"
         )
     
+    # Build unified error response
     return JSONResponse(
         status_code=exc.status_code,
-        content={"success": False, "error": error_response.model_dump()}
+        content=error_response(
+            error_type=exc.error_type,
+            message=exc.detail,
+            error_code=exc.error_code,
+            details=exc.error_details,
+            status_code=exc.status_code
+        )
     )
 
 
@@ -233,14 +257,6 @@ async def http_exception_handler(request: Request, exc: HTTPException):
     
     error_type = error_type_map.get(exc.status_code, "HTTPError")
     
-    error_response = APIError(
-        error=error_type,
-        message=exc.detail if isinstance(exc.detail, str) else str(exc.detail),
-        code=None,
-        details=None,
-        request_id=getattr(request.state, "request_id", None)
-    )
-    
     logger.warning(
         f"HTTPException: {exc.status_code} - {exc.detail} "
         f"[{request.method} {request.url.path}]"
@@ -248,7 +264,12 @@ async def http_exception_handler(request: Request, exc: HTTPException):
     
     return JSONResponse(
         status_code=exc.status_code,
-        content={"success": False, "error": error_response.model_dump()}
+        content=error_response(
+            error_type=error_type,
+            message=exc.detail if isinstance(exc.detail, str) else str(exc.detail),
+            error_code=f"HTTP_{exc.status_code}",
+            status_code=exc.status_code
+        )
     )
 
 
@@ -266,14 +287,6 @@ async def validation_exception_handler(request: Request, exc: RequestValidationE
             "input": error.get("input")
         })
     
-    error_response = APIError(
-        error="ValidationError",
-        message="Request validation failed",
-        code="VALIDATION_ERROR",
-        details=validation_errors,
-        request_id=getattr(request.state, "request_id", None)
-    )
-    
     logger.warning(
         f"Validation error: {validation_errors} "
         f"[{request.method} {request.url.path}]"
@@ -281,22 +294,23 @@ async def validation_exception_handler(request: Request, exc: RequestValidationE
     
     return JSONResponse(
         status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-        content={"success": False, "error": error_response.model_dump()}
+        content=error_response(
+            error_type="ValidationError",
+            message="Request validation failed",
+            error_code="VALIDATION_ERROR",
+            details=validation_errors,
+            status_code=422
+        )
     )
 
 
 async def general_exception_handler(request: Request, exc: Exception):
     """
     Handle all unhandled exceptions with 500 error.
-    """
-    error_response = APIError(
-        error="InternalServerError",
-        message="An unexpected error occurred. Please try again later.",
-        code="INTERNAL_ERROR",
-        details=None,  # Don't expose internal details to client
-        request_id=getattr(request.state, "request_id", None)
-    )
     
+    This is the final catch-all handler for any unexpected exceptions.
+    Internal details are NOT exposed to the client for security.
+    """
     logger.error(
         f"Unhandled exception: {type(exc).__name__} - {str(exc)} "
         f"[{request.method} {request.url.path}]",
@@ -305,7 +319,12 @@ async def general_exception_handler(request: Request, exc: Exception):
     
     return JSONResponse(
         status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-        content={"success": False, "error": error_response.model_dump()}
+        content=error_response(
+            error_type="InternalServerError",
+            message="An unexpected error occurred. Please try again later.",
+            error_code="INTERNAL_ERROR",
+            status_code=500
+        )
     )
 
 
