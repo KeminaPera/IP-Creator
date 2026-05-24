@@ -191,11 +191,20 @@ async def app_exception_handler(request: Request, exc: AppException):
         request_id=getattr(request.state, "request_id", None)
     )
     
-    logger.warning(
-        f"AppException: {exc.error_type} - {exc.detail} "
-        f"[{request.method} {request.url.path}] "
-        f"Status: {exc.status_code}"
-    )
+    # Log with full exception details for server errors
+    if exc.status_code >= 500:
+        logger.error(
+            f"AppException: {exc.error_type} - {exc.detail} "
+            f"[{request.method} {request.url.path}] "
+            f"Status: {exc.status_code}",
+            exc_info=True  # Include full traceback
+        )
+    else:
+        logger.warning(
+            f"AppException: {exc.error_type} - {exc.detail} "
+            f"[{request.method} {request.url.path}] "
+            f"Status: {exc.status_code}"
+        )
     
     return JSONResponse(
         status_code=exc.status_code,

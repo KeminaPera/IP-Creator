@@ -107,7 +107,7 @@ async def upload_resource(
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"Resource upload failed: {e}")
+        logger.error(f"Resource upload failed: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=f"Upload failed: {str(e)}")
 
 
@@ -164,7 +164,7 @@ async def delete_resource(
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"Resource delete failed: {e}")
+        logger.error(f"Resource delete failed: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=f"Delete failed: {str(e)}")
 
 
@@ -220,5 +220,5 @@ async def get_resource(resource_path: str):
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"Resource access failed: {e}")
+        logger.error(f"Resource access failed: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=f"Access failed: {str(e)}")

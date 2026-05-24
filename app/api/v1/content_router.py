@@ -149,6 +149,7 @@ async def list_contents(
         )
     
     except Exception as e:
+        logger.error(f"Error occurred: {e}", exc_info=True)
         raise AppException(
             status_code=500,
             error="DatabaseError",
@@ -199,6 +200,7 @@ async def get_content_stats(
         )
     
     except Exception as e:
+        logger.error(f"Error occurred: {e}", exc_info=True)
         raise AppException(
             status_code=500,
             error="DatabaseError",
@@ -253,6 +255,7 @@ async def get_content(
     except NotFoundException:
         raise
     except Exception as e:
+        logger.error(f"Error occurred: {e}", exc_info=True)
         raise AppException(
             status_code=500,
             error="DatabaseError",
@@ -304,6 +307,7 @@ async def update_content(
         raise
     except Exception as e:
         await db.rollback()
+        logger.error(f"Error occurred: {e}", exc_info=True)
         raise AppException(
             status_code=500,
             error="DatabaseError",
@@ -342,6 +346,7 @@ async def toggle_favorite(
         raise
     except Exception as e:
         await db.rollback()
+        logger.error(f"Error occurred: {e}", exc_info=True)
         raise AppException(
             status_code=500,
             error="DatabaseError",
@@ -378,6 +383,7 @@ async def delete_content(
         raise
     except Exception as e:
         await db.rollback()
+        logger.error(f"Error occurred: {e}", exc_info=True)
         raise AppException(
             status_code=500,
             error="DatabaseError",
@@ -457,6 +463,7 @@ async def serve_content_file(
     except (NotFoundException, BadRequestException, ForbiddenException):
         raise
     except Exception as e:
+        logger.error(f"Error occurred: {e}", exc_info=True)
         raise AppException(
             status_code=500,
             error="FileError",

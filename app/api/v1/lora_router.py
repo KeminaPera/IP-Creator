@@ -151,7 +151,7 @@ async def create_lora_model(
         raise
     except Exception as e:
         await db.rollback()
-        logger.error(f"Create LoRA error: {str(e)}")
+        logger.error(f"Create LoRA error: {str(e)}", exc_info=True)
         raise AppException(
             status_code=500,
             error="DatabaseError",
@@ -203,6 +203,7 @@ async def update_lora_model(
         raise
     except Exception as e:
         await db.rollback()
+        logger.error(f"Error occurred: {e}", exc_info=True)
         raise AppException(
             status_code=500,
             error="DatabaseError",
@@ -342,7 +343,7 @@ async def list_lora_models(
         )
         
     except Exception as e:
-        logger.error(f"Error listing LoRA models: {e}")
+        logger.error(f"Error listing LoRA models: {e}", exc_info=True)
         raise AppException(status_code=500, error="ServerError", message=f"Failed to list LoRA models: {str(e)}")
 
 
@@ -361,7 +362,7 @@ async def get_training_presets(
             message="Training presets retrieved successfully"
         )
     except Exception as e:
-        logger.error(f"Error getting training presets: {e}")
+        logger.error(f"Error getting training presets: {e}", exc_info=True)
         raise AppException(status_code=500, error="ServerError", message="Failed to get training presets")
 
 
@@ -402,7 +403,7 @@ async def validate_training_config(
             message="Training configuration is valid"
         )
     except Exception as e:
-        logger.error(f"Error validating training config: {e}")
+        logger.error(f"Error validating training config: {e}", exc_info=True)
         raise AppException(status_code=500, error="ServerError", message="Failed to validate configuration")
 
 
@@ -453,7 +454,7 @@ async def get_lora_model(
         )
         
     except Exception as e:
-        logger.error(f"Error getting LoRA model: {e}")
+        logger.error(f"Error getting LoRA model: {e}", exc_info=True)
         raise AppException(status_code=500, error="ServerError", message=f"Failed to get LoRA model: {str(e)}")
 
 
@@ -475,7 +476,7 @@ async def cancel_training(
             raise BadRequestException(message="Cannot cancel training")
             
     except Exception as e:
-        logger.error(f"Error cancelling training: {e}")
+        logger.error(f"Error cancelling training: {e}", exc_info=True)
         raise AppException(status_code=500, error="ServerError", message="Failed to cancel training")
 
 
@@ -507,7 +508,7 @@ async def delete_lora_model(
         )
         
     except Exception as e:
-        logger.error(f"Error deleting LoRA model: {e}")
+        logger.error(f"Error deleting LoRA model: {e}", exc_info=True)
         raise AppException(status_code=500, error="ServerError", message=f"Failed to delete LoRA model: {str(e)}")
 
 
@@ -525,7 +526,7 @@ async def validate_lora_model(
         return result
         
     except Exception as e:
-        logger.error(f"Error validating LoRA model: {e}")
+        logger.error(f"Error validating LoRA model: {e}", exc_info=True)
         raise AppException(status_code=500, error="ServerError", message=f"Failed to validate LoRA model: {str(e)}")
 
 
@@ -689,7 +690,7 @@ async def start_training(
     except (NotFoundException, BadRequestException):
         raise
     except Exception as e:
-        logger.error(f"Error starting training: {e}")
+        logger.error(f"Error starting training: {e}", exc_info=True)
         raise AppException(status_code=500, error="ServerError", message="Failed to start training")
 
 
@@ -711,7 +712,7 @@ async def get_training_logs(
             message="Training logs retrieved successfully"
         )
     except Exception as e:
-        logger.error(f"Error getting training logs: {e}")
+        logger.error(f"Error getting training logs: {e}", exc_info=True)
         raise AppException(status_code=500, error="ServerError", message="Failed to get training logs")
 
 
@@ -731,7 +732,7 @@ async def get_training_metrics(
             message="Training metrics retrieved successfully"
         )
     except Exception as e:
-        logger.error(f"Error getting training metrics: {e}")
+        logger.error(f"Error getting training metrics: {e}", exc_info=True)
         raise AppException(status_code=500, error="ServerError", message="Failed to get training metrics")
 
 
@@ -761,7 +762,7 @@ async def check_kohya_environment(
             message="Environment check completed"
         )
     except Exception as e:
-        logger.error(f"Error checking Kohya environment: {e}")
+        logger.error(f"Error checking Kohya environment: {e}", exc_info=True)
         raise AppException(status_code=500, error="ServerError", message="Failed to check environment")
 
 
@@ -815,7 +816,7 @@ async def assess_model_quality(
     except (NotFoundException, BadRequestException):
         raise
     except Exception as e:
-        logger.error(f"Error assessing quality: {e}")
+        logger.error(f"Error assessing quality: {e}", exc_info=True)
         raise AppException(status_code=500, error="ServerError", message="Failed to assess quality")
 
 
@@ -870,6 +871,6 @@ async def get_quality_report(
     except (NotFoundException, BadRequestException):
         raise
     except Exception as e:
-        logger.error(f"Error getting quality report: {e}")
+        logger.error(f"Error getting quality report: {e}", exc_info=True)
         logger.error(f"Traceback: {traceback.format_exc()}")
         raise AppException(status_code=500, error="ServerError", message=f"Failed to get quality report: {str(e)}")

@@ -192,7 +192,7 @@ async def generate_three_views(
     except (NotFoundException, BadRequestException):
         raise
     except Exception as e:
-        logger.error(f"Failed to create three views tasks for IP {ip_id}: {e}")
+        logger.error(f"Failed to create three views tasks for IP {ip_id}: {e}", exc_info=True)
         raise InternalServerError(message="Failed to create three views generation tasks")
 
 
@@ -246,7 +246,11 @@ async def create_ip_asset(
     except (ConflictException,):
         raise
     except Exception as e:
-        raise InternalServerError(message="Failed to create IP asset")
+        logger.error(f"Failed to create IP asset: {e}", exc_info=True)
+        raise InternalServerError(
+            message="Failed to create IP asset",
+            details={"original_error": str(e)}
+        )
 
 
 @router.get("/list")
@@ -305,7 +309,10 @@ async def list_ip_assets(
             total=total or 0
         )
         
+    except NotFoundException:
+        raise
     except Exception as e:
+        logger.error(f"Failed to list IP assets: {e}", exc_info=True)
         raise InternalServerError(message="Failed to list IP assets")
 
 
@@ -347,6 +354,7 @@ async def get_ip_asset(
     except NotFoundException:
         raise
     except Exception as e:
+        logger.error(f"Failed to get IP asset: {e}", exc_info=True)
         raise InternalServerError(message="Failed to get IP asset")
 
 
@@ -400,6 +408,7 @@ async def update_ip_asset(
     except NotFoundException:
         raise
     except Exception as e:
+        logger.error(f"Failed to update IP asset: {e}", exc_info=True)
         raise InternalServerError(message="Failed to update IP asset")
 
 
@@ -431,4 +440,5 @@ async def delete_ip_asset(
     except NotFoundException:
         raise
     except Exception as e:
+        logger.error(f"Failed to delete IP asset: {e}", exc_info=True)
         raise InternalServerError(message="Failed to delete IP asset")

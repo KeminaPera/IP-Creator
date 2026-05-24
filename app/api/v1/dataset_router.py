@@ -131,7 +131,7 @@ async def create_dataset(
         raise
     except Exception as e:
         await db.rollback()
-        logger.error(f"Failed to create dataset: {e}")
+        logger.error(f"Failed to create dataset: {e}", exc_info=True)
         raise
 
 
@@ -526,7 +526,7 @@ async def filter_low_quality_images(
         )
         
     except Exception as e:
-        logger.error(f"Failed to filter low quality images: {e}")
+        logger.error(f"Failed to filter low quality images: {e}", exc_info=True)
         raise AppException(
             status_code=500,
             error="ServerError",
@@ -571,7 +571,7 @@ async def batch_annotate_images(
     except (BadRequestException, NotFoundException):
         raise
     except Exception as e:
-        logger.error(f"Failed to batch annotate images: {e}")
+        logger.error(f"Failed to batch annotate images: {e}", exc_info=True)
         raise AppException(
             status_code=500,
             error="ServerError",
@@ -630,7 +630,7 @@ async def generate_dataset_from_features(
     except (BadRequestException, NotFoundException):
         raise
     except Exception as e:
-        logger.error(f"Error generating dataset: {e}")
+        logger.error(f"Error generating dataset: {e}", exc_info=True)
         raise BadRequestException(f"Failed to generate dataset: {str(e)}")
 
 
@@ -670,7 +670,7 @@ async def preview_dataset_combinations(
     except (BadRequestException, NotFoundException):
         raise
     except Exception as e:
-        logger.error(f"Error previewing combinations: {e}")
+        logger.error(f"Error previewing combinations: {e}", exc_info=True)
         raise BadRequestException(f"Failed to preview: {str(e)}")
 
 
@@ -706,7 +706,7 @@ async def convert_dataset_to_kohya(
     except (BadRequestException, NotFoundException, ValueError) as e:
         raise BadRequestException(str(e))
     except Exception as e:
-        logger.error(f"Error converting dataset: {e}")
+        logger.error(f"Error converting dataset: {e}", exc_info=True)
         raise BadRequestException(f"Failed to convert dataset: {str(e)}")
 
 
@@ -749,7 +749,7 @@ async def validate_kohya_dataset(
     except (BadRequestException, NotFoundException):
         raise
     except Exception as e:
-        logger.error(f"Error validating dataset: {e}")
+        logger.error(f"Error validating dataset: {e}", exc_info=True)
         raise BadRequestException(f"Failed to validate: {str(e)}")
 
 
@@ -843,7 +843,7 @@ async def apply_data_augmentation(
     except (NotFoundException, BadRequestException):
         raise
     except Exception as e:
-        logger.error(f"Error augmenting dataset: {e}")
+        logger.error(f"Error augmenting dataset: {e}", exc_info=True)
         raise BadRequestException(f"Failed to augment dataset: {str(e)}")
 
 
@@ -890,7 +890,7 @@ async def validate_augmentation_safety(
     except (NotFoundException, BadRequestException):
         raise
     except Exception as e:
-        logger.error(f"Error validating augmentation safety: {e}")
+        logger.error(f"Error validating augmentation safety: {e}", exc_info=True)
         raise BadRequestException(f"Failed to validate: {str(e)}")
 
 
@@ -939,6 +939,6 @@ async def get_augmentation_report(
     except (NotFoundException, BadRequestException):
         raise
     except Exception as e:
-        logger.error(f"Error generating augmentation report: {e}")
+        logger.error(f"Error generating augmentation report: {e}", exc_info=True)
         raise BadRequestException(f"Failed to generate report: {str(e)}")
 

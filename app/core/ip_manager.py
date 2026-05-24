@@ -74,6 +74,19 @@ class IPManager:
             Created IP asset
         """
         async with async_session_factory() as session:
+            # Process reference images
+            ref_images = []
+            for img in ip_data.reference_images or []:
+                if isinstance(img, dict):
+                    ref_images.append(img)
+                elif isinstance(img, ImageReference):
+                    ref_images.append(img.model_dump())
+                elif isinstance(img, str):
+                    # If it's just a path string, create a dict
+                    ref_images.append({"angle": "front", "path": img})
+                else:
+                    ref_images.append(img)
+            
             # Create IP asset record
             ip_asset = IPAsset(
                 name=ip_data.name,
@@ -81,7 +94,7 @@ class IPManager:
                 description=ip_data.description,
                 trigger_word=ip_data.trigger_word,
                 style_template=ip_data.style_template,
-                reference_images=[img.dict() for img in ip_data.reference_images],
+                reference_images=ref_images,
                 positive_tags=ip_data.positive_tags,
                 negative_tags=ip_data.negative_tags,
                 lora_model_id=ip_data.lora_model_id,

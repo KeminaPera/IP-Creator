@@ -33,7 +33,7 @@ async def get_all_settings(
         settings = await settings_service.get_all_settings(db)
         return success_response(data=settings)
     except Exception as e:
-        logger.error(f"Failed to get all settings: {e}")
+        logger.error(f"Failed to get all settings: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
 
 
@@ -56,7 +56,7 @@ async def get_settings_by_category(
         settings = await settings_service.get_settings_by_category(db, category)
         return success_response(data=settings)
     except Exception as e:
-        logger.error(f"Failed to get settings for category {category}: {e}")
+        logger.error(f"Failed to get settings for category {category}: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
 
 
@@ -90,7 +90,7 @@ async def get_setting_detail(
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"Failed to get setting detail {category}.{key}: {e}")
+        logger.error(f"Failed to get setting detail {category}.{key}: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
 
 
@@ -139,7 +139,7 @@ async def update_setting(
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"Failed to update setting {category}.{key}: {e}")
+        logger.error(f"Failed to update setting {category}.{key}: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
 
 
@@ -170,7 +170,7 @@ async def reset_category_settings(
             data={"category": category, "reset_count": count}
         )
     except Exception as e:
-        logger.error(f"Failed to reset settings for category {category}: {e}")
+        logger.error(f"Failed to reset settings for category {category}: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
 
 
@@ -195,5 +195,5 @@ async def list_categories(
         
         return success_response(data=categories)
     except Exception as e:
-        logger.error(f"Failed to list categories: {e}")
+        logger.error(f"Failed to list categories: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))

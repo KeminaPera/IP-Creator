@@ -125,7 +125,7 @@ async def list_providers(
         return success_response(data=provider_list)
     
     except Exception as e:
-        logger.error(f"Error listing providers: {e}")
+        logger.error(f"Error listing providers: {e}", exc_info=True)
         raise AppException(status_code=500, error="ServerError", message=f"Failed to list providers: {str(e)}")
 
 
@@ -159,7 +159,7 @@ async def list_all_providers(
         return success_response(data=provider_list)
     
     except Exception as e:
-        logger.error(f"Error listing all providers: {e}")
+        logger.error(f"Error listing all providers: {e}", exc_info=True)
         raise AppException(status_code=500, error="ServerError", message=f"Failed to list providers: {str(e)}")
 
 
@@ -207,7 +207,7 @@ async def create_provider(
     
     except Exception as e:
         await db.rollback()
-        logger.error(f"Error creating provider: {e}")
+        logger.error(f"Error creating provider: {e}", exc_info=True)
         raise AppException(status_code=500, error="ServerError", message=f"Failed to create provider: {str(e)}")
 
 
@@ -249,7 +249,7 @@ async def update_provider(
     
     except Exception as e:
         await db.rollback()
-        logger.error(f"Error updating provider: {e}")
+        logger.error(f"Error updating provider: {e}", exc_info=True)
         raise AppException(status_code=500, error="ServerError", message=f"Failed to update provider: {str(e)}")
 
 
@@ -278,7 +278,7 @@ async def delete_provider(
     
     except Exception as e:
         await db.rollback()
-        logger.error(f"Error deleting provider: {e}")
+        logger.error(f"Error deleting provider: {e}", exc_info=True)
         raise AppException(status_code=500, error="ServerError", message=f"Failed to delete provider: {str(e)}")
 
 
@@ -346,7 +346,7 @@ async def list_all_models(
         return success_response(data=model_list)
     
     except Exception as e:
-        logger.error(f"Error listing models: {e}")
+        logger.error(f"Error listing models: {e}", exc_info=True)
         raise AppException(status_code=500, error="ServerError", message=f"Failed to list models: {str(e)}")
 
 
@@ -393,7 +393,7 @@ async def create_model(
     
     except Exception as e:
         await db.rollback()
-        logger.error(f"Error creating model: {e}")
+        logger.error(f"Error creating model: {e}", exc_info=True)
         raise AppException(status_code=500, error="ServerError", message=f"Failed to create model: {str(e)}")
 
 
@@ -431,7 +431,7 @@ async def update_model(
     
     except Exception as e:
         await db.rollback()
-        logger.error(f"Error updating model: {e}")
+        logger.error(f"Error updating model: {e}", exc_info=True)
         raise AppException(status_code=500, error="ServerError", message=f"Failed to update model: {str(e)}")
 
 
@@ -460,7 +460,7 @@ async def delete_model(
     
     except Exception as e:
         await db.rollback()
-        logger.error(f"Error deleting model: {e}")
+        logger.error(f"Error deleting model: {e}", exc_info=True)
         raise AppException(status_code=500, error="ServerError", message=f"Failed to delete model: {str(e)}")
 
 
@@ -500,6 +500,7 @@ async def sync_provider_models(
     except ValueError as e:
         raise BadRequestException(message=str(e))
     except Exception as e:
+        logger.error(f"Error occurred: {e}", exc_info=True)
         raise AppException(
             status_code=500,
             error="ModelSyncError",

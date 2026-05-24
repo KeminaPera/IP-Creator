@@ -74,7 +74,7 @@ async def stream_task_updates(
                 await asyncio.sleep(2)
                 
             except Exception as e:
-                logger.error(f"SSE error: {e}")
+                logger.error(f"SSE error: {e}", exc_info=True)
                 yield f"data: {json.dumps({'error': str(e)})}\n\n"
                 await asyncio.sleep(5)
     
@@ -180,6 +180,7 @@ async def list_tasks(
         )
         
     except Exception as e:
+        logger.error(f"Error occurred: {e}", exc_info=True)
         raise AppException(
             status_code=500,
             error="DatabaseError",
@@ -251,6 +252,7 @@ async def get_task(
     except NotFoundException:
         raise
     except Exception as e:
+        logger.error(f"Error occurred: {e}", exc_info=True)
         raise AppException(
             status_code=500,
             error="DatabaseError",
@@ -297,6 +299,7 @@ async def retry_task(
     except (NotFoundException, BadRequestException):
         raise
     except Exception as e:
+        logger.error(f"Error occurred: {e}", exc_info=True)
         raise AppException(
             status_code=500,
             error="DatabaseError",
@@ -336,6 +339,7 @@ async def delete_task(
     except NotFoundException:
         raise
     except Exception as e:
+        logger.error(f"Error occurred: {e}", exc_info=True)
         raise AppException(
             status_code=500,
             error="DatabaseError",
@@ -427,6 +431,7 @@ async def get_task_content_result(
     except NotFoundException:
         raise
     except Exception as e:
+        logger.error(f"Error occurred: {e}", exc_info=True)
         raise AppException(
             status_code=500,
             error="DatabaseError",

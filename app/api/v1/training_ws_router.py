@@ -78,5 +78,5 @@ async def training_websocket(websocket: WebSocket, lora_id: int):
         logger.info(f"WebSocket disconnected for LoRA {lora_id}")
         manager.disconnect(websocket, lora_id)
     except Exception as e:
-        logger.error(f"WebSocket error for LoRA {lora_id}: {e}")
+        logger.error(f"WebSocket error for LoRA {lora_id}: {e}", exc_info=True)
         manager.disconnect(websocket, lora_id)

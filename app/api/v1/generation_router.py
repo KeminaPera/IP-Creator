@@ -146,7 +146,7 @@ async def generate_story(
     except AppException:
         raise
     except Exception as e:
-        logger.error(f"Story generation error: {e}")
+        logger.error(f"Story generation error: {e}", exc_info=True)
         raise AppException(
             status_code=500,
             error="GenerationError",
@@ -238,7 +238,7 @@ async def generate_image(
     except AppException:
         raise
     except Exception as e:
-        logger.error(f"Image generation error: {e}")
+        logger.error(f"Image generation error: {e}", exc_info=True)
         raise AppException(
             status_code=500,
             error="GenerationError",
@@ -326,7 +326,7 @@ async def generate_video(
     except AppException:
         raise
     except Exception as e:
-        logger.error(f"Video generation error: {e}")
+        logger.error(f"Video generation error: {e}", exc_info=True)
         raise AppException(
             status_code=500,
             error="GenerationError",
@@ -369,7 +369,7 @@ async def get_file(
     except AppException:
         raise
     except Exception as e:
-        logger.error(f"File serving error: {e}")
+        logger.error(f"File serving error: {e}", exc_info=True)
         raise AppException(
             status_code=500,
             error="FileError",
@@ -438,7 +438,7 @@ async def generate_story_async(
         )
     
     except Exception as e:
-        logger.error(f"Async story generation error: {e}")
+        logger.error(f"Async story generation error: {e}", exc_info=True)
         raise AppException(
             status_code=500,
             error="TaskCreationError",
@@ -521,7 +521,7 @@ async def generate_image_async(
         )
     
     except Exception as e:
-        logger.error(f"Async image generation error: {e}")
+        logger.error(f"Async image generation error: {e}", exc_info=True)
         raise AppException(
             status_code=500,
             error="TaskCreationError",
@@ -604,7 +604,7 @@ async def generate_video_async(
         )
     
     except Exception as e:
-        logger.error(f"Async video generation error: {e}")
+        logger.error(f"Async video generation error: {e}", exc_info=True)
         raise AppException(
             status_code=500,
             error="TaskCreationError",
@@ -692,7 +692,7 @@ async def get_smart_references(
     except (NotFoundException, BadRequestException):
         raise
     except Exception as e:
-        logger.error(f"Smart reference selection error: {e}")
+        logger.error(f"Smart reference selection error: {e}", exc_info=True)
         raise AppException(
             status_code=500,
             error="ServerError",
@@ -726,7 +726,7 @@ async def check_generation_consistency(
         )
         
     except Exception as e:
-        logger.error(f"Consistency check error: {e}")
+        logger.error(f"Consistency check error: {e}", exc_info=True)
         raise AppException(
             status_code=500,
             error="ServerError",
@@ -781,7 +781,7 @@ async def calculate_adaptive_scale(
         )
         
     except Exception as e:
-        logger.error(f"Adaptive scale calculation error: {e}")
+        logger.error(f"Adaptive scale calculation error: {e}", exc_info=True)
         raise AppException(
             status_code=500,
             error="ServerError",
