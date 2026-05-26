@@ -6,7 +6,7 @@
         <el-button @click="$router.back()" circle>
           <el-icon><ArrowLeft /></el-icon>
         </el-button>
-        <h2>{{ ipAsset?.name || 'IP 资产详情' }}</h2>
+        <h2>{{ ipAsset?.name || $t('ip.detail_title') }}</h2>
       </div>
       <div class="header-right">
         <el-tag>{{ getCategoryLabel(ipAsset?.category) }}</el-tag>
@@ -17,39 +17,39 @@
     <!-- 标签页 -->
     <el-tabs v-model="activeTab" type="border-card">
       <!-- 基础信息 -->
-      <el-tab-pane label="📋 基础信息" name="basic">
+      <el-tab-pane :label="$t('ip.tab_basic_info')" name="basic">
         <div class="tab-content">
           <el-descriptions :column="2" border>
-            <el-descriptions-item label="IP 名称">
+            <el-descriptions-item :label="$t('ip.name')">
               {{ ipAsset?.name }}
             </el-descriptions-item>
-            <el-descriptions-item label="触发词">
+            <el-descriptions-item :label="$t('ip.trigger_word')">
               <code>{{ ipAsset?.trigger_word }}</code>
             </el-descriptions-item>
-            <el-descriptions-item label="分类">
+            <el-descriptions-item :label="$t('ip.category')">
               {{ getCategoryLabel(ipAsset?.category) }}
             </el-descriptions-item>
-            <el-descriptions-item label="风格模板">
+            <el-descriptions-item :label="$t('ip.style_template')">
               {{ ipAsset?.style_template }}
             </el-descriptions-item>
-            <el-descriptions-item label="描述" :span="2">
-              {{ ipAsset?.description || '暂无描述' }}
+            <el-descriptions-item :label="$t('ip.description')" :span="2">
+              {{ ipAsset?.description || $t('common.no_description') }}
             </el-descriptions-item>
           </el-descriptions>
 
           <!-- 参考图 -->
           <div class="reference-images">
-            <h4>参考图（用于 IP-Adapter）</h4>
+            <h4>{{ $t('ip.reference_images_hint') }}</h4>
             <div class="image-grid">
               <div 
-                v-for="(img, index) in ipAsset?.reference_images" 
+                v-for="(img, index) in (ipAsset?.reference_images || [])" 
                 :key="index"
                 class="image-item"
               >
                 <el-image 
-                  :src="getImageUrl(img.path)" 
+                  :src="getImageUrl(img.path || img)" 
                   fit="cover"
-                  :preview-src-list="ipAsset?.reference_images.map(i => getImageUrl(i.path))"
+                  :preview-src-list="(ipAsset?.reference_images || []).map(i => getImageUrl(i.path || i))"
                   :initial-index="index"
                 >
                   <template #error>
@@ -58,18 +58,19 @@
                     </div>
                   </template>
                 </el-image>
-                <div class="image-label">{{ img.angle }}</div>
+                <div class="image-label">{{ img.angle || $t('ip.angle_unlabeled') }}</div>
               </div>
-              <el-empty v-if="!ipAsset?.reference_images?.length" description="暂无参考图" />
+              <el-empty v-if="!ipAsset?.reference_images || ipAsset.reference_images.length === 0" :description="$t('ip.no_reference_images')" />
             </div>
           </div>
         </div>
       </el-tab-pane>
 
       <!-- 多视图 -->
-      <el-tab-pane label="📐 多视图" name="multiview">
+      <el-tab-pane :label="$t('ip.tab_multi_view')" name="multiview">
         <div class="tab-content">
           <MultiViewManager 
+            v-if="activeTab === 'multiview'"
             :ip-id="ipId" 
             @update="handleUpdate"
           />
@@ -77,9 +78,10 @@
       </el-tab-pane>
 
       <!-- 特征库 -->
-      <el-tab-pane label="🎭 特征库" name="features">
+      <el-tab-pane :label="$t('ip.tab_feature_library')" name="features">
         <div class="tab-content">
           <FeatureLibrary 
+            v-if="activeTab === 'features'"
             :ip-id="ipId" 
             @update="handleUpdate"
           />
@@ -87,14 +89,14 @@
       </el-tab-pane>
 
       <!-- 统计信息 -->
-      <el-tab-pane label="📊 统计信息" name="stats">
+      <el-tab-pane :label="$t('ip.tab_statistics')" name="stats">
         <div class="tab-content">
           <el-row :gutter="20">
             <el-col :span="8">
               <el-card>
                 <template #header>
                   <div class="card-header">
-                    <span>多视图数量</span>
+                    <span>{{ $t('ip.stats_multi_view_count') }}</span>
                   </div>
                 </template>
                 <div class="card-value">{{ stats.multiViewCount }}</div>
@@ -104,7 +106,7 @@
               <el-card>
                 <template #header>
                   <div class="card-header">
-                    <span>特征数量</span>
+                    <span>{{ $t('ip.stats_feature_count') }}</span>
                   </div>
                 </template>
                 <div class="card-value">{{ stats.featureCount }}</div>
@@ -114,7 +116,7 @@
               <el-card>
                 <template #header>
                   <div class="card-header">
-                    <span>特征图片总数</span>
+                    <span>{{ $t('ip.stats_feature_image_count') }}</span>
                   </div>
                 </template>
                 <div class="card-value">{{ stats.featureImageCount }}</div>
@@ -128,8 +130,9 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onMounted, watch } from 'vue'
 import { useRoute } from 'vue-router'
+import { useI18n } from 'vue-i18n'
 import { ElMessage } from 'element-plus'
 import { ArrowLeft, Picture } from '@element-plus/icons-vue'
 import MultiViewManager from '@/components/ip/MultiViewManager.vue'
@@ -137,13 +140,16 @@ import FeatureLibrary from '@/components/ip/FeatureLibrary.vue'
 import { getIPAsset } from '@/api/ip'
 import { getMultiViews, getFeatures } from '@/api/ip-features'
 import { getImageUrl } from '@/utils/image'
+import { logger } from '@/utils/logger'
 
 const route = useRoute()
+const { t } = useI18n()
 const ipId = computed(() => parseInt(route.params.id))
 
 const loading = ref(false)
 const activeTab = ref('basic')
 const ipAsset = ref(null)
+const loadedTabs = ref(new Set(['basic']))  // 记录已加载的页签
 const stats = ref({
   multiViewCount: 0,
   featureCount: 0,
@@ -155,8 +161,9 @@ const loadIPAsset = async () => {
   loading.value = true
   try {
     const response = await getIPAsset(ipId.value)
-    ipAsset.value = response.data
+    ipAsset.value = response.data.data
   } catch (error) {
+    logger.error('[IPAssetDetail] Failed to load IP asset:', error)
     ElMessage.error(t('ip.load_failed'))
   } finally {
     loading.value = false
@@ -179,33 +186,43 @@ const loadStats = async () => {
       0
     )
   } catch (error) {
-    if (import.meta.env.DEV) {
-      console.error('加载统计信息失败', error)
-    }
+    logger.error('[IPAssetDetail] Failed to load stats:', error)
   }
 }
 
-// 更新回调
+// 更新回调：刷新已加载的页签数据
 const handleUpdate = () => {
-  loadStats()
+  // 如果统计页签已加载过，重新加载
+  if (loadedTabs.value.has('stats')) {
+    loadStats()
+  }
 }
 
 // 工具函数
 const getCategoryLabel = (category) => {
   const map = {
-    pet: '宠物',
-    human: '人物',
-    fantasy: '幻想',
-    animal: '动物'
+    pet: 'ip.category_pet',
+    human: 'ip.category_human',
+    fantasy: 'ip.category_fantasy',
+    animal: 'ip.category_animal',
+    other: 'ip.category_other'
   }
-  return map[category] || category
+  const key = map[category]
+  return key ? t(key) : (category || t('common.unknown'))
 }
-
-// 使用统一的 getImageUrl 工具函数
 
 onMounted(() => {
   loadIPAsset()
-  loadStats()
+  // 不再在 onMounted 时加载统计数据，改为切换到页签时再加载
+})
+
+// 监听页签切换，懒加载统计数据
+watch(activeTab, (newTab) => {
+  // 首次切换到统计页签时加载数据
+  if (newTab === 'stats' && !loadedTabs.value.has('stats')) {
+    loadStats()
+    loadedTabs.value.add('stats')
+  }
 })
 </script>
 

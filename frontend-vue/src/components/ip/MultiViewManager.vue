@@ -1,10 +1,10 @@
 <template>
   <div class="multi-view-manager">
     <div class="section-header">
-      <h3>📐 多视图管理</h3>
+      <h3>{{ $t('multi_view.title') }}</h3>
       <el-button type="primary" @click="showUploadDialog = true">
         <el-icon><Upload /></el-icon>
-        上传视图
+        {{ $t('multi_view.upload_view') }}
       </el-button>
     </div>
 
@@ -25,11 +25,11 @@
             <template #error>
               <div class="image-error">
                 <el-icon><Picture /></el-icon>
-                <span>加载失败</span>
+                <span>{{ $t('common.load_failed') }}</span>
               </div>
             </template>
           </el-image>
-          <div v-if="view.is_primary" class="primary-badge">主视图</div>
+          <div v-if="view.is_primary" class="primary-badge">{{ $t('multi_view.primary_view') }}</div>
         </div>
         <div class="view-info">
           <div class="view-type">{{ getViewTypeLabel(view.view_type) }}</div>
@@ -38,7 +38,7 @@
               {{ getSourceLabel(view.source) }}
             </el-tag>
             <span v-if="view.quality_score" class="quality-score">
-              质量: {{ view.quality_score }}
+              {{ $t('multi_view.quality_score') }}: {{ view.quality_score }}
             </span>
           </div>
         </div>
@@ -48,14 +48,14 @@
             @click="setAsPrimary(view)"
             :disabled="view.is_primary"
           >
-            设为主视图
+            {{ $t('multi_view.set_as_primary') }}
           </el-button>
           <el-button 
             size="small" 
             type="danger" 
             @click="handleDelete(view)"
           >
-            删除
+            {{ $t('common.delete') }}
           </el-button>
         </div>
       </div>
@@ -63,10 +63,10 @@
       <!-- 空状态 -->
       <el-empty 
         v-if="!loading && views.length === 0" 
-        description="暂无多视图"
+        :description="$t('multi_view.empty')"
       >
         <el-button type="primary" @click="showUploadDialog = true">
-          上传多视图
+          {{ $t('multi_view.upload_multi_view') }}
         </el-button>
       </el-empty>
     </div>
@@ -74,12 +74,12 @@
     <!-- 上传对话框 -->
     <el-dialog 
       v-model="showUploadDialog" 
-      title="上传多视图"
+      :title="$t('multi_view.upload_dialog_title')"
       width="600px"
     >
       <el-form :model="uploadForm" label-width="100px">
-        <el-form-item label="视图类型" required>
-          <el-select v-model="uploadForm.view_type" placeholder="请选择视图类型">
+        <el-form-item :label="$t('multi_view.view_type')" required>
+          <el-select v-model="uploadForm.view_type" :placeholder="$t('multi_view.select_view_type')">
             <el-option 
               v-for="type in viewTypes" 
               :key="type.value" 
@@ -88,13 +88,13 @@
             />
           </el-select>
         </el-form-item>
-        <el-form-item label="图片来源">
+        <el-form-item :label="$t('multi_view.image_source')">
           <el-radio-group v-model="uploadForm.source">
-            <el-radio label="uploaded">手动上传</el-radio>
-            <el-radio label="generated">AI 生成</el-radio>
+            <el-radio label="uploaded">{{ $t('multi_view.source_uploaded') }}</el-radio>
+            <el-radio label="generated">{{ $t('multi_view.source_generated') }}</el-radio>
           </el-radio-group>
         </el-form-item>
-        <el-form-item label="上传图片" required>
+        <el-form-item :label="$t('multi_view.upload_image')" required>
           <ImageUploader
             v-model="imagePaths"
             :limit="1"
@@ -103,9 +103,9 @@
         </el-form-item>
       </el-form>
       <template #footer>
-        <el-button @click="showUploadDialog = false">取消</el-button>
+        <el-button @click="showUploadDialog = false">{{ $t('common.cancel') }}</el-button>
         <el-button type="primary" @click="handleUpload" :loading="uploading">
-          上传
+          {{ $t('multi_view.upload') }}
         </el-button>
       </template>
     </el-dialog>
@@ -113,7 +113,8 @@
 </template>
 
 <script setup>
-import { ref, onMounted, watch } from 'vue'
+import { ref, computed, onMounted, watch } from 'vue'
+import { useI18n } from 'vue-i18n'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Upload, Picture } from '@element-plus/icons-vue'
 import ImageUploader from '@/components/common/ImageUploader.vue'
@@ -122,6 +123,9 @@ import {
   createMultiView, 
   deleteMultiView 
 } from '@/api/ip-features'
+import { logger } from '@/utils/logger'
+
+const { t } = useI18n()
 
 const props = defineProps({
   ipId: {
@@ -144,13 +148,13 @@ const uploadForm = ref({
   image_path: ''
 })
 
-const viewTypes = [
-  { value: 'front', label: '正面' },
-  { value: 'side', label: '侧面' },
-  { value: 'back', label: '背面' },
-  { value: 'three_quarter_front', label: '3/4 正面' },
-  { value: 'three_quarter_back', label: '3/4 背面' }
-]
+const viewTypes = computed(() => [
+  { value: 'front', label: t('multi_view.view_type_front') },
+  { value: 'side', label: t('multi_view.view_type_side') },
+  { value: 'back', label: t('multi_view.view_type_back') },
+  { value: 'three_quarter_front', label: t('multi_view.view_type_three_quarter_front') },
+  { value: 'three_quarter_back', label: t('multi_view.view_type_three_quarter_back') }
+])
 
 // 加载多视图
 const loadViews = async () => {
@@ -159,7 +163,8 @@ const loadViews = async () => {
     const response = await getMultiViews(props.ipId)
     views.value = response.data.data || []
   } catch (error) {
-    ElMessage.error('加载多视图失败')
+    logger.error('[MultiViewManager] Failed to load views:', error)
+    ElMessage.error(t('multi_view.load_failed'))
   } finally {
     loading.value = false
   }
@@ -168,12 +173,12 @@ const loadViews = async () => {
 // 上传
 const handleUpload = async () => {
   if (!uploadForm.value.view_type) {
-    ElMessage.warning('请选择视图类型')
+    ElMessage.warning(t('multi_view.select_view_type_warning'))
     return
   }
   
   if (imagePaths.value.length === 0) {
-    ElMessage.warning('请选择图片')
+    ElMessage.warning(t('multi_view.select_image_warning'))
     return
   }
 
@@ -187,13 +192,14 @@ const handleUpload = async () => {
     }
 
     await createMultiView(props.ipId, data)
-    ElMessage.success('上传成功')
+    ElMessage.success(t('multi_view.upload_success'))
     showUploadDialog.value = false
     imagePaths.value = []  // 清空选择
     loadViews()
     emit('update')
   } catch (error) {
-    ElMessage.error('上传失败')
+    logger.error('[MultiViewManager] Upload failed:', error)
+    ElMessage.error(t('multi_view.upload_failed'))
   } finally {
     uploading.value = false
   }
@@ -203,27 +209,29 @@ const handleUpload = async () => {
 const setAsPrimary = async (view) => {
   try {
     // TODO: 实现设置主视图的 API
-    ElMessage.success('已设置为主视图')
+    ElMessage.success(t('multi_view.set_primary_success'))
     loadViews()
   } catch (error) {
-    ElMessage.error('设置失败')
+    logger.error('[MultiViewManager] Set primary failed:', error)
+    ElMessage.error(t('multi_view.set_primary_failed'))
   }
 }
 
 // 删除
 const handleDelete = async (view) => {
   try {
-    await ElMessageBox.confirm('确定删除该视图吗？', '提示', {
+    await ElMessageBox.confirm(t('multi_view.delete_confirm'), t('common.warning'), {
       type: 'warning'
     })
     
     await deleteMultiView(props.ipId, view.id)
-    ElMessage.success('删除成功')
+    ElMessage.success(t('multi_view.delete_success'))
     loadViews()
     emit('update')
   } catch (error) {
     if (error !== 'cancel') {
-      ElMessage.error('删除失败')
+      logger.error('[MultiViewManager] Delete failed:', error)
+      ElMessage.error(t('multi_view.delete_failed'))
     }
   }
 }
@@ -261,12 +269,12 @@ const getViewImageUrl = (imagePath) => {
 // 工具函数已移至 utils/image.js
 
 const getViewTypeLabel = (type) => {
-  const found = viewTypes.find(t => t.value === type)
+  const found = viewTypes.value.find(t => t.value === type)
   return found ? found.label : type
 }
 
 const getSourceLabel = (source) => {
-  return source === 'generated' ? 'AI 生成' : '手动上传'
+  return source === 'generated' ? t('multi_view.source_generated') : t('multi_view.source_uploaded')
 }
 
 const getSourceType = (source) => {

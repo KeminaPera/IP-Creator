@@ -36,7 +36,7 @@ router = APIRouter(prefix="/api/v1/ip", tags=["IP Features"])
 # Feature Type Configuration Endpoint (必须在参数路由之前)
 # ============================================
 
-@router.get("/feature-types")
+@router.get("/features/types")
 async def get_feature_types_endpoint(
     current_user: dict = Depends(get_current_user)
 ):

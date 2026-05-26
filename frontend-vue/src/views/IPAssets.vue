@@ -440,7 +440,7 @@ const filteredIPs = computed(() => {
   )
 })
 
-const categoryMap = { pet: 'ip.category_pet', human: 'ip.category_human', fantasy: 'ip.category_fantasy', other: 'ip.category_other' }
+const categoryMap = { pet: 'ip.category_pet', human: 'ip.category_human', fantasy: 'ip.category_fantasy', animal: 'ip.category_animal', other: 'ip.category_other' }
 const styleMap = { '3d_cartoon': 'ip.style_3d_cartoon', blind_box: 'ip.style_blind_box', healing: 'ip.style_healing', anime: 'ip.style_anime', realistic: 'ip.style_realistic' }
 
 function getCategoryLabel(cat) { return t(categoryMap[cat] || cat) }
@@ -523,11 +523,11 @@ function openAddDialog() {
 
 function openEditDialog(row) {
   if (!row) {
-    ElMessage.error('Invalid IP asset selected for editing')
+    ElMessage.error(t('ip.edit_invalid_selection'))
     return
   }
   if (!row.id) {
-    ElMessage.error('IP asset ID is missing. Cannot edit.')
+    ElMessage.error(t('ip.edit_id_missing'))
     return
   }
   
@@ -546,9 +546,15 @@ function openEditDialog(row) {
     style_template: row.style_template || '',
     positive_tags: row.positive_tags || '',
     negative_tags: row.negative_tags || '',
-    reference_images: row.reference_images || [],
+    reference_images: normalizeReferenceImages(row.reference_images),
   })
   dialogVisible.value = true
+}
+
+// 标准化参考图数据格式：将对象数组转换为字符串数组
+function normalizeReferenceImages(images) {
+  if (!Array.isArray(images)) return []
+  return images.map(img => typeof img === 'string' ? img : img.path)
 }
 
 async function handleSubmit(formData) {

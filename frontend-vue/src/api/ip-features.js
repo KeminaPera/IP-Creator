@@ -144,7 +144,7 @@ export function deleteFeatureImage(featureId, imageId) {
  */
 export function getFeatureTypes() {
   return request({
-    url: '/ip/feature-types',
+    url: '/ip/features/types',
     method: 'get'
   })
 }

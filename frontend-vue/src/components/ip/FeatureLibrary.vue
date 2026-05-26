@@ -1,7 +1,7 @@
 <template>
   <div class="feature-library">
     <div class="section-header">
-      <h3>🎭 特征库管理</h3>
+      <h3>{{ $t('feature_library.title') }}</h3>
     </div>
 
     <!-- 动态渲染特征类型 -->
@@ -14,7 +14,7 @@
         <div class="feature-section-header">
           <h4>
             <span class="feature-icon">{{ featureType.icon }}</span>
-            {{ featureType.display_name }}（{{ featureType.display_name_en }}）
+            {{ $t(`feature_library.type_${featureType.type}`) }}
           </h4>
           <el-button 
             type="primary" 
@@ -22,11 +22,11 @@
             @click="showAddDialog(featureType.type)"
           >
             <el-icon><Plus /></el-icon>
-            添加{{ featureType.display_name }}
+            {{ $t('feature_library.add') }}{{ $t(`feature_library.type_${featureType.type}`) }}
           </el-button>
         </div>
 
-        <p class="feature-section-desc">{{ featureType.description }}</p>
+        <p class="feature-section-desc">{{ $t(`feature_library.desc_${featureType.type}`) }}</p>
 
         <!-- 特征列表 -->
         <div class="features-grid">
@@ -44,15 +44,15 @@
                 size="small" 
                 :type="feature.is_active ? 'success' : 'info'"
               >
-                {{ feature.is_active ? '启用' : '禁用' }}
+                {{ feature.is_active ? $t('common.enable') : $t('common.disable') }}
               </el-tag>
             </div>
 
-            <p class="feature-desc">{{ feature.description || '暂无描述' }}</p>
+            <p class="feature-desc">{{ feature.description || $t('common.no_description') }}</p>
 
             <!-- 触发词 -->
             <div class="trigger-phrase">
-              <span class="label">触发词：</span>
+              <span class="label">{{ $t('feature_library.trigger_phrase_label') }}：</span>
               <code>{{ feature.trigger_phrase }}</code>
             </div>
 
@@ -93,14 +93,14 @@
             <!-- 操作按钮 -->
             <div class="feature-actions">
               <el-button size="small" @click="editFeature(feature)">
-                编辑
+                {{ $t('common.edit') }}
               </el-button>
               <el-button 
                 size="small" 
                 type="danger" 
                 @click="handleDelete(feature)"
               >
-                删除
+                {{ $t('common.delete') }}
               </el-button>
             </div>
           </div>
@@ -108,7 +108,7 @@
           <!-- 空状态 -->
           <el-empty 
             v-if="getFeaturesByType(featureType.type).length === 0" 
-            :description="`暂无${featureType.display_name}`"
+            :description="`${$t('feature_library.empty')}${$t(`feature_library.type_${featureType.type}`)}`"
             :image-size="80"
           />
         </div>
@@ -118,47 +118,47 @@
     <!-- 添加/编辑特征对话框 -->
     <el-dialog 
       v-model="showDialog" 
-      :title="editingFeature ? '编辑特征' : '添加特征'"
+      :title="editingFeature ? $t('feature_library.edit_title') : $t('feature_library.add_title')"
       width="700px"
     >
       <el-form :model="featureForm" label-width="120px">
-        <el-form-item label="特征类型">
+        <el-form-item :label="$t('feature_library.feature_type')">
           <el-input 
             :value="getFeatureTypeLabel(featureForm.feature_type)" 
             disabled
           />
         </el-form-item>
-        <el-form-item label="英文名称" required>
+        <el-form-item :label="$t('feature_library.feature_name_en')" required>
           <el-input 
             v-model="featureForm.feature_name" 
-            placeholder="例如：casual_wear, happy, standing"
+            :placeholder="$t('feature_library.feature_name_placeholder')"
           />
         </el-form-item>
-        <el-form-item label="显示名称">
+        <el-form-item :label="$t('feature_library.display_name')">
           <el-input 
             v-model="featureForm.display_name" 
-            placeholder="例如：常服、开心、站立"
+            :placeholder="$t('feature_library.display_name_placeholder')"
           />
         </el-form-item>
-        <el-form-item label="触发词短语">
+        <el-form-item :label="$t('feature_library.trigger_phrase')">
           <el-input 
             v-model="featureForm.trigger_phrase" 
-            placeholder="自动生成或手动输入"
+            :placeholder="$t('feature_library.trigger_phrase_placeholder')"
           />
         </el-form-item>
-        <el-form-item label="描述">
+        <el-form-item :label="$t('feature_library.description')">
           <el-input 
             v-model="featureForm.description" 
             type="textarea"
             :rows="3"
-            placeholder="特征描述"
+            :placeholder="$t('feature_library.description_placeholder')"
           />
         </el-form-item>
       </el-form>
       <template #footer>
-        <el-button @click="showDialog = false">取消</el-button>
+        <el-button @click="showDialog = false">{{ $t('common.cancel') }}</el-button>
         <el-button type="primary" @click="handleSave" :loading="saving">
-          保存
+          {{ $t('common.save') }}
         </el-button>
       </template>
     </el-dialog>
@@ -167,6 +167,7 @@
 
 <script setup>
 import { ref, computed, onMounted, watch } from 'vue'
+import { useI18n } from 'vue-i18n'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Plus } from '@element-plus/icons-vue'
 import { 
@@ -176,6 +177,9 @@ import {
   deleteFeature,
   getFeatureTypes
 } from '@/api/ip-features'
+import { logger } from '@/utils/logger'
+
+const { t } = useI18n()
 
 const props = defineProps({
   ipId: {
@@ -207,7 +211,7 @@ const loadFeatureTypes = async () => {
     const response = await getFeatureTypes()
     featureTypes.value = response.data.data || []
   } catch (error) {
-    console.error('加载特征类型失败', error)
+    logger.error('[FeatureLibrary] Failed to load feature types:', error)
   }
 }
 
@@ -218,7 +222,8 @@ const loadFeatures = async () => {
     const response = await getFeatures(props.ipId)
     features.value = response.data.data || []
   } catch (error) {
-    ElMessage.error('加载特征库失败')
+    logger.error('[FeatureLibrary] Failed to load features:', error)
+    ElMessage.error(t('feature_library.load_failed'))
   } finally {
     loading.value = false
   }
@@ -272,7 +277,7 @@ const editFeature = (feature) => {
 // 保存特征
 const handleSave = async () => {
   if (!featureForm.value.feature_name) {
-    ElMessage.warning('请输入英文名称')
+    ElMessage.warning(t('feature_library.name_required'))
     return
   }
 
@@ -280,16 +285,17 @@ const handleSave = async () => {
   try {
     if (editingFeature.value) {
       await updateFeature(props.ipId, editingFeature.value.id, featureForm.value)
-      ElMessage.success('更新成功')
+      ElMessage.success(t('feature_library.update_success'))
     } else {
       await createFeature(props.ipId, featureForm.value)
-      ElMessage.success('创建成功')
+      ElMessage.success(t('feature_library.create_success'))
     }
     showDialog.value = false
     loadFeatures()
     emit('update')
   } catch (error) {
-    ElMessage.error('保存失败')
+    logger.error('[FeatureLibrary] Save failed:', error)
+    ElMessage.error(t('feature_library.save_failed'))
   } finally {
     saving.value = false
   }
@@ -299,18 +305,19 @@ const handleSave = async () => {
 const handleDelete = async (feature) => {
   try {
     await ElMessageBox.confirm(
-      `确定删除特征"${feature.display_name || feature.feature_name}"吗？`,
-      '提示',
+      `${t('common.confirm_delete')}`,
+      t('common.warning'),
       { type: 'warning' }
     )
     
     await deleteFeature(props.ipId, feature.id)
-    ElMessage.success('删除成功')
+    ElMessage.success(t('feature_library.delete_success'))
     loadFeatures()
     emit('update')
   } catch (error) {
     if (error !== 'cancel') {
-      ElMessage.error('删除失败')
+      logger.error('[FeatureLibrary] Delete failed:', error)
+      ElMessage.error(t('feature_library.delete_failed'))
     }
   }
 }
@@ -318,16 +325,17 @@ const handleDelete = async (feature) => {
 // 工具函数
 const getFeatureTypeLabel = (type) => {
   const found = featureTypes.value.find(t => t.type === type)
-  return found ? `${found.icon} ${found.display_name}` : type
+  return found ? `${found.icon} ${t(`feature_library.type_${found.type}`)}` : type
 }
 
 const getAngleLabel = (angle) => {
   const map = {
-    front: '正面',
-    side: '侧面',
-    back: '背面'
+    front: 'feature_library.angle_front',
+    side: 'feature_library.angle_side',
+    back: 'feature_library.angle_back'
   }
-  return map[angle] || angle
+  const key = map[angle]
+  return key ? t(key) : (angle || t('common.unknown'))
 }
 
 import { getImageUrl } from '@/utils/image'
