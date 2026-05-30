@@ -94,49 +94,45 @@ class IPAdapterService:
                 
                 # Load IP-Adapter
                 try:
-                    # ✅ 优先使用本地IP-Adapter模型
+                    # ✅ 优先使用项目本地缓存（data/models/huggingface）
                     from pathlib import Path
-                    local_ip_adapter_path = Path(settings.MODELS_PATH) / "models--h94--IP-Adapter" / "snapshots"
+                    local_ip_adapter_path = Path(settings.MODELS_PATH) / "models--h94--IP-Adapter"
                     
                     if local_ip_adapter_path.exists():
                         # 查找最新的快照目录
-                        snapshots = list(local_ip_adapter_path.iterdir())
-                        if snapshots:
-                            latest_snapshot = snapshots[0]
-                            
-                            # ✅ 使用models子目录（包含ip-adapter权重文件）
-                            models_dir = latest_snapshot / "models"
-                            
-                            if models_dir.exists():
-                                logger.info(f"Loading IP-Adapter from local: {models_dir}")
-                                logger.info(f"IP-Adapter weight file: {ip_adapter_filename}")
+                        snapshots_dir = local_ip_adapter_path / "snapshots"
+                        if snapshots_dir.exists():
+                            snapshots = list(snapshots_dir.iterdir())
+                            if snapshots:
+                                # 获取第一个快照（通常只有一个）
+                                latest_snapshot = snapshots[0]
+                                logger.info(f"Loading IP-Adapter from local cache: {latest_snapshot}")
                                 
-                                # ✅ 从models子目录加载，必须指定subfolder=""
-                                self._ip_adapter_pipe.load_ip_adapter(
-                                    str(models_dir),
-                                    subfolder="",
-                                    weight_name=ip_adapter_filename,
-                                )
-                            else:
-                                # models目录不存在，尝试从快照根目录加载（兼容旧结构）
-                                logger.info(f"Models dir not found, using snapshot root: {latest_snapshot}")
                                 self._ip_adapter_pipe.load_ip_adapter(
                                     str(latest_snapshot),
-                                    subfolder="models",
+                                    subfolder=ip_adapter_subfolder,
                                     weight_name=ip_adapter_filename,
                                 )
+                                
+                                logger.info("IP-Adapter loaded successfully from local cache")
+                            else:
+                                raise FileNotFoundError(f"No snapshots found in {snapshots_dir}")
                         else:
-                            raise FileNotFoundError("No snapshots found")
+                            raise FileNotFoundError(f"Snapshots directory not found: {snapshots_dir}")
                     else:
-                        # 本地模型不存在，尝试从Hub下载
-                        logger.info("Local IP-Adapter not found, trying to load from Hub")
+                        # 本地缓存不存在，使用 Hub 加载（自动下载并缓存）
+                        logger.info(f"Local IP-Adapter cache not found, loading from Hub: {ip_adapter_repo}")
+                        logger.info(f"Subfolder: {ip_adapter_subfolder}, Weight: {ip_adapter_filename}")
+                        
                         self._ip_adapter_pipe.load_ip_adapter(
                             ip_adapter_repo,
                             subfolder=ip_adapter_subfolder,
                             weight_name=ip_adapter_filename,
                         )
-                    
-                    logger.info("IP-Adapter loaded successfully")
+                        
+                        logger.info("IP-Adapter loaded successfully from Hub")
+                        logger.info("Model will be cached to HF_HOME or default HuggingFace cache directory")
+                        
                 except Exception as e:
                     logger.error(f"Could not load IP-Adapter weights: {e}")
                     import traceback
