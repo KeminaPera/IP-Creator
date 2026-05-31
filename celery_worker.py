@@ -275,11 +275,9 @@ def create_content_record(
             session.add(content)
             session.commit()
         
-        from app.utils.logger import logger
         logger.info(f"Created content record: {content_type} - {title} (ID: {task_id})")
         
     except Exception as e:
-        from app.utils.logger import logger
         logger.error(f"Failed to create content record: {e}")
 
 
@@ -317,7 +315,6 @@ def generate_image_thumbnail(image_path: str, thumb_size: tuple = (300, 300)) ->
         
         return str(thumb_path)
     except Exception as e:
-        from app.utils.logger import logger
         logger.error(f"Failed to generate image thumbnail: {e}")
         return None
 
@@ -359,15 +356,12 @@ def generate_video_thumbnail(video_path: str, timestamp: str = '00:00:01') -> st
         if result.returncode == 0 and thumb_path.exists():
             return str(thumb_path)
         else:
-            from app.utils.logger import logger
             logger.error(f"FFmpeg failed: {result.stderr}")
             return None
     except FileNotFoundError:
-        from app.utils.logger import logger
         logger.warning("FFmpeg not installed, skipping video thumbnail generation")
         return None
     except Exception as e:
-        from app.utils.logger import logger
         logger.error(f"Failed to generate video thumbnail: {e}")
         return None
 
@@ -398,8 +392,14 @@ def generate_story_task(self, prompt: str, ip_name: Optional[str] = None, ip_ass
             )
             session.commit()
         
-        # 复用 worker_process_init 中创建的全局事件循环
-        loop = asyncio.get_event_loop()
+        # 在Celery子线程中显式创建事件循环（避免'There is no current event loop'错误）
+        try:
+            loop = asyncio.get_event_loop()
+        except RuntimeError:
+            # 子线程中没有事件循环，需要创建新的
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+        
         result = loop.run_until_complete(
             video_generator.generate_story(
                 prompt=prompt,
@@ -489,13 +489,25 @@ def generate_image_task(self, prompt: str, ip_asset_id: int = 0, **kwargs) -> di
         # Update task status to running
         update_task_status(self.request.id, 'running', 10, started_at=datetime.now())
         
-        # 复用全局事件循环
-        loop = asyncio.get_event_loop()
+        # 在Celery子线程中显式创建事件循环（避免'There is no current event loop'错误）
+        try:
+            loop = asyncio.get_event_loop()
+        except RuntimeError:
+            # 子线程中没有事件循环，需要创建新的
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+        
+        # 从 kwargs 中提取 view_type（不传给 video_generator）
+        view_type = kwargs.pop('view_type', None)
+        
+        # 从 kwargs 中移除 generate_image 不接受的参数
+        kwargs.pop('seed', None)  # seed 不被 generate_image 接受
+        
         result = loop.run_until_complete(
             video_generator.generate_image(
                 prompt=prompt,
                 ip_asset_id=ip_asset_id,
-                **kwargs
+                **kwargs  # 不再包含 view_type
             )
         )
         
@@ -508,8 +520,6 @@ def generate_image_task(self, prompt: str, ip_asset_id: int = 0, **kwargs) -> di
                 completed_at=datetime.now(),
                 error_message=error_msg
             )
-            
-            from app.utils.logger import logger
             logger.error(f"Task {self.request.id} failed: {error_msg}")
             raise Exception(error_msg)
         
@@ -536,12 +546,10 @@ def generate_image_task(self, prompt: str, ip_asset_id: int = 0, **kwargs) -> di
                     if generated_image_path:
                         consistency_result = await ip_adapter_service.check_generated_consistency(
                             generated_image_path=generated_image_path,
-                            reference_images=reference_images,
-                            ip_asset_id=ip_asset_id
+                            reference_images=reference_images
                         )
                         
                         # Log consistency score
-                        from app.utils.logger import logger
                         score = consistency_result.get('consistency_score', 0)
                         logger.info(f"IP consistency check: {score}/100 for task {self.request.id}")
                         
@@ -549,8 +557,16 @@ def generate_image_task(self, prompt: str, ip_asset_id: int = 0, **kwargs) -> di
                         if score < 80:
                             result['consistency_warning'] = f"IP consistency score is low: {score}/100"
                 
-                # Run check in background
-                asyncio.create_task(run_consistency_check())
+                # Run check in background（使用当前事件循环）
+                try:
+                    current_loop = asyncio.get_event_loop()
+                    current_loop.create_task(run_consistency_check())
+                except RuntimeError:
+                    # 如果没有运行中的事件循环，同步执行
+                    loop = asyncio.new_event_loop()
+                    asyncio.set_event_loop(loop)
+                    loop.run_until_complete(run_consistency_check())
+                    loop.close()
         except Exception as e:
             import logging
             logging.getLogger(__name__).warning(f"Auto consistency check failed: {e}")
@@ -573,6 +589,54 @@ def generate_image_task(self, prompt: str, ip_asset_id: int = 0, **kwargs) -> di
             execution_time=execution_time
         )
         
+        # Create IPMultiView record (for three-view generation)
+        try:
+            file_path = result.get("file_path") or result.get("image_path")
+            # view_type 已在第507行提取为局部变量，直接使用
+            
+            if view_type and ip_asset_id and file_path:
+                try:
+                    from app.models.ip_multi_view import IPMultiView
+                    from app.config.database import get_sync_session
+                    
+                    # Get consistency score from result
+                    consistency_score = result.get('consistency_score', 0)
+                    
+                    with get_sync_session() as session:
+                        multi_view = IPMultiView(
+                            ip_asset_id=ip_asset_id,
+                            view_type=view_type,  # Table field: for query/sort/display
+                            image_path=file_path,
+                            source="generated",
+                            generation_params={  # JSON field: for parameter tracing/reproduction
+                                "prompt": prompt,
+                                "view_type": view_type,  # For tracing what view_type was used
+                                "negative_prompt": kwargs.get('negative_prompt', ''),
+                                "seed": kwargs.get('seed'),
+                                "steps": kwargs.get('steps', 30),
+                                "cfg_scale": kwargs.get('cfg_scale', 7.0),
+                                "ip_adapter_scale": kwargs.get('ip_adapter_scale', 0.85),
+                                "lora_weight": kwargs.get('lora_weight', 0.7),
+                                "lora_path": kwargs.get('lora_path'),
+                                "use_ip_adapter": kwargs.get('use_ip_adapter', False),
+                                "reference_images": kwargs.get('reference_images', []),
+                                "width": kwargs.get('width', 512),
+                                "height": kwargs.get('height', 512),
+                                "generation_time": execution_time,
+                            },
+                            quality_score=consistency_score,
+                            is_primary=(view_type == "front"),
+                        )
+                        session.add(multi_view)
+                        session.commit()
+                        
+                        logger.info(f"Created IPMultiView for IP {ip_asset_id}, view {view_type}")
+                except Exception as e:
+                    logger.error(f"Failed to create IPMultiView: {e}", exc_info=True)
+                    # Don't fail the task if IPMultiView creation fails
+        except Exception as e:
+            logger.warning(f"IPMultiView creation skipped: {e}")
+        
         return {"status": "success", "data": result}
     
     except Exception as exc:
@@ -580,16 +644,31 @@ def generate_image_task(self, prompt: str, ip_asset_id: int = 0, **kwargs) -> di
         if self.request.retries < self.max_retries:
             raise self.retry(exc=exc, countdown=120)
         else:
-            # Final retry failed, update task status
+            # Final retry failed, update task status with detailed error info
+            import traceback
             error_msg = str(exc)
+            error_details = (
+                f"Task ID: {self.request.id}\n"
+                f"IP Asset ID: {ip_asset_id}\n"
+                f"View Type: {view_type or 'unknown'}\n"
+                f"Prompt: {prompt[:100]}...\n"
+                f"Parameters: {kwargs}\n"
+                f"Error: {error_msg}\n"
+                f"Traceback: {traceback.format_exc()}"
+            )
+            
             update_task_status(
                 self.request.id, 'failed', 0,
                 completed_at=datetime.now(),
-                error_message=error_msg
+                error_message=error_details
             )
-            
-            from app.utils.logger import logger
-            logger.error(f"Task {self.request.id} permanently failed after {self.max_retries} retries: {error_msg}")
+            logger.error(
+                f"Task {self.request.id} permanently failed after {self.max_retries} retries:\n"
+                f"  IP Asset ID: {ip_asset_id}\n"
+                f"  View Type: {view_type or 'unknown'}\n"
+                f"  Error: {error_msg}",
+                exc_info=True
+            )
             return {"status": "failed", "error": error_msg}
 
 
@@ -608,8 +687,14 @@ def generate_video_task(self, prompt: str, image_path: str, ip_asset_id: int = 0
         # Update task status to running
         update_task_status(self.request.id, 'running', 10, started_at=datetime.now())
         
-        # 复用全局事件循环
-        loop = asyncio.get_event_loop()
+        # 在Celery子线程中显式创建事件循环（避免'There is no current event loop'错误）
+        try:
+            loop = asyncio.get_event_loop()
+        except RuntimeError:
+            # 子线程中没有事件循环，需要创建新的
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+        
         result = loop.run_until_complete(
             video_generator.generate_video(
                 prompt=prompt,
@@ -628,8 +713,6 @@ def generate_video_task(self, prompt: str, image_path: str, ip_asset_id: int = 0
                 completed_at=datetime.now(),
                 error_message=error_msg
             )
-            
-            from app.utils.logger import logger
             logger.error(f"Task {self.request.id} failed: {error_msg}")
             raise Exception(error_msg)
         
@@ -672,8 +755,6 @@ def generate_video_task(self, prompt: str, image_path: str, ip_asset_id: int = 0
                 completed_at=datetime.now(),
                 error_message=error_msg
             )
-            
-            from app.utils.logger import logger
             logger.error(f"Task {self.request.id} failed after {self.max_retries} retries: {error_msg}")
             # 必须 return，否则 Celery 认为任务成功
             return {"status": "failed", "error": error_msg}
@@ -834,8 +915,16 @@ def _mock_training(self, lora_id: int, training_params: dict) -> dict:
                             num_test_images=5
                         )
             
-            # Run assessment in background
-            asyncio.create_task(run_assessment())
+            # Run assessment in background（使用当前事件循环）
+            try:
+                current_loop = asyncio.get_event_loop()
+                current_loop.create_task(run_assessment())
+            except RuntimeError:
+                # 如果没有运行中的事件循环，同步执行
+                loop = asyncio.new_event_loop()
+                asyncio.set_event_loop(loop)
+                loop.run_until_complete(run_assessment())
+                loop.close()
         except Exception as e:
             import logging
             logging.getLogger(__name__).warning(f"Auto quality assessment failed: {e}")
@@ -1003,10 +1092,17 @@ def _real_training(self, lora_id: int, training_params: dict) -> dict:
 def post_process_video_task(self, video_path: str, operations: list) -> dict:
     """Async video post-processing task."""
     try:
+        import asyncio
         from app.core.post_processor import post_processor
         
-        # 复用全局事件循环
-        loop = asyncio.get_event_loop()
+        # 在Celery子线程中显式创建事件循环（避免'There is no current event loop'错误）
+        try:
+            loop = asyncio.get_event_loop()
+        except RuntimeError:
+            # 子线程中没有事件循环，需要创建新的
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+        
         result = loop.run_until_complete(
             post_processor.process_video(video_path, operations)
         )
@@ -1033,7 +1129,6 @@ def download_model_task(self, model_id: str, mirror: str = "huggingface") -> dic
         Download result dict
     """
     from app.services.model_downloader import model_downloader
-    from app.utils.logger import logger
     from pathlib import Path
     import threading
     import time

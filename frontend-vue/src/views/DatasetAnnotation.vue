@@ -254,13 +254,14 @@ const batchAnnotate = () => {
 
 // 提交标注
 const submitAnnotation = async () => {
-  const annotations = {}
-  selectedImages.value.forEach(imageId => {
-    annotations[imageId] = { ...annotationForm.value }
-  })
+  // ✅ 修复：构建后端期望的格式 { image_ids: [], updates: {} }
+  const requestData = {
+    image_ids: selectedImages.value,
+    updates: { ...annotationForm.value }
+  }
 
   try {
-    await batchAnnotateImages(selectedDataset.value, annotations)
+    await batchAnnotateImages(selectedDataset.value, requestData)
     ElMessage.success(t('dataset.annotation.annotation_success'))
     annotateDialogVisible.value = false
     loadDataset() // 刷新

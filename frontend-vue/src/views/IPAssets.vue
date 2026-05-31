@@ -145,7 +145,7 @@
     <el-dialog 
       v-model="threeViewsDialogVisible" 
       :title="$t('ip.generate_three_views_title')" 
-      width="900px" 
+      width="1100px" 
       :close-on-click-modal="false"
       destroy-on-close
     >
@@ -157,23 +157,23 @@
           </template>
         </el-alert>
 
-        <!-- Generation Parameters -->
+        <!-- Shared Parameters (通用参数) -->
         <el-card shadow="never" style="margin-bottom: 20px;">
           <template #header>
             <div style="display: flex; justify-content: space-between; align-items: center;">
-              <span style="font-weight: 600;">{{ $t('ip.generation_params') }}</span>
+              <span style="font-weight: 600;">{{ $t('ip.shared_params') }}</span>
               <el-button size="small" text @click="showAdvancedParams = !showAdvancedParams">
                 {{ showAdvancedParams ? $t('common.close') : $t('common.more') }}
               </el-button>
             </div>
           </template>
           
-          <el-form :model="threeViewParams" label-width="120px" size="default">
+          <el-form :model="sharedParams" label-width="140px" size="default">
             <!-- Key Parameters (always visible) -->
             <el-row :gutter="16">
               <el-col :span="8">
                 <el-form-item :label="$t('ip.ip_adapter_scale')">
-                  <el-slider v-model="threeViewParams.ip_adapter_scale" :min="0.5" :max="1.0" :step="0.05" show-input />
+                  <el-slider v-model="sharedParams.ip_adapter_scale" :min="0.5" :max="1.0" :step="0.05" show-input />
                   <div class="param-hint">
                     <el-icon><InfoFilled /></el-icon>
                     <span>{{ $t('ip.ip_adapter_scale_hint') }}</span>
@@ -182,12 +182,12 @@
               </el-col>
               <el-col :span="8">
                 <el-form-item :label="$t('ip.lora_weight')">
-                  <el-slider v-model="threeViewParams.lora_weight" :min="0" :max="1" :step="0.1" show-input />
+                  <el-slider v-model="sharedParams.lora_weight" :min="0" :max="1" :step="0.1" show-input />
                 </el-form-item>
               </el-col>
               <el-col :span="8">
                 <el-form-item :label="$t('ip.steps')">
-                  <el-input-number v-model="threeViewParams.steps" :min="20" :max="50" style="width: 100%" />
+                  <el-input-number v-model="sharedParams.steps" :min="20" :max="100" style="width: 100%" />
                 </el-form-item>
               </el-col>
             </el-row>
@@ -198,21 +198,92 @@
                 <el-row :gutter="16">
                   <el-col :span="8">
                     <el-form-item :label="$t('ip.cfg_scale')">
-                      <el-input-number v-model="threeViewParams.cfg_scale" :min="5" :max="15" :step="0.5" style="width: 100%" />
+                      <el-input-number v-model="sharedParams.cfg_scale" :min="5" :max="15" :step="0.5" style="width: 100%" />
                     </el-form-item>
                   </el-col>
                   <el-col :span="8">
                     <el-form-item :label="$t('ip.resolution')">
-                      <el-select v-model="threeViewParams.resolution" style="width: 100%">
+                      <el-select v-model="sharedParams.resolution" style="width: 100%">
                         <el-option :label="$t('ip.resolutions.512')" :value="512" />
                         <el-option :label="$t('ip.resolutions.768')" :value="768" />
                       </el-select>
                     </el-form-item>
                   </el-col>
+                  <el-col :span="8">
+                    <el-form-item :label="$t('ip.seed')">
+                      <el-input-number v-model="sharedParams.seed" :min="0" :max="4294967295" style="width: 100%" :placeholder="$t('ip.seed_placeholder')" />
+                    </el-form-item>
+                  </el-col>
                 </el-row>
+                <el-form-item :label="$t('ip.negative_prompt')">
+                  <el-input 
+                    v-model="sharedParams.negative_prompt" 
+                    type="textarea" 
+                    :rows="2" 
+                    :placeholder="$t('ip.negative_prompt_placeholder')" 
+                  />
+                </el-form-item>
               </el-collapse-item>
             </el-collapse>
           </el-form>
+        </el-card>
+
+        <!-- Independent Parameters (独立参数 - 每个视图的提示词和参考图) -->
+        <el-card shadow="never" style="margin-bottom: 20px;">
+          <template #header>
+            <span style="font-weight: 600;">{{ $t('ip.view_configs') }}</span>
+          </template>
+          
+          <el-row :gutter="16">
+            <el-col :span="8" v-for="view in viewTypes" :key="view.key">
+              <div class="view-config-card">
+                <h4 class="view-config-title">{{ view.label }}</h4>
+                
+                <!-- Prompt Input -->
+                <el-form-item :label="$t('ip.prompt')" label-position="top">
+                  <el-input 
+                    v-model="viewConfigs[view.key].prompt" 
+                    type="textarea" 
+                    :rows="4"
+                    :placeholder="view.defaultPrompt(currentIP)"
+                    show-word-limit
+                    :maxlength="500"
+                  />
+                  <div class="prompt-hint" style="margin-top: 8px; font-size: 12px; color: #909399;">
+                    <el-icon><InfoFilled /></el-icon>
+                    <span>💡 提示：使用IP-Adapter时，提示词应精简（建议50字以内）</span>
+                    <br/>
+                    <span>• ✅ 只需包含：视角（front/side/back view）+ 构图（full body）</span>
+                    <br/>
+                    <span>• ❌ 不要包含：角色外观、颜色、风格（由参考图提供）</span>
+                    <br/>
+                    <span>• ⚠️ 超过75个词的部分将被CLIP模型截断忽略</span>
+                  </div>
+                </el-form-item>
+                
+                <!-- Reference Image Upload (每个视图最多1张) -->
+                <el-form-item :label="$t('ip.reference_image')" label-position="top">
+                  <el-upload
+                    :file-list="viewConfigs[view.key].reference_image_list"
+                    :limit="1"
+                    :on-change="(file, fileList) => handleReferenceUpload(view.key, file, fileList)"
+                    :on-remove="(file, fileList) => handleReferenceRemove(view.key, file, fileList)"
+                    list-type="picture-card"
+                    accept="image/*"
+                    :auto-upload="true"
+                    :action="`/api/v1/resources/upload`"
+                    :headers="{ 'Authorization': `Bearer ${token}` }"
+                  >
+                    <el-icon><Plus /></el-icon>
+                  </el-upload>
+                  <div class="upload-hint">
+                    <el-icon><InfoFilled /></el-icon>
+                    <span>{{ $t('ip.reference_image_hint') }}</span>
+                  </div>
+                </el-form-item>
+              </div>
+            </el-col>
+          </el-row>
         </el-card>
 
         <!-- Generate Button -->
@@ -238,12 +309,25 @@
               <template #header>
                 <div class="view-header">
                   <span class="view-title">{{ view.label }}</span>
-                  <el-tag 
-                    :type="viewStatus[view.key]?.type || 'info'" 
-                    size="small"
-                  >
-                    {{ viewStatus[view.key]?.text || $t('ip.not_generated') }}
-                  </el-tag>
+                  <div style="display: flex; gap: 8px; align-items: center;">
+                    <el-tag 
+                      :type="viewStatus[view.key]?.type || 'info'" 
+                      size="small"
+                    >
+                      {{ viewStatus[view.key]?.text || $t('ip.not_generated') }}
+                    </el-tag>
+                    <!-- ✅ 新增：单独生成按钮 -->
+                    <el-button 
+                      size="small" 
+                      type="primary"
+                      :loading="viewGenerating[view.key]"
+                      :disabled="!hasReferenceImages"
+                      @click="handleGenerateSingleView(view.key)"
+                    >
+                      <el-icon><Picture /></el-icon>
+                      {{ $t('ip.generate_single_view') }}
+                    </el-button>
+                  </div>
                 </div>
               </template>
               
@@ -354,20 +438,61 @@ const viewProgress = ref({ front: 0, side: 0, back: 0 })
 const viewTaskIds = ref({ front: null, side: null, back: null })
 const generationComplete = ref(false)
 
-// Three view generation parameters
+// ✅ 新增：单个视图生成状态
+const viewGenerating = ref({ front: false, side: false, back: false })
+
+// Three view generation parameters - 参数分离
 const showAdvancedParams = ref(false)
-const threeViewParams = ref({
-  ip_adapter_scale: 0.85,
+const token = ref(localStorage.getItem('access_token') || '') // 用于上传参考图
+
+// 通用参数（三个视图共用）
+const sharedParams = ref({
+  // ✅ 优化：提高IP-Adapter Scale，增强参考图影响力
+  ip_adapter_scale: 0.93,
   lora_weight: 0.7,
   steps: 30,
-  cfg_scale: 7.0,
+  // ✅ 优化：降低CFG Scale，减少prompt过度引导
+  cfg_scale: 5.5,
   resolution: 512,
+  seed: null,
+  negative_prompt: '',
+})
+
+// 独立参数（每个视图单独配置）
+const viewConfigs = ref({
+  front: { 
+    prompt: '',
+    reference_image_list: [],  // el-upload的文件列表
+    reference_images: []  // 提交给后端的路径列表
+  },
+  side: { 
+    prompt: '',
+    reference_image_list: [],
+    reference_images: []
+  },
+  back: { 
+    prompt: '',
+    reference_image_list: [],
+    reference_images: []
+  },
 })
 
 const viewTypes = computed(() => [
-  { key: 'front', label: t('ip.view_front') },
-  { key: 'side', label: t('ip.view_side') },
-  { key: 'back', label: t('ip.view_back') }
+  { 
+    key: 'front', 
+    label: t('ip.view_front'),
+    defaultPrompt: (ip) => `${ip?.trigger_word || ip?.name || ''}, front view, full body, white background`
+  },
+  { 
+    key: 'side', 
+    label: t('ip.view_side'),
+    defaultPrompt: (ip) => `${ip?.trigger_word || ip?.name || ''}, side view, full body, white background`
+  },
+  { 
+    key: 'back', 
+    label: t('ip.view_back'),
+    defaultPrompt: (ip) => `${ip?.trigger_word || ip?.name || ''}, back view, full body, white background`
+  }
 ])
 
 const hasReferenceImages = computed(() => {
@@ -626,20 +751,54 @@ function openThreeViewsDialog(row) {
   viewTaskIds.value = { front: null, side: null, back: null }
   generationComplete.value = false
   
-  // Reset generation parameters to defaults
-  threeViewParams.value = {
+  // Reset shared parameters to defaults
+  sharedParams.value = {
     ip_adapter_scale: 0.85,
     lora_weight: 0.7,
     steps: 30,
     cfg_scale: 7.0,
     resolution: 512,
+    seed: null,
+    negative_prompt: '',
   }
+  
+  // Reset view configs
+  viewConfigs.value = {
+    front: { prompt: '', reference_image_list: [], reference_images: [] },
+    side: { prompt: '', reference_image_list: [], reference_images: [] },
+    back: { prompt: '', reference_image_list: [], reference_images: [] },
+  }
+  
   showAdvancedParams.value = false
 }
 
+// 处理参考图上传
+async function handleReferenceUpload(viewKey, file, fileList) {
+  // 验证数量限制
+  if (fileList.length > 1) {
+    ElMessage.warning(t('ip.reference_image_limit'))
+    return
+  }
+  
+  // 更新reference_image_list（el-upload显示用）
+  viewConfigs.value[viewKey].reference_image_list = fileList
+  
+  // 上传成功后，file.response中会包含路径信息
+  // 假设上传接口返回: { success: true, data: { path: 'xxx' } }
+  if (file.response?.data?.path) {
+    viewConfigs.value[viewKey].reference_images = [file.response.data.path]
+  }
+}
+
+// 处理参考图移除
+function handleReferenceRemove(viewKey, file, fileList) {
+  viewConfigs.value[viewKey].reference_image_list = fileList
+  viewConfigs.value[viewKey].reference_images = []
+}
+
 async function generateThreeViews() {
-  if (!currentIP.value || !hasReferenceImages.value) {
-    ElMessage.warning(t('ip.upload_ref_images_first'))
+  if (!currentIP.value) {
+    ElMessage.warning(t('ip.select_ip_first'))
     return
   }
 
@@ -647,15 +806,60 @@ async function generateThreeViews() {
   generationComplete.value = false
   
   try {
-    // Call API to generate three views with parameters
-    const { data } = await request.post(`/ip/${currentIP.value.id}/generate-three-views`, {
-      ip_adapter_scale: threeViewParams.value.ip_adapter_scale,
-      lora_weight: threeViewParams.value.lora_weight,
-      steps: threeViewParams.value.steps,
-      cfg_scale: threeViewParams.value.cfg_scale,
-      width: threeViewParams.value.resolution,
-      height: threeViewParams.value.resolution,
+    // 构建views数组
+    const views = viewTypes.value.map(view => {
+      const prompt = viewConfigs.value[view.key]?.prompt?.trim() || view.defaultPrompt(currentIP.value)
+      const refImages = viewConfigs.value[view.key]?.reference_images || []
+      
+      // 验证prompt长度（最小长度）
+      if (prompt.length < 10) {
+        throw new Error(`${view.label}${t('ip.prompt_too_short')}`)
+      }
+      
+      // 警告：prompt过长
+      if (prompt.length > 200) {
+        console.warn(`[Prompt Warning] ${view.label} prompt is too long (${prompt.length} chars, ~${Math.ceil(prompt.length / 4)} tokens)`)
+        console.warn('CLIP model only supports 77 tokens. Extra content will be truncated.')
+        console.warn('Consider simplifying to: "角色名, 视角, 构图, 背景"')
+        
+        // 不阻止生成，但显示警告
+        ElMessage.warning({
+          message: `${view.label}提示词过长（${prompt.length}字），部分描述将被忽略。建议精简至50字以内。`,
+          duration: 5000,
+          showClose: true
+        })
+      }
+      
+      // 验证参考图数量
+      if (refImages.length > 1) {
+        throw new Error(`${view.label}${t('ip.only_one_reference_image')}`)
+      }
+      
+      return {
+        view_type: view.key,
+        prompt: prompt,
+        reference_images: refImages
+      }
     })
+    
+    // 组合请求数据
+    const requestData = {
+      ip_adapter_scale: sharedParams.value.ip_adapter_scale,
+      lora_weight: sharedParams.value.lora_weight,
+      steps: sharedParams.value.steps,
+      cfg_scale: sharedParams.value.cfg_scale,
+      width: sharedParams.value.resolution,
+      height: sharedParams.value.resolution,
+      seed: sharedParams.value.seed || undefined,
+      negative_prompt: sharedParams.value.negative_prompt || undefined,
+      views: views
+    }
+    
+    // 发送请求
+    const { data } = await request.post(
+      `/ip/${currentIP.value.id}/generate-three-views`,
+      requestData
+    )
     
     if (!data.success) {
       throw new Error(data.message || t('common.generation_failed'))
@@ -675,6 +879,65 @@ async function generateThreeViews() {
   } catch (err) {
     ElMessage.error(err.response?.data?.message || err.message || t('common.generation_failed'))
     generating.value = false
+  }
+}
+
+// ✅ 新增：处理单个视图生成
+async function handleGenerateSingleView(viewType) {
+  if (!currentIP.value) return
+  
+  const view = viewTypes.value.find(v => v.key === viewType)
+  if (!view) return
+  
+  const config = viewConfigs.value[viewType]
+  const prompt = config.prompt || view.defaultPrompt(currentIP.value)
+  
+  // 验证prompt
+  if (prompt.length < 10) {
+    ElMessage.warning(t('ip.prompt_too_short'))
+    return
+  }
+  
+  // 设置加载状态
+  viewGenerating.value[viewType] = true
+  
+  try {
+    // 构建请求数据
+    const requestData = {
+      prompt: prompt,
+      reference_images: config.reference_images.length > 0 ? config.reference_images : undefined,
+      ip_adapter_scale: sharedParams.value.ip_adapter_scale,
+      lora_weight: sharedParams.value.lora_weight,  // ✅ 补充
+      steps: sharedParams.value.steps,               // ✅ 补充
+      cfg_scale: sharedParams.value.cfg_scale,
+      width: sharedParams.value.resolution,
+      height: sharedParams.value.resolution,
+      seed: sharedParams.value.seed || undefined,
+      negative_prompt: sharedParams.value.negative_prompt || undefined,
+    }
+    
+    // 发送请求
+    const { data } = await request.post(
+      `/ip/${currentIP.value.id}/generate-view/${viewType}`,
+      requestData
+    )
+    
+    if (!data.success) {
+      throw new Error(data.message || t('common.generation_failed'))
+    }
+    
+    ElMessage.success(t('ip.single_view_generated', { view: view.label }))
+    
+    // Store task ID
+    viewTaskIds.value[viewType] = data.data.task_id
+    
+    // 提示用户查看进度
+    ElMessage.info(t('ip.check_tasks_for_progress'))
+    
+  } catch (err) {
+    ElMessage.error(err.response?.data?.message || err.message || t('common.generation_failed'))
+  } finally {
+    viewGenerating.value[viewType] = false
   }
 }
 
@@ -755,6 +1018,52 @@ onUnmounted(() => {
 /* Three Views Dialog Styles */
 .three-views-container {
   padding: 10px;
+}
+
+/* 视图配置卡片 */
+.view-config-card {
+  padding: 16px;
+  background: #fafafa;
+  border-radius: 8px;
+  border: 1px solid #e4e7ed;
+  margin-bottom: 16px;
+}
+
+.view-config-title {
+  font-size: 16px;
+  font-weight: 600;
+  color: #303133;
+  margin: 0 0 16px 0;
+  padding-bottom: 8px;
+  border-bottom: 2px solid #409eff;
+}
+
+/* 上传提示 */
+.upload-hint {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  color: #909399;
+  font-size: 12px;
+  margin-top: 8px;
+}
+
+.upload-hint .el-icon {
+  font-size: 14px;
+}
+
+/* 参数提示 */
+.param-hint {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  color: #909399;
+  font-size: 12px;
+  margin-top: 4px;
+}
+
+.param-hint .el-icon {
+  font-size: 14px;
 }
 
 .view-card {

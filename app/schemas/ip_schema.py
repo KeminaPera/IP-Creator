@@ -73,11 +73,35 @@ class StyleTemplatePreset(BaseModel):
     negative_tags: List[str]
 
 
+class ViewConfig(BaseModel):
+    """单个视图的配置"""
+    view_type: str = Field(..., description="视图类型: front/side/back")
+    prompt: str = Field(..., min_length=10, max_length=2000, description="正向提示词")
+    reference_images: Optional[List[str]] = Field(
+        default=None,
+        description="参考图路径列表（可选，最多1张）",
+        max_items=1
+    )
+
+
 class ThreeViewGenerationRequest(BaseModel):
-    """Schema for three-view generation with configurable parameters."""
+    """三视图生成请求（支持参数分离）"""
+    # 通用参数（三个视图共用）
+    # ✅ 优化：提高IP-Adapter Scale，增强参考图影响力
+    ip_adapter_scale: float = Field(default=0.93, ge=0.0, le=1.0, description="IP-Adapter influence scale")
     lora_weight: float = Field(default=0.7, ge=0.0, le=1.0, description="LoRA model weight")
-    ip_adapter_scale: float = Field(default=0.85, ge=0.0, le=1.0, description="IP-Adapter influence scale")
     steps: int = Field(default=30, ge=10, le=100, description="Sampling steps")
-    cfg_scale: float = Field(default=7.0, ge=1.0, le=20.0, description="CFG guidance scale")
+    # ✅ 优化：降低CFG Scale，减少prompt过度引导
+    cfg_scale: float = Field(default=5.5, ge=1.0, le=20.0, description="CFG guidance scale")
     width: int = Field(default=512, ge=256, le=2048, description="Image width")
     height: int = Field(default=512, ge=256, le=2048, description="Image height")
+    seed: Optional[int] = Field(default=None, ge=0, le=2**32-1, description="随机种子（可选）")
+    negative_prompt: Optional[str] = Field(default=None, max_length=2000, description="负向提示词（共用）")
+    
+    # 独立参数（每个视图单独配置，可选）
+    views: Optional[List[ViewConfig]] = Field(
+        default=None,
+        description="三个视图的配置",
+        min_items=0,
+        max_items=3
+    )

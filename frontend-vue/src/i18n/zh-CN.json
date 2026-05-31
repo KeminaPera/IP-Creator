@@ -467,6 +467,8 @@
     "start_generate_three_views": "开始生成三视图",
     "upload_ref_images_first": "请先为IP上传参考图片",
     "three_views_generated": "三视图生成完成！",
+    "single_view_generated": "{view}视图生成任务已创建！",
+    "generate_single_view": "生成",
     "three_views_usage_hint": "提示：您可以在生成页面使用这些三视图作为参考，生成更多内容",
     "check_tasks_for_progress": "请到任务监控页面查看生成进度",
     "view_front": "正面",
@@ -496,7 +498,21 @@
     "resolutions": {
       "512": "512x512 (标准)",
       "768": "768x768 (高清)"
-    }
+    },
+    "shared_params": "通用参数",
+    "view_configs": "视图配置",
+    "prompt": "正向提示词",
+    "prompt_placeholder": "请输入提示词（至少10个字符）",
+    "prompt_too_short": "的提示词过短（至少10个字符）",
+    "seed": "随机种子",
+    "seed_placeholder": "留空则随机",
+    "negative_prompt": "负向提示词",
+    "negative_prompt_placeholder": "输入不想出现在图像中的内容",
+    "reference_image": "参考图",
+    "reference_image_hint": "最多上传1张参考图",
+    "reference_image_limit": "每个视图只能上传1张参考图",
+    "only_one_reference_image": "只能上传1张参考图",
+    "select_ip_first": "请先选择IP资产"
   },
   "multi_view": {
     "title": "📐 多视图管理",

@@ -19,3 +19,13 @@ export function deleteIP(id) {
 export function getIPAsset(id) {
   return request.get(`/ip/${id}`)
 }
+
+// ✅ 新增：单个视图生成
+export function generateSingleView(ipId, viewType, data) {
+  return request.post(`/ip/${ipId}/generate-view/${viewType}`, data)
+}
+
+// 三视图生成
+export function generateThreeViews(ipId, data) {
+  return request.post(`/ip/${ipId}/generate-three-views`, data)
+}

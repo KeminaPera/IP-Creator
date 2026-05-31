@@ -470,6 +470,8 @@
     "start_generate_three_views": "Start Generate Three Views",
     "upload_ref_images_first": "Please upload reference images for this IP first",
     "three_views_generated": "Three views generated successfully!",
+    "single_view_generated": "{view} view generation task created!",
+    "generate_single_view": "Generate",
     "three_views_usage_hint": "Tip: You can use these three views as references in the generation page to create more content",
     "check_tasks_for_progress": "Please check the Task Monitor page for generation progress",
     "view_front": "Front",
@@ -499,7 +501,21 @@
     "resolutions": {
       "512": "512x512 (Standard)",
       "768": "768x768 (HD)"
-    }
+    },
+    "shared_params": "Shared Parameters",
+    "view_configs": "View Configurations",
+    "prompt": "Positive Prompt",
+    "prompt_placeholder": "Enter prompt (at least 10 characters)",
+    "prompt_too_short": " prompt is too short (at least 10 characters)",
+    "seed": "Random Seed",
+    "seed_placeholder": "Leave empty for random",
+    "negative_prompt": "Negative Prompt",
+    "negative_prompt_placeholder": "Enter what you don't want in the image",
+    "reference_image": "Reference Image",
+    "reference_image_hint": "Maximum 1 reference image",
+    "reference_image_limit": "Each view can only have 1 reference image",
+    "only_one_reference_image": " can only have 1 reference image",
+    "select_ip_first": "Please select an IP asset first"
   },
   "multi_view": {
     "title": "📐 Multi-View Management",

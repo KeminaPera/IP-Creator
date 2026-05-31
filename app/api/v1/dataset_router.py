@@ -54,9 +54,9 @@ class QualityFilterRequest(BaseModel):
 
 
 class BatchAnnotateRequest(BaseModel):
-    """Request schema for batch annotating images."""
-    image_ids: List[int] = Field(..., min_items=1, description="List of image IDs")
-    updates: dict = Field(..., min_items=1, description="Annotation updates")
+    """Request schema for batchannotating images."""
+    image_ids: List[int] = Field(..., min_length=1, description="List of image IDs")
+    updates: dict = Field(..., min_length=1, description="Annotation updates")
 
 
 @router.post("", status_code=201)
