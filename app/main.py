@@ -3,6 +3,7 @@ IP Creator - Main FastAPI Application
 
 Configurable Multi-LLM Localized AI Cartoon IP Video Generation System
 """
+import os
 from fastapi import FastAPI, Request, Depends
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
@@ -23,6 +24,11 @@ from app.models.task import TaskRecord
 
 # Import WebSocket components
 from app.websocket.instances import ws_manager, redis_listener
+
+# ✅ 设置 HuggingFace 缓存路径环境变量（必须在import diffusers/transformers之前）
+HF_HUB_CACHE_PATH = Path(settings.HF_HUB_CACHE_PATH).resolve()
+os.environ.setdefault('HF_HUB_CACHE', str(HF_HUB_CACHE_PATH))
+logger.info(f"HuggingFace cache path set to: {HF_HUB_CACHE_PATH}")
 
 # Import API routers
 from app.api.v1 import llm_router

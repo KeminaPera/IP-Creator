@@ -96,7 +96,7 @@ class IPAdapterService:
                 try:
                     # ✅ 优先使用项目本地缓存（data/models/huggingface）
                     from pathlib import Path
-                    local_ip_adapter_path = Path(settings.MODELS_PATH) / "models--h94--IP-Adapter"
+                    local_ip_adapter_path = Path(settings.HF_HUB_CACHE_PATH) / "models--h94--IP-Adapter"
                     
                     if local_ip_adapter_path.exists():
                         # 查找最新的快照目录

@@ -112,7 +112,7 @@
 </template>
 
 <script setup>
-import { ref, watch } from 'vue'
+import { ref, watch, onMounted, onUnmounted } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
@@ -121,7 +121,6 @@ import { getTasks, getTask, retryTask, deleteTask } from '@/api/task'
 import TaskResultDialog from '@/components/TaskResultDialog.vue'
 import { getIPList } from '@/api/ip'
 import { useAsyncList } from '@/composables/useAsyncData'
-import { useAutoRefresh } from '@/composables/usePolling'
 import { formatTime } from '../utils/time'
 import { useDeleteConfirm } from '../composables/useDeleteConfirm'
 import StatusBadge from '../components/common/StatusBadge.vue'
@@ -164,16 +163,6 @@ const {
         return 20
       }
     })()
-  }
-)
-
-// Use useAutoRefresh for automatic refresh (30s interval)
-const { start: startAutoRefresh, stop: stopAutoRefresh } = useAutoRefresh(
-  () => loadTasks(),
-  { 
-    interval: 30000, // 30 seconds
-    autoStart: true,
-    pauseOnHidden: true // Pause when tab is hidden
   }
 )
 
@@ -282,10 +271,13 @@ watch(filterIPId, () => {
   loadTasks()
 })
 
-// Load IP assets on mount (useAsyncList auto-loads tasks)
+// Initial load (useAsyncList auto-loads tasks)
 loadIPs()
 
-// useAutoRefresh automatically handles page visibility and cleanup
+// TODO: 后续实现 WebSocket 实时更新进度
+// const { connect, disconnect, onProgress } = useTaskWebSocket()
+// onMounted(() => connect())
+// onUnmounted(() => disconnect())
 </script>
 
 <style scoped>

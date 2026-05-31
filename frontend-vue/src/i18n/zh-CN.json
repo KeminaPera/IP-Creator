@@ -468,6 +468,7 @@
     "upload_ref_images_first": "请先为IP上传参考图片",
     "three_views_generated": "三视图生成完成！",
     "three_views_usage_hint": "提示：您可以在生成页面使用这些三视图作为参考，生成更多内容",
+    "check_tasks_for_progress": "请到任务监控页面查看生成进度",
     "view_front": "正面",
     "view_side": "侧面",
     "view_back": "背面",

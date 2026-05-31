@@ -19,6 +19,34 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 logger = logging.getLogger(__name__)
 
+# ✅ 设置 HuggingFace 缓存路径环境变量（Celery Worker 进程也需要）
+HF_HUB_CACHE_PATH = Path(settings.HF_HUB_CACHE_PATH).resolve()
+os.environ.setdefault('HF_HUB_CACHE', str(HF_HUB_CACHE_PATH))
+
+# ✅ 将 Celery 任务 ID 设置为 traceId（实现分布式链路追踪）
+from celery.signals import task_prerun, task_postrun
+
+@task_prerun.connect
+def bind_celery_task_id_as_trace_id(sender=None, task_id=None, **kwargs):
+    """
+    在 Celery 任务执行前，将任务 ID 设置为 traceId。
+    
+    这样任务执行过程中的所有日志都会自动包含任务 ID 作为 traceId，
+    实现完整的分布式链路追踪。
+    """
+    if task_id:
+        # 延迟导入避免循环依赖
+        from app.core.trace import set_trace_id
+        set_trace_id(task_id)
+        logger.debug(f"Trace ID set to Celery task ID: {task_id}")
+
+@task_postrun.connect
+def clear_trace_id_after_task(sender=None, task_id=None, **kwargs):
+    """任务执行完成后清除 traceId（避免污染后续任务）"""
+    from app.core.trace import set_trace_id
+    set_trace_id("")
+    logger.debug(f"Trace ID cleared after task: {task_id}")
+
 # Eager-import all ORM models so SQLAlchemy mappers can resolve string-based
 # relationships (e.g. LoRAModel.quality_reports -> 'QualityReport') in workers.
 from app.models import (  # noqa: F401

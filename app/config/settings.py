@@ -45,6 +45,7 @@ class Settings(BaseSettings):
     LORA_MODELS_PATH: str = "./data/lora_models"
     VIDEOS_PATH: str = "./data/videos"
     MODELS_PATH: str = "./data/models"
+    HF_HUB_CACHE_PATH: str = "./data/models/huggingface"  # HuggingFace模型缓存路径
     
     # Encryption
     ENCRYPTION_KEY: str = "change-this-encryption-key"

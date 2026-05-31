@@ -341,6 +341,7 @@ const isEdit = ref(false)
 const imageUploaderRef = ref(null)  // ImageUploader组件引用
 
 // Timer for three views polling
+// let pollTimeoutId = null  // ← 已删除，后续使用 WebSocket
 let pollTimeoutId = null
 
 // Three views state
@@ -665,8 +666,11 @@ async function generateThreeViews() {
     // Store task IDs
     viewTaskIds.value = data.data.task_ids
     
-    // Start polling for task status
-    pollTaskStatus(data.data.task_ids)
+    // TODO: 后续使用 WebSocket 实时更新三视图进度
+    // startThreeViewWebSocket(data.data.task_ids)
+    
+    // 临时方案：提示用户到任务监控页面查看
+    ElMessage.info(t('ip.check_tasks_for_progress'))
     
   } catch (err) {
     ElMessage.error(err.response?.data?.message || err.message || t('common.generation_failed'))
@@ -674,80 +678,55 @@ async function generateThreeViews() {
   }
 }
 
-async function pollTaskStatus(taskIds) {
-  const maxAttempts = 120 // 120 * 3s = 6 minutes max
-  let attempts = 0
-  
-  const poll = async () => {
-    if (attempts >= maxAttempts) {
-      ElMessage.warning(t('common.generation_failed'))
-      generating.value = false
-      return
-    }
-    
-    attempts++
-    
-    let allComplete = true
-    
-    for (const [viewName, taskId] of Object.entries(taskIds)) {
-      // Skip if already completed
-      if (viewImages.value[viewName]) {
-        continue
-      }
-      
-      allComplete = false
-      
-      try {
-        const { data } = await request.get(`/tasks/${taskId}`)
-        
-        if (data.data) {
-          const task = data.data
-          
-          if (task.status === 'completed') {
-            // Update image
-            viewImages.value[viewName] = getImageUrl(task.result_path)
-            viewStatus.value[viewName] = { text: t('status.completed'), type: 'success' }
-            viewProgress.value[viewName] = 100
-          } else if (task.status === 'failed') {
-            viewStatus.value[viewName] = { text: t('status.failed'), type: 'danger' }
-            viewProgress.value[viewName] = 0
-          } else if (task.status === 'running') {
-            viewStatus.value[viewName] = { text: t('common.generating'), type: 'warning' }
-            viewProgress.value[viewName] = task.progress || 10
-          } else {
-            viewStatus.value[viewName] = { text: t('status.pending'), type: 'info' }
-            viewProgress.value[viewName] = 0
-          }
-        }
-      } catch (err) {
-        // Task not found yet - might be creating, just log and continue polling
-        if (err.response?.data?.error?.error === 'NotFoundError') {
-          logger.debug(`[ThreeViews] Task ${taskId} not ready yet, will retry...`)
-          viewStatus.value[viewName] = { text: t('status.pending'), type: 'info' }
-          viewProgress.value[viewName] = 0
-        } else {
-          if (import.meta.env.DEV) {
-            console.error(`[ThreeViews] Failed to poll task ${taskId}:`, err)
-          }
-        }
-      }
-    }
-    
-    // Check if all views are complete
-    const completeCount = Object.values(viewImages.value).filter(v => v !== null).length
-    if (completeCount === 3) {
-      generationComplete.value = true
-      generating.value = false
-      ElMessage.success(t('ip.three_views_generated'))
-      return
-    }
-    
-    // Continue polling
-    pollTimeoutId = setTimeout(poll, 3000)
-  }
-  
-  poll()
-}
+// TODO: 实现 WebSocket 实时更新三视图进度
+// async function startThreeViewWebSocket(taskIds) {
+//   const ws = new WebSocket(`${import.meta.env.VITE_WS_URL || 'ws://localhost:8000'}/ws/tasks`)
+//   
+//   ws.onopen = () => {
+//     console.log('[ThreeViews] WebSocket connected')
+//     // 订阅任务
+//     ws.send(JSON.stringify({ type: 'subscribe', task_ids: Object.values(taskIds) }))
+//   }
+//   
+//   ws.onmessage = (event) => {
+//     const data = JSON.parse(event.data)
+//     if (data.type === 'task_update') {
+//       updateTaskProgress(data.task_id, data)
+//     }
+//   }
+//   
+//   ws.onerror = (error) => {
+//     console.error('[ThreeViews] WebSocket error:', error)
+//   }
+//   
+//   ws.onclose = () => {
+//     console.log('[ThreeViews] WebSocket disconnected')
+//     // 可选择重连
+//   }
+// }
+//
+// function updateTaskProgress(taskId, taskData) {
+//   const viewName = Object.keys(viewTaskIds.value).find(
+//     key => viewTaskIds.value[key] === taskId
+//   )
+//   
+//   if (!viewName) return
+//   
+//   if (taskData.status === 'completed') {
+//     viewImages.value[viewName] = getImageUrl(taskData.result_path)
+//     viewStatus.value[viewName] = { text: t('status.completed'), type: 'success' }
+//     viewProgress.value[viewName] = 100
+//     generationComplete.value = true
+//     generating.value = false
+//     ElMessage.success(t('ip.three_views_generated'))
+//   } else if (taskData.status === 'failed') {
+//     viewStatus.value[viewName] = { text: t('status.failed'), type: 'danger' }
+//     viewProgress.value[viewName] = 0
+//   } else if (taskData.status === 'running') {
+//     viewStatus.value[viewName] = { text: t('common.generating'), type: 'warning' }
+//     viewProgress.value[viewName] = taskData.progress || 10
+//   }
+// }
 
 // 使用统一的 getImageUrl 工具函数
 // 已移至 utils/image.js
@@ -760,6 +739,12 @@ onUnmounted(() => {
     clearTimeout(pollTimeoutId)
     pollTimeoutId = null
   }
+  
+  // TODO: 清理 WebSocket 连接
+  // if (ws) {
+  //   ws.close()
+  //   ws = null
+  // }
 })
 </script>
 
