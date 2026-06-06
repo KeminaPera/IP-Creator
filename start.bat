@@ -49,6 +49,13 @@ echo.
 
 echo [4/4] Starting services...
 echo.
+
+REM ✅ IP-Adapter 模式：original / faceid / faceid-plus
+REM    original    - CLIP 图像特征，兼容 LoRA
+REM    faceid      - insightface 512 维人脸特征（推荐）
+REM    faceid-plus - insightface + CLIP ViT-H/14（最高质量，需 ~3.94 GB 模型）
+set IP_ADAPTER_MODE=faceid
+
 echo ============================================================
 echo   Starting Backend API (Port 8000)
 echo ============================================================

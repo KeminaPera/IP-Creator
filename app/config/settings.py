@@ -53,6 +53,13 @@ class Settings(BaseSettings):
     # Hugging Face Endpoint (for China mirror, e.g. https://hf-mirror.com)
     HF_ENDPOINT: Optional[str] = None
     
+    # IP-Adapter Mode
+    # "original"    - h94/IP-Adapter (CLIP image features, compatible with LoRA)
+    # "faceid"      - h94/IP-Adapter-FaceID (insightface 512-dim embeddings)
+    # "faceid-plus" - h94/IP-Adapter-FaceID (insightface + CLIP ViT-H/14 ~3.94 GB)
+    # Priority: IP_ADAPTER_MODE env var > this setting > "original"
+    IP_ADAPTER_MODE: str = "faceid"
+    
     # JWT Authentication
     JWT_SECRET_KEY: str = "change-this-jwt-secret"
     JWT_ALGORITHM: str = "HS256"

@@ -11,6 +11,8 @@ IP-Adapter is ideal for:
 - Complementing LoRA for even better results
 """
 import os
+import io
+import traceback
 
 # ⚠️ 必须在import torch之前设置环境变量，确保Celery worker能正确使用MPS
 if os.environ.get('OBJC_DISABLE_INITIALIZE_FORK_SAFETY') != 'YES':
@@ -19,6 +21,7 @@ if os.environ.get('OBJC_DISABLE_INITIALIZE_FORK_SAFETY') != 'YES':
 if os.environ.get('PYTORCH_ENABLE_MPS_FALLBACK') != '1':
     os.environ['PYTORCH_ENABLE_MPS_FALLBACK'] = '1'
 
+import numpy as np
 import torch
 from typing import Optional, Dict, Any, List
 from pathlib import Path
@@ -26,8 +29,15 @@ from PIL import Image
 from app.config.settings import settings
 from app.utils.logger import logger
 from app.core.gpu_cache import gpu_cache
-from app.utils.prompt_analyzer import prompt_analyzer, PromptAnalyzer
+from app.utils.prompt_analyzer import prompt_analyzer
 from app.services.clip_similarity import CLIPSimilarityCalculator
+from app.services.ip_adapter_strategies import (
+    GenerationContext,
+    IPAdapterStrategy,
+    IPAdapterStrategyRegistry,
+    OriginalIPAdapterStrategy,
+    FaceIDStrategy,
+)
 
 # 清除GPU缓存，确保Celery worker进程重新检测MPS
 gpu_cache.invalidate()
@@ -58,133 +68,320 @@ class IPAdapterService:
             self.device = "cpu"
             self.dtype = torch.float32
         
-        self._ip_adapter_pipe = None
-        self._image_encoder = None
+        # Strategy pattern pipeline cache (replaces _ip_adapter_pipe)
+        self._base_pipe = None              # SD 1.5 base pipeline (always reused)
+        self._loaded_strategy_name = None   # Currently loaded IP-Adapter strategy name
+        self._face_app = None               # insightface.FaceAnalysis instance (cross-strategy reuse)
+        
         self.models_path = Path(settings.MODELS_PATH)
         self.clip_calculator = CLIPSimilarityCalculator()
         
-        logger.info(f"IPAdapterService initialized on {self.device} with {self.dtype}")
+        # Log current IP-Adapter mode
+        mode = self._get_adapter_mode()
+        logger.info(
+            f"IPAdapterService initialized on {self.device} with {self.dtype}, "
+            f"mode={mode}"
+        )
     
-    def _get_ip_adapter_pipeline(self):
+    def _get_adapter_mode(self) -> str:
         """
-        Lazy-load IP-Adapter pipeline.
-        
-        Uses StableDiffusionPipeline with IP-Adapter support.
-        Falls back to standard pipeline if IP-Adapter not available.
+        Resolve the active IP-Adapter mode from environment or settings.
+    
+        Priority: IP_ADAPTER_MODE env var > settings.IP_ADAPTER_MODE > "original"
         """
-        if self._ip_adapter_pipe is None:
+        env_mode = os.environ.get("IP_ADAPTER_MODE", "").strip().lower()
+        if env_mode:
+            return env_mode
+        settings_mode = getattr(settings, "IP_ADAPTER_MODE", "").strip().lower()
+        return settings_mode or "original"
+    
+    def _resolve_strategy(self) -> IPAdapterStrategy:
+        """Resolve the active IP-Adapter strategy from configuration."""
+        mode = self._get_adapter_mode()
+        return IPAdapterStrategyRegistry.get(mode)
+    
+    def _ensure_pipeline(self, strategy: IPAdapterStrategy) -> Any:
+        """
+        Ensure the pipeline has the correct IP-Adapter weights loaded
+        for the given strategy.
+    
+        SD 1.5 base pipeline (~2 GB) is always reused; only IP-Adapter weights
+        are swapped when switching strategies.
+    
+        Exception safety: if unload_ip_adapter() fails, force-rebuilds base pipeline.
+        """
+        if self._loaded_strategy_name == strategy.name and self._base_pipe is not None:
+            return self._base_pipe  # Already loaded, reuse
+    
+        from diffusers import StableDiffusionPipeline
+    
+        # Unload previous IP-Adapter weights if switching strategies
+        if self._base_pipe is not None and self._loaded_strategy_name is not None:
             try:
-                from diffusers import StableDiffusionPipeline
-                from transformers import CLIPImageProcessor, CLIPVisionModelWithProjection
-                
-                model_id = "runwayml/stable-diffusion-v1-5"
-                ip_adapter_repo = "h94/IP-Adapter"
-                ip_adapter_subfolder = "models"
-                ip_adapter_filename = "ip-adapter_sd15.bin"
-                
-                logger.info(f"Loading IP-Adapter pipeline")
-                
-                # Load base pipeline
-                self._ip_adapter_pipe = StableDiffusionPipeline.from_pretrained(
-                    model_id,
-                    torch_dtype=self.dtype,
-                    safety_checker=None,
-                    requires_safety_checker=False,
-                )
-                
-                # Load IP-Adapter
-                try:
-                    # ✅ 优先使用项目本地缓存（data/models/huggingface）
-                    from pathlib import Path
-                    local_ip_adapter_path = Path(settings.HF_HUB_CACHE_PATH) / "models--h94--IP-Adapter"
-                    
-                    if local_ip_adapter_path.exists():
-                        # 查找最新的快照目录
-                        snapshots_dir = local_ip_adapter_path / "snapshots"
-                        if snapshots_dir.exists():
-                            snapshots = list(snapshots_dir.iterdir())
-                            if snapshots:
-                                # 获取第一个快照（通常只有一个）
-                                latest_snapshot = snapshots[0]
-                                logger.info(f"Loading IP-Adapter from local cache: {latest_snapshot}")
-                                
-                                self._ip_adapter_pipe.load_ip_adapter(
-                                    str(latest_snapshot),
-                                    subfolder=ip_adapter_subfolder,
-                                    weight_name=ip_adapter_filename,
-                                )
-                                
-                                logger.info("IP-Adapter loaded successfully from local cache")
-                            else:
-                                raise FileNotFoundError(f"No snapshots found in {snapshots_dir}")
-                        else:
-                            raise FileNotFoundError(f"Snapshots directory not found: {snapshots_dir}")
-                    else:
-                        # 本地缓存不存在，使用 Hub 加载（自动下载并缓存）
-                        logger.info(f"Local IP-Adapter cache not found, loading from Hub: {ip_adapter_repo}")
-                        logger.info(f"Subfolder: {ip_adapter_subfolder}, Weight: {ip_adapter_filename}")
-                        
-                        self._ip_adapter_pipe.load_ip_adapter(
-                            ip_adapter_repo,
-                            subfolder=ip_adapter_subfolder,
-                            weight_name=ip_adapter_filename,
-                        )
-                        
-                        logger.info("IP-Adapter loaded successfully from Hub")
-                        logger.info("Model will be cached to HF_HOME or default HuggingFace cache directory")
-                        
-                except Exception as e:
-                    logger.error(f"Could not load IP-Adapter weights: {e}")
-                    import traceback
-                    logger.error(traceback.format_exc())
-                    # ✅ 重新抛出异常，不让错误静默
-                    raise
-                
-                self._ip_adapter_pipe = self._ip_adapter_pipe.to(self.device)
-                
-                if self.device == "cuda":
-                    self._ip_adapter_pipe.enable_model_cpu_offload()
-                elif self.device == "mps":
-                    # ⚠️ 禁用attention slicing，它在MPS上会导致IP-Adapter返回tuple而不是tensor
-                    # 这会引发 'tuple' object has no attribute 'shape' 错误
-                    logger.info("Attention slicing disabled for MPS (IP-Adapter compatibility)")
-                
+                self._base_pipe.unload_ip_adapter()
+                logger.info(f"Unloaded previous IP-Adapter weights ({self._loaded_strategy_name})")
             except Exception as e:
-                logger.error(f"Failed to load IP-Adapter pipeline: {e}")
-                raise
-        
-        return self._ip_adapter_pipe
+                logger.warning(
+                    f"unload_ip_adapter() failed ({self._loaded_strategy_name}): {e}, "
+                    "rebuilding base pipeline from scratch"
+                )
+                self._base_pipe = None  # Force rebuild
     
+        # Load base SD 1.5 pipeline if not yet cached
+        if self._base_pipe is None:
+            model_id = "runwayml/stable-diffusion-v1-5"
+            _cache_root = Path(settings.HF_HUB_CACHE_PATH).resolve()
+            _sd_model_dir = _cache_root / "models--runwayml--stable-diffusion-v1-5" / "snapshots"
+            _local_model_path = model_id
+            if _sd_model_dir.exists():
+                _snapshots = list(_sd_model_dir.iterdir())
+                if _snapshots:
+                    _local_model_path = str(_snapshots[0])
+                    logger.info(f"Using local SD 1.5 model: {_local_model_path}")
+    
+            logger.info("Loading SD 1.5 base pipeline...")
+            self._base_pipe = StableDiffusionPipeline.from_pretrained(
+                _local_model_path,
+                torch_dtype=self.dtype,
+                safety_checker=None,
+                requires_safety_checker=False,
+                local_files_only=True,
+            )
+            self._base_pipe = self._base_pipe.to(self.device)
+            if self.device == "mps":
+                logger.info("Attention slicing disabled for MPS (IP-Adapter compatibility)")
+    
+        # Load IP-Adapter weights for the current strategy
+        config = strategy.get_model_config()
+        logger.info(
+            f"Loading IP-Adapter weights: {config.weight_name} "
+            f"(repo={config.repo}, mode={strategy.name})"
+        )
+    
+        # Find local cache path for IP-Adapter weights
+        cache_locations = [
+            Path(settings.HF_HUB_CACHE_PATH) / config.cache_dir_name,
+            *(
+                [Path(os.environ['HF_HUB_CACHE']) / config.cache_dir_name]
+                if os.environ.get('HF_HUB_CACHE') else []
+            ),
+            Path.home() / ".cache" / "huggingface" / "hub" / config.cache_dir_name,
+        ]
+    
+        local_ip_adapter_path = next(
+            (p for p in cache_locations if p and p.exists()), None
+        )
+    
+        if local_ip_adapter_path:
+            snapshots_dir = local_ip_adapter_path / "snapshots"
+            if not snapshots_dir.exists():
+                raise FileNotFoundError(f"Snapshots directory not found: {snapshots_dir}")
+            snapshots = list(snapshots_dir.iterdir())
+            if not snapshots:
+                raise FileNotFoundError(f"No snapshots found in {snapshots_dir}")
+            snapshot_path = snapshots[0]
+            logger.info(f"Loading IP-Adapter from local cache: {snapshot_path}")
+            self._base_pipe.load_ip_adapter(
+                str(snapshot_path),
+                subfolder=config.subfolder,
+                weight_name=config.weight_name,
+                image_encoder_folder=config.image_encoder_folder,
+            )
+        else:
+            logger.info(f"Local cache not found, loading IP-Adapter from Hub: {config.repo}")
+            self._base_pipe.load_ip_adapter(
+                config.repo,
+                subfolder=config.subfolder,
+                weight_name=config.weight_name,
+                image_encoder_folder=config.image_encoder_folder,
+            )
+    
+        self._loaded_strategy_name = strategy.name
+        logger.info(f"IP-Adapter loaded successfully (mode={strategy.name})")
+        return self._base_pipe
+
+    @staticmethod
+    def _cleanup_clip_embeds(pipe) -> None:
+        """
+        Release clip_embeds tensors from IP-Adapter projection layers.
+
+        FaceID-Plus stores clip_embeds as a module attribute on the projection
+        layer. Without cleanup, the GPU tensor persists between calls (~1.3 MB
+        at fp16). Setting to None frees the reference for GC.
+        """
+        try:
+            proj = getattr(pipe.unet, "encoder_hid_proj", None)
+            if proj is None:
+                return
+            layers = getattr(proj, "image_projection_layers", None)
+            if layers is None:
+                return
+            for layer in layers:
+                if hasattr(layer, "clip_embeds"):
+                    layer.clip_embeds = None
+        except Exception:
+            pass  # Best-effort cleanup; never block generation
+    
+    @staticmethod
+    def _ensure_face_app_for_service(ctx: GenerationContext):
+        """
+        Ensure insightface FaceAnalysis is loaded for face detection.
+
+        Called from the service level (before strategy execution) to enable
+        face detection on original images for face-aware cropping.
+        """
+        if ctx.face_app is not None:
+            return ctx.face_app
+
+        from insightface.app import FaceAnalysis
+
+        # Resolve insightface model root
+        project_root = Path(__file__).resolve().parent.parent.parent
+        insightface_root = str(project_root / "data" / "models" / "insightface")
+        logger.info(f"Initializing insightface FaceAnalysis (root={insightface_root})")
+
+        providers = ['CUDAExecutionProvider', 'CPUExecutionProvider']
+        ctx_id = 0 if ctx.device == "cuda" else -1
+
+        ctx.face_app = FaceAnalysis(
+            name="buffalo_l",
+            root=insightface_root,
+            providers=providers,
+        )
+        ctx.face_app.prepare(ctx_id=ctx_id, det_size=(640, 640))
+        return ctx.face_app
+
+    @staticmethod
+    def _detect_faces_in_image(
+        face_app,
+        image: Image.Image,
+    ) -> Optional[list]:
+        """
+        Detect faces in a PIL image using insightface.
+
+        Args:
+            face_app: insightface.FaceAnalysis instance
+            image: Original PIL Image (before any resizing)
+
+        Returns:
+            List of detected face objects, or None if no faces found.
+        """
+        img_np = np.array(image)
+        img_np = img_np[:, :, ::-1]  # RGB → BGR
+        faces = face_app.get(img_np)
+        return faces if len(faces) > 0 else None
+
+    @staticmethod
+    def _crop_face_region(
+        image: Image.Image,
+        face_bbox: tuple,
+        target_size: int = 512,
+        padding_factor: float = 1.5,
+    ) -> Image.Image:
+        """
+        Crop and resize the face region from the image.
+
+        Expands the face bounding box by padding_factor to include surrounding
+        context (hair, neck), then resizes to target_size×target_size.
+
+        Args:
+            image: Original PIL Image
+            face_bbox: (x1, y1, x2, y2) bounding box from insightface
+            target_size: Output image size (square)
+            padding_factor: Expansion factor around face bbox (1.5 = 50% padding)
+
+        Returns:
+            Cropped and resized PIL Image (target_size × target_size)
+        """
+        x1, y1, x2, y2 = face_bbox
+        w, h = image.size
+
+        # Calculate face center and expanded box
+        face_cx = (x1 + x2) / 2
+        face_cy = (y1 + y2) / 2
+        face_w = x2 - x1
+        face_h = y2 - y1
+        face_side = max(face_w, face_h)
+
+        # Expand to include hair/neck/shoulders context
+        expanded = face_side * padding_factor
+        half = expanded / 2
+
+        # Compute crop box (clamped to image boundaries)
+        crop_x1 = max(0, int(face_cx - half))
+        crop_y1 = max(0, int(face_cy - half))
+        crop_x2 = min(w, int(face_cx + half))
+        crop_y2 = min(h, int(face_cy + half))
+
+        # Make square crop
+        crop_w = crop_x2 - crop_x1
+        crop_h = crop_y2 - crop_y1
+        crop_side = max(crop_w, crop_h)
+
+        # Re-center the square crop
+        crop_cx = (crop_x1 + crop_x2) / 2
+        crop_cy = (crop_y1 + crop_y2) / 2
+        crop_x1 = max(0, int(crop_cx - crop_side / 2))
+        crop_y1 = max(0, int(crop_cy - crop_side / 2))
+        crop_x2 = crop_x1 + crop_side
+        crop_y2 = crop_y1 + crop_side
+
+        # Clamp to image bounds
+        if crop_x2 > w:
+            crop_x2 = w
+            crop_x1 = max(0, crop_x2 - crop_side)
+        if crop_y2 > h:
+            crop_y2 = h
+            crop_y1 = max(0, crop_y2 - crop_side)
+
+        cropped = image.crop((crop_x1, crop_y1, crop_x2, crop_y2))
+
+        # Resize to target size with high quality
+        return cropped.resize((target_size, target_size), Image.Resampling.LANCZOS)
+
     def preprocess_reference_image(
         self,
         image_path: str,
         target_size: int = 512,
+        face_bbox: Optional[tuple] = None,
     ) -> Image.Image:
         """
         Preprocess a reference image for IP-Adapter.
-        
+
+        If a face bounding box is provided, crops around the face region
+        (face-aware cropping). Otherwise falls back to center crop.
+
         Args:
             image_path: Path to reference image
             target_size: Target size for the image
-            
+            face_bbox: Optional (x1, y1, x2, y2) from insightface detection
+
         Returns:
             Preprocessed PIL Image
         """
         image = Image.open(image_path).convert("RGB")
-        
-        # Resize maintaining aspect ratio
+
+        if face_bbox is not None:
+            # Face-aware crop: expand around face and resize
+            logger.info(
+                f"Using face-aware crop: bbox={face_bbox}, "
+                f"original_size={image.size}"
+            )
+            return self._crop_face_region(image, face_bbox, target_size)
+
+        # Fallback: resize maintaining aspect ratio + center crop
         w, h = image.size
         scale = target_size / max(w, h)
         new_w = int(w * scale)
         new_h = int(h * scale)
         image = image.resize((new_w, new_h), Image.Resampling.LANCZOS)
-        
+
         # Center crop to square
         left = (new_w - target_size) // 2
         top = (new_h - target_size) // 2
         right = left + target_size
         bottom = top + target_size
-        
+
         # If image is smaller than target, pad it
         if new_w < target_size or new_h < target_size:
             padded = Image.new("RGB", (target_size, target_size), (255, 255, 255))
@@ -194,7 +391,7 @@ class IPAdapterService:
             image = padded
         else:
             image = image.crop((left, top, right, bottom))
-        
+
         return image
     
     async def generate_with_ip_adapter(
@@ -211,7 +408,14 @@ class IPAdapterService:
     ) -> Dict[str, Any]:
         """
         Generate image with IP-Adapter for character consistency.
-        
+
+        Delegates to the active strategy (Original / FaceID / FaceID-Plus).
+        Falls back to OriginalIPAdapterStrategy on dependency or embedding failure.
+
+        For FaceID/FaceID-Plus modes, face detection is performed on the
+        ORIGINAL image before preprocessing, enabling face-aware cropping
+        for much higher facial detail in the reference.
+
         Args:
             prompt: Text prompt for generation
             reference_images: List of paths to reference images
@@ -222,65 +426,171 @@ class IPAdapterService:
             cfg_scale: CFG guidance scale
             ip_adapter_scale: IP-Adapter weight (0.0-1.0)
             seed: Random seed
-            
+
         Returns:
             Dictionary with image bytes and metadata
         """
         try:
-            pipe = self._get_ip_adapter_pipeline()
-            
-            # Preprocess reference images
+            # 1. Resolve active strategy
+            strategy = self._resolve_strategy()
+
+            # 2. Build minimal context for dependency check
+            ctx = GenerationContext(
+                prompt=prompt,
+                negative_prompt=negative_prompt,
+                width=width,
+                height=height,
+                steps=steps,
+                cfg_scale=cfg_scale,
+                seed=seed,
+                ip_adapter_scale=ip_adapter_scale,
+                ref_images=[],
+                device=self.device,
+                dtype=self.dtype,
+                face_app=self._face_app,
+            )
+
+            # 3. Dependency check (fallback to Original if unsatisfied)
+            ok, reason = strategy.check_dependencies(ctx)
+            if not ok:
+                logger.warning(
+                    f"[{strategy.name}] dependency check failed: {reason}, "
+                    "falling back to original"
+                )
+                strategy = OriginalIPAdapterStrategy()
+
+            # 4. For FaceID modes: detect faces in ORIGINAL images before preprocessing
+            #    This enables face-aware cropping AND pre-detected faces for embedding
+            needs_face_detection = isinstance(strategy, FaceIDStrategy)
+            detected_faces = None
+            primary_face_bbox = None
+
+            if needs_face_detection and reference_images:
+                face_app = self._ensure_face_app_for_service(ctx)
+                first_img_path = reference_images[0]
+                if Path(first_img_path).exists():
+                    original_img = Image.open(first_img_path).convert("RGB")
+                    detected_faces = self._detect_faces_in_image(
+                        face_app, original_img
+                    )
+                    if detected_faces:
+                        primary_face_bbox = tuple(detected_faces[0].bbox)
+                        logger.info(
+                            f"Pre-detected face in original image: "
+                            f"bbox={primary_face_bbox}, "
+                            f"image_size={original_img.size}, "
+                            f"confidence={detected_faces[0].det_score:.3f}"
+                        )
+                    else:
+                        logger.warning(
+                            "No face detected in original image, "
+                            "will attempt detection after preprocessing"
+                        )
+                    # Write back face_app for cross-call reuse
+                    self._face_app = ctx.face_app
+
+            # 5. Preprocess reference images (face-aware if face detected)
             ref_images = []
             for img_path in reference_images:
                 if Path(img_path).exists():
-                    img = self.preprocess_reference_image(img_path)
-                    ref_images.append(img)
+                    ref_images.append(
+                        self.preprocess_reference_image(
+                            img_path, face_bbox=primary_face_bbox
+                        )
+                    )
                 else:
                     logger.warning(f"Reference image not found: {img_path}")
-            
+
             if not ref_images:
-                return {
-                    "status": "failed",
-                    "error": "No valid reference images provided",
-                }
-            
-            # Set IP-Adapter scale
+                return {"status": "failed", "error": "No valid reference images provided"}
+
+            # 6. Update context with preprocessed images and detected faces
+            ctx = GenerationContext(
+                prompt=prompt,
+                negative_prompt=negative_prompt,
+                width=width,
+                height=height,
+                steps=steps,
+                cfg_scale=cfg_scale,
+                seed=seed,
+                ip_adapter_scale=ip_adapter_scale,
+                ref_images=ref_images,
+                device=self.device,
+                dtype=self.dtype,
+                face_app=self._face_app,
+                detected_faces=detected_faces,
+            )
+
+            # 7. Ensure pipeline has correct IP-Adapter weights
+            pipe = self._ensure_pipeline(strategy)
+
+            # 8. Validate and set IP-Adapter scale
+            config = strategy.get_model_config()
+            ip_adapter_scale = strategy.validate_scale(ip_adapter_scale, config)
             try:
                 pipe.set_ip_adapter_scale(ip_adapter_scale)
             except Exception as e:
                 logger.warning(f"Could not set IP-Adapter scale: {e}")
-            
-            # Set generator for reproducibility
+
+            # 9. Extract embeddings via strategy
+            adapter_kwargs = strategy.prepare_embeddings(pipe, ctx)
+            if adapter_kwargs is None:
+                # Embedding extraction failed, fall back to Original
+                logger.warning(
+                    f"[{strategy.name}] embedding extraction failed, "
+                    "falling back to original"
+                )
+                strategy = OriginalIPAdapterStrategy()
+                pipe = self._ensure_pipeline(strategy)
+                config = strategy.get_model_config()
+                ip_adapter_scale = strategy.validate_scale(ip_adapter_scale, config)
+                try:
+                    pipe.set_ip_adapter_scale(ip_adapter_scale)
+                except Exception as e:
+                    logger.warning(f"Could not set IP-Adapter scale (fallback): {e}")
+                # Original strategy doesn't need detected_faces
+                ctx.detected_faces = None
+                adapter_kwargs = strategy.prepare_embeddings(pipe, ctx)
+
+            # 10. Write back face_app to service (for cross-call reuse)
+            self._face_app = ctx.face_app
+
+            # 11. Build gen_kwargs and run generation
             generator = None
             if seed is not None:
                 generator = torch.Generator(device=self.device).manual_seed(seed)
-            
-            logger.info(f"Generating with IP-Adapter: {prompt[:50]}...")
-            logger.info(f"Using {len(ref_images)} reference images")
-            
-            # Generate image with IP-Adapter
-            result = pipe(
-                prompt=prompt,
-                negative_prompt=negative_prompt,
-                ip_adapter_image=ref_images[0] if len(ref_images) == 1 else ref_images,
-                width=width,
-                height=height,
-                num_inference_steps=steps,
-                guidance_scale=cfg_scale,
-                generator=generator,
-                num_images_per_prompt=1,
+
+            gen_kwargs = {
+                "prompt": prompt,
+                "negative_prompt": negative_prompt,
+                "width": width,
+                "height": height,
+                "num_inference_steps": steps,
+                "guidance_scale": cfg_scale,
+                "generator": generator,
+                "num_images_per_prompt": 1,
+                **adapter_kwargs,
+            }
+
+            logger.info(
+                f"Generating with [{strategy.name}]: {prompt[:50]}... "
+                f"({len(ref_images)} ref image(s), scale={ip_adapter_scale:.2f})"
             )
-            
+
+            try:
+                result = pipe(**gen_kwargs)
+            finally:
+                # Always clean up clip_embeds from projection layer (free GPU memory)
+                self._cleanup_clip_embeds(pipe)
+
             image = result.images[0]
-            
-            # Convert to bytes
-            import io
+
             img_byte_arr = io.BytesIO()
             image.save(img_byte_arr, format='PNG')
             img_byte_arr.seek(0)
-            
-            logger.info("IP-Adapter generation successful")
-            
+
+            logger.info(f"IP-Adapter [{strategy.name}] generation successful")
+
             return {
                 "status": "success",
                 "image_bytes": img_byte_arr.getvalue(),
@@ -292,16 +602,16 @@ class IPAdapterService:
                     "steps": steps,
                     "cfg_scale": cfg_scale,
                     "ip_adapter_scale": ip_adapter_scale,
+                    "ip_adapter_mode": strategy.name,
                     "seed": seed,
+                    "face_crop": primary_face_bbox is not None,
                 },
             }
-            
+
         except Exception as e:
             logger.error(f"IP-Adapter generation failed: {e}")
-            return {
-                "status": "failed",
-                "error": str(e),
-            }
+            logger.error(f"Traceback:\n{traceback.format_exc()}")
+            return {"status": "failed", "error": str(e)}
     
     async def generate_with_lora_and_ip(
         self,
@@ -319,10 +629,14 @@ class IPAdapterService:
     ) -> Dict[str, Any]:
         """
         Generate image with both LoRA and IP-Adapter for maximum consistency.
-        
+
         Combines LoRA (for style) + IP-Adapter (for character face/body).
-        This provides the best character consistency results.
-        
+
+        Note: FaceID / FaceID-Plus modes are incompatible with LoRA+IP-Adapter
+        because FaceID requires insightface embeddings (not PIL images). When the
+        active strategy does not support LoRA, this method automatically falls
+        back to OriginalIPAdapterStrategy.
+
         Args:
             prompt: Text prompt
             reference_images: Reference image paths
@@ -335,14 +649,23 @@ class IPAdapterService:
             cfg_scale: CFG guidance scale
             ip_adapter_scale: IP-Adapter weight
             seed: Random seed
-            
+
         Returns:
             Dictionary with image bytes and metadata
         """
         try:
-            pipe = self._get_ip_adapter_pipeline()
-            
-            # Load LoRA if provided
+            # 1. Resolve strategy; fall back to Original if LoRA-incompatible
+            strategy = self._resolve_strategy()
+            if not strategy.supports_lora():
+                logger.info(
+                    f"[{strategy.name}] incompatible with LoRA, using original IP-Adapter"
+                )
+                strategy = OriginalIPAdapterStrategy()
+
+            # 2. Ensure pipeline
+            pipe = self._ensure_pipeline(strategy)
+
+            # 3. Load LoRA weights
             if lora_path and Path(lora_path).exists():
                 try:
                     pipe.load_lora_weights(lora_path)
@@ -350,61 +673,63 @@ class IPAdapterService:
                     logger.info(f"Loaded LoRA: {lora_path} with weight {lora_weight}")
                 except Exception as e:
                     logger.warning(f"Failed to load LoRA: {e}")
-            
-            # Preprocess reference images
+
+            # 4. Preprocess reference images
             ref_images = []
             for img_path in reference_images:
                 if Path(img_path).exists():
-                    img = self.preprocess_reference_image(img_path)
-                    ref_images.append(img)
-            
+                    ref_images.append(self.preprocess_reference_image(img_path))
+
             if not ref_images:
-                return {
-                    "status": "failed",
-                    "error": "No valid reference images provided",
-                }
-            
-            # Set IP-Adapter scale
+                return {"status": "failed", "error": "No valid reference images provided"}
+
+            # 5. Validate and set IP-Adapter scale
+            config = strategy.get_model_config()
+            ip_adapter_scale = strategy.validate_scale(ip_adapter_scale, config)
             try:
                 pipe.set_ip_adapter_scale(ip_adapter_scale)
             except Exception as e:
                 logger.warning(f"Failed to set IP-Adapter scale: {e}")
-            
+
+            # 6. Build gen_kwargs (Original mode: pass PIL images directly)
             generator = None
             if seed is not None:
                 generator = torch.Generator(device=self.device).manual_seed(seed)
-            
-            logger.info(f"Generating with LoRA + IP-Adapter: {prompt[:50]}...")
-            
-            result = pipe(
-                prompt=prompt,
-                negative_prompt=negative_prompt,
-                ip_adapter_image=ref_images[0] if len(ref_images) == 1 else ref_images,
-                width=width,
-                height=height,
-                num_inference_steps=steps,
-                guidance_scale=cfg_scale,
-                generator=generator,
-                num_images_per_prompt=1,
+
+            logger.info(
+                f"Generating with LoRA + [{strategy.name}]: {prompt[:50]}..."
             )
-            
-            image = result.images[0]
-            
-            import io
-            img_byte_arr = io.BytesIO()
-            image.save(img_byte_arr, format='PNG')
-            img_byte_arr.seek(0)
-            
-            # Unload LoRA
-            if lora_path and Path(lora_path).exists():
-                try:
-                    pipe.unfuse_lora()
-                    pipe.unload_lora_weights()
-                except Exception as e:
-                    logger.warning(f"Failed to unload LoRA weights: {e}")
-            
-            logger.info("LoRA + IP-Adapter generation successful")
-            
+
+            lora_loaded = bool(lora_path and Path(lora_path).exists())
+            try:
+                result = pipe(
+                    prompt=prompt,
+                    negative_prompt=negative_prompt,
+                    ip_adapter_image=ref_images[0] if len(ref_images) == 1 else ref_images,
+                    width=width,
+                    height=height,
+                    num_inference_steps=steps,
+                    guidance_scale=cfg_scale,
+                    generator=generator,
+                    num_images_per_prompt=1,
+                )
+
+                image = result.images[0]
+
+                img_byte_arr = io.BytesIO()
+                image.save(img_byte_arr, format='PNG')
+                img_byte_arr.seek(0)
+            finally:
+                # 7. Always unload LoRA weights (even on generation failure)
+                if lora_loaded:
+                    try:
+                        pipe.unfuse_lora()
+                        pipe.unload_lora_weights()
+                    except Exception as e:
+                        logger.warning(f"Failed to unload LoRA weights: {e}")
+
+            logger.info(f"LoRA + [{strategy.name}] generation successful")
+
             return {
                 "status": "success",
                 "image_bytes": img_byte_arr.getvalue(),
@@ -417,17 +742,15 @@ class IPAdapterService:
                     "steps": steps,
                     "cfg_scale": cfg_scale,
                     "ip_adapter_scale": ip_adapter_scale,
+                    "ip_adapter_mode": strategy.name,
                     "lora_weight": lora_weight,
                     "seed": seed,
                 },
             }
-            
+
         except Exception as e:
             logger.error(f"LoRA + IP-Adapter generation failed: {e}")
-            return {
-                "status": "failed",
-                "error": str(e),
-            }
+            return {"status": "failed", "error": str(e)}
     
     def analyze_prompt(self, prompt: str) -> Dict[str, str]:
         """

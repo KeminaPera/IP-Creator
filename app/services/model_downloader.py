@@ -199,10 +199,14 @@ class ModelDownloader:
         
         required_files = required_files_map.get(model_id, ["model_index.json"])
         
-        # huggingface_hub 缓存路径
-        hf_cache = Path(os.path.expanduser("~/.cache/huggingface/hub"))
+        # huggingface_hub 缓存路径（优先使用项目配置，fallback 到默认）
+        hf_cache = Path(settings.HF_HUB_CACHE_PATH).resolve()
         model_prefix = repo_id.replace("/", "--")
         model_cache_dir = hf_cache / f"models--{model_prefix}"
+        # 如果项目缓存不存在，尝试默认缓存位置
+        if not model_cache_dir.exists():
+            hf_cache = Path(os.path.expanduser("~/.cache/huggingface/hub"))
+            model_cache_dir = hf_cache / f"models--{model_prefix}"
         
         # 检查是否在自定义目录（data/models/）
         custom_models_dir = Path(settings.MODELS_PATH)

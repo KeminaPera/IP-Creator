@@ -616,6 +616,10 @@ def generate_image_task(self, prompt: str, ip_asset_id: int = 0, **kwargs) -> di
                                 "steps": kwargs.get('steps', 30),
                                 "cfg_scale": kwargs.get('cfg_scale', 7.0),
                                 "ip_adapter_scale": kwargs.get('ip_adapter_scale', 0.85),
+                                "ip_adapter_mode": os.environ.get(
+                                    "IP_ADAPTER_MODE",
+                                    getattr(settings, "IP_ADAPTER_MODE", "original"),
+                                ),
                                 "lora_weight": kwargs.get('lora_weight', 0.7),
                                 "lora_path": kwargs.get('lora_path'),
                                 "use_ip_adapter": kwargs.get('use_ip_adapter', False),
@@ -1138,10 +1142,8 @@ def download_model_task(self, model_id: str, mirror: str = "huggingface") -> dic
     model_config = model_downloader.MODELS.get(model_id, {})
     expected_size_mb = model_config.get("size_gb", 4.0) * 1024
     
-    # huggingface_hub 实际缓存路径: ~/.cache/huggingface/hub/
-    # cache_dir 参数指定的目录会包含 models--{repo} 子目录
-    import os
-    hf_cache = Path(os.path.expanduser("~/.cache/huggingface/hub"))
+    # huggingface_hub 缓存路径（优先使用项目配置）
+    hf_cache = Path(settings.HF_HUB_CACHE_PATH).resolve()
     
     # 后台线程：监控缓存目录大小增长，定期报告进度
     stop_monitor = threading.Event()
@@ -1162,7 +1164,7 @@ def download_model_task(self, model_id: str, mirror: str = "huggingface") -> dic
             model_cache_dir = custom_model_dir
         else:
             # fallback 到 huggingface 默认缓存
-            hf_cache = Path(os.path.expanduser("~/.cache/huggingface/hub"))
+            hf_cache = Path(settings.HF_HUB_CACHE_PATH).resolve()
             model_cache_dir = hf_cache / f"models--{model_prefix}" if model_prefix else hf_cache
         
         start_size = 0

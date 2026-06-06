@@ -82,7 +82,16 @@ async def generate_three_views(
         width = params.get("width", 512)
         height = params.get("height", 512)
         seed = params.get("seed")
-        negative_prompt = params.get("negative_prompt") or ", ".join(ip_asset.negative_tags or ["ugly", "deformed", "text"])
+        # Default negative prompt includes facial protection keywords
+        default_negative_tags = [
+            "ugly", "deformed", "text",
+            "asymmetric eyes", "deformed pupils", "deformed mouth",
+            "extra fingers", "mutated hands", "bad anatomy",
+            "blurry face", "distorted facial features",
+        ]
+        negative_prompt = params.get("negative_prompt") or ", ".join(
+            ip_asset.negative_tags or default_negative_tags
+        )
         
         # 4. Validate and build view configurations
         views_config = params.get("views")
@@ -318,7 +327,16 @@ async def generate_single_view(
         width = params.get("width", 512)
         height = params.get("height", 512)
         seed = params.get("seed")
-        negative_prompt = params.get("negative_prompt") or ", ".join(ip_asset.negative_tags or ["ugly", "deformed", "text"])
+        # Default negative prompt includes facial protection keywords
+        default_negative_tags = [
+            "ugly", "deformed", "text",
+            "asymmetric eyes", "deformed pupils", "deformed mouth",
+            "extra fingers", "mutated hands", "bad anatomy",
+            "blurry face", "distorted facial features",
+        ]
+        negative_prompt = params.get("negative_prompt") or ", ".join(
+            ip_asset.negative_tags or default_negative_tags
+        )
         
         # 5. Build view configuration
         prompt = params.get("prompt") or f"{ip_asset.trigger_word}, {view_type} view, full body, white background"

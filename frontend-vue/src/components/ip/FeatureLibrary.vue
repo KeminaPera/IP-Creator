@@ -166,7 +166,7 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted, watch } from 'vue'
+import { ref, computed, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Plus } from '@element-plus/icons-vue'
@@ -342,15 +342,11 @@ import { getImageUrl } from '@/utils/image'
 
 // 工具函数已移至 utils/image.js
 
-// 监听 IP ID 变化
+// 监听 IP ID 变化（immediate: true 已覆盖初始加载，无需 onMounted）
 watch(() => props.ipId, () => {
-  loadFeatures()
-}, { immediate: true })
-
-onMounted(() => {
   loadFeatureTypes()
   loadFeatures()
-})
+}, { immediate: true })
 </script>
 
 <style scoped>

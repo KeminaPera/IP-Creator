@@ -266,6 +266,7 @@
                   <el-upload
                     :file-list="viewConfigs[view.key].reference_image_list"
                     :limit="1"
+                    :on-success="(response, file, fileList) => handleReferenceUploadSuccess(view.key, response, file, fileList)"
                     :on-change="(file, fileList) => handleReferenceUpload(view.key, file, fileList)"
                     :on-remove="(file, fileList) => handleReferenceRemove(view.key, file, fileList)"
                     list-type="picture-card"
@@ -782,11 +783,20 @@ async function handleReferenceUpload(viewKey, file, fileList) {
   
   // 更新reference_image_list（el-upload显示用）
   viewConfigs.value[viewKey].reference_image_list = fileList
-  
-  // 上传成功后，file.response中会包含路径信息
-  // 假设上传接口返回: { success: true, data: { path: 'xxx' } }
-  if (file.response?.data?.path) {
-    viewConfigs.value[viewKey].reference_images = [file.response.data.path]
+}
+
+// 上传成功回调：从 response 中提取资源路径
+function handleReferenceUploadSuccess(viewKey, response, file, fileList) {
+  // 后端返回格式: { success: true, data: { resource_path: "..." } }
+  if (response?.data?.resource_path) {
+    viewConfigs.value[viewKey].reference_images = [response.data.resource_path]
+    logger.info(`Reference image set for ${viewKey}: ${response.data.resource_path}`)
+  } else if (response?.data?.path) {
+    // 兼容旧格式
+    viewConfigs.value[viewKey].reference_images = [response.data.path]
+    logger.info(`Reference image set for ${viewKey}: ${response.data.path}`)
+  } else {
+    logger.warn('Upload response missing path:', response)
   }
 }
 

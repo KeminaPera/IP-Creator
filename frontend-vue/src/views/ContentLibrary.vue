@@ -218,6 +218,21 @@
             <!-- Content Icon/Preview -->
             <div class="content-icon">
               <el-icon v-if="item.content_type === 'story'" :size="60" color="#409EFF"><Document /></el-icon>
+              <el-image
+                v-else-if="item.content_type === 'image' && (item.thumbnail_path || item.file_path)"
+                :src="getFileUrl(item.thumbnail_path || item.file_path)"
+                :preview-src-list="[getFileUrl(item.file_path || item.thumbnail_path)]"
+                preview-teleported
+                fit="cover"
+                class="card-thumbnail"
+                @click.stop
+              >
+                <template #error>
+                  <div class="card-thumbnail-fallback">
+                    <el-icon :size="60" color="#67C23A"><Picture /></el-icon>
+                  </div>
+                </template>
+              </el-image>
               <el-icon v-else-if="item.content_type === 'image'" :size="60" color="#67C23A"><Picture /></el-icon>
               <el-icon v-else :size="60" color="#E6A23C"><VideoCamera /></el-icon>
             </div>
@@ -301,7 +316,16 @@
           <template #default="{ row }">
             <div class="title-cell">
               <el-image 
-                v-if="row.content_type !== 'story' && row.thumbnail_path"
+                v-if="row.content_type === 'image' && (row.thumbnail_path || row.file_path)"
+                :src="getFileUrl(row.thumbnail_path || row.file_path)"
+                :preview-src-list="[getFileUrl(row.file_path || row.thumbnail_path)]"
+                preview-teleported
+                fit="cover"
+                class="table-thumbnail"
+                @click.stop
+              />
+              <el-image
+                v-else-if="row.content_type === 'video' && row.thumbnail_path"
                 :src="getFileUrl(row.thumbnail_path)"
                 fit="cover"
                 class="table-thumbnail"
@@ -345,13 +369,13 @@
         <!-- Execution Time -->
         <el-table-column 
           v-if="visibleColumns.execution_time"
-          prop="execution_time" 
+          prop="execution_time_seconds" 
           :label="$t('content.execution_time')" 
           width="120"
         >
           <template #default="{ row }">
-            <span v-if="row.execution_time">
-              {{ formatExecutionTime(row.execution_time) }}
+            <span v-if="row.execution_time_seconds">
+              {{ formatExecutionTime(row.execution_time_seconds) }}
             </span>
             <span v-else>-</span>
           </template>
@@ -1075,6 +1099,23 @@ async function bulkDelete() {
   margin-bottom: 16px;
 }
 
+.card-thumbnail {
+  width: 100%;
+  height: 140px;
+  border-radius: 4px;
+  cursor: pointer;
+  display: block;
+}
+
+.card-thumbnail-fallback {
+  width: 100%;
+  height: 140px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #f5f7fa;
+}
+
 .content-info {
   margin-bottom: 16px;
 }
@@ -1218,6 +1259,7 @@ async function bulkDelete() {
   height: 40px;
   border-radius: 4px;
   flex-shrink: 0;
+  cursor: pointer;
 }
 
 .title-text {

@@ -113,7 +113,7 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted, watch } from 'vue'
+import { ref, computed, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Upload, Picture } from '@element-plus/icons-vue'
@@ -281,14 +281,10 @@ const getSourceType = (source) => {
   return source === 'generated' ? 'success' : 'info'
 }
 
-// 监听 IP ID 变化
+// 监听 IP ID 变化（immediate: true 已覆盖初始加载，无需 onMounted）
 watch(() => props.ipId, () => {
   loadViews()
 }, { immediate: true })
-
-onMounted(() => {
-  loadViews()
-})
 </script>
 
 <style scoped>

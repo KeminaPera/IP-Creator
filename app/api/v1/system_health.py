@@ -518,8 +518,8 @@ class HealthChecker:
             "lora_models": 0
         }
         
-        # huggingface_hub 实际缓存路径
-        hf_cache = Path(os.path.expanduser("~/.cache/huggingface/hub"))
+        # huggingface_hub 缓存路径（优先使用项目配置）
+        hf_cache = Path(settings.HF_HUB_CACHE_PATH).resolve()
         
         if models_path.exists():
             lora_indicators = list(models_path.glob("*.safetensors"))
@@ -664,6 +664,12 @@ async def system_health_check(
             "training_mode": HealthChecker.get_training_mode(),
         }
         
+        # IP-Adapter mode (original / faceid / faceid-plus)
+        ip_adapter_mode = (
+            os.environ.get("IP_ADAPTER_MODE", "").strip().lower()
+            or getattr(settings, "IP_ADAPTER_MODE", "original")
+        )
+        
         # Calculate overall status
         error_count = sum(1 for c in checks.values() if c.get("status") == "error")
         warning_count = sum(1 for c in checks.values() if c.get("status") == "warning")
@@ -682,6 +688,7 @@ async def system_health_check(
                 "overall_status": overall_status,
                 "timestamp": datetime.now().isoformat(),
                 "check_duration_seconds": round(elapsed, 3),
+                "ip_adapter_mode": ip_adapter_mode,
                 "checks": checks,
                 "summary": {
                     "total_checks": len(checks),
