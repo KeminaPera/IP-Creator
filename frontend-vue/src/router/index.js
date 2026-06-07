@@ -80,6 +80,12 @@ const routes = [
     meta: { requiresAuth: true },
   },
   {
+    path: '/workflow',
+    name: 'WorkflowEditor',
+    component: () => import('../views/WorkflowView.vue'),
+    meta: { requiresAuth: true },
+  },
+  {
     path: '/lora/:loraId/training-monitor',
     name: 'TrainingMonitor',
     component: () => import('../views/TrainingMonitor.vue'),

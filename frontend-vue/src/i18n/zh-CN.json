@@ -93,7 +93,8 @@
     "content_library": "生成内容库",
     "api_docs": "API 文档",
     "user_profile": "用户资料",
-    "settings": "设置"
+    "settings": "设置",
+    "workflow": "工作流编排"
   },
   "dataset": {
     "title": "训练数据集管理",
@@ -1092,5 +1093,35 @@
       "grade_d": "较差 - 模型质量较差，需要重新训练",
       "grade_f": "失败 - 模型训练失败，必须重新训练"
     }
+  },
+  "workflow": {
+    "title": "工作流编辑器",
+    "node_panel": "节点面板",
+    "search_nodes": "搜索节点...",
+    "properties": "属性面板",
+    "select_node_hint": "点击节点查看属性",
+    "load_default": "加载默认",
+    "validate": "校验",
+    "execute": "执行",
+    "save_workflow": "保存工作流",
+    "name": "名称",
+    "name_placeholder": "工作流名称",
+    "default_loaded": "默认工作流已加载",
+    "load_failed": "加载失败",
+    "valid": "工作流校验通过",
+    "validation_errors": "校验错误",
+    "saved": "保存成功",
+    "save_failed": "保存失败",
+    "submitted": "已提交执行",
+    "execute_confirm": "确认执行此工作流？",
+    "execute_failed": "执行失败",
+    "name_required": "请输入名称",
+    "execute_workflow": "执行工作流",
+    "select_ip": "IP 资产",
+    "select_ip_placeholder": "选择 IP 资产",
+    "ref_image": "参考图",
+    "preview": "选中图",
+    "no_ref_images": "该 IP 资产没有参考图",
+    "select_ref_image": "请选择参考图"
   }
 }

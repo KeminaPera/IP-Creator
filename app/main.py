@@ -21,6 +21,7 @@ from app.models.llm_model import LLMConfig
 from app.models.ip_asset import IPAsset
 from app.models.lora_model import LoRAModel
 from app.models.task import TaskRecord
+from flowpipe.models import WorkflowRecord  # ensure table is created on startup
 
 # Import WebSocket components
 from app.websocket.instances import ws_manager, redis_listener
@@ -147,6 +148,10 @@ app.include_router(system_health.router)
 app.include_router(settings_router.router)
 app.include_router(dataset_router.router)
 app.include_router(resource_router.router)
+
+# FlowPipe workflow engine router
+from flowpipe.api.router import router as workflow_router
+app.include_router(workflow_router)
 
 # Include WebSocket routers
 app.include_router(training_websocket.router)

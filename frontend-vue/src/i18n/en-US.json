@@ -93,7 +93,8 @@
     "content_library": "Content Library",
     "api_docs": "API Docs",
     "user_profile": "Profile",
-    "settings": "Settings"
+    "settings": "Settings",
+    "workflow": "Workflow Editor"
   },
   "dataset": {
     "title": "Training Dataset Management",
@@ -1269,5 +1270,35 @@
       "grade_d": "Poor - Model quality is low, retraining needed",
       "grade_f": "Failed - Model training failed, must retrain"
     }
+  },
+  "workflow": {
+    "title": "Workflow Editor",
+    "node_panel": "Node Panel",
+    "search_nodes": "Search nodes...",
+    "properties": "Properties",
+    "select_node_hint": "Click a node to view properties",
+    "load_default": "Load Default",
+    "validate": "Validate",
+    "execute": "Execute",
+    "save_workflow": "Save Workflow",
+    "name": "Name",
+    "name_placeholder": "Workflow name",
+    "default_loaded": "Default workflow loaded",
+    "load_failed": "Load failed",
+    "valid": "Workflow validation passed",
+    "validation_errors": "Validation Errors",
+    "saved": "Saved successfully",
+    "save_failed": "Save failed",
+    "submitted": "Submitted for execution",
+    "execute_confirm": "Confirm execution of this workflow?",
+    "execute_failed": "Execution failed",
+    "name_required": "Please enter a name",
+    "execute_workflow": "Execute Workflow",
+    "select_ip": "IP Asset",
+    "select_ip_placeholder": "Select IP Asset",
+    "ref_image": "Reference Image",
+    "preview": "Selected",
+    "no_ref_images": "This IP asset has no reference images",
+    "select_ref_image": "Please select a reference image"
   }
 }

@@ -43,6 +43,10 @@
           <el-icon><VideoCameraFilled /></el-icon>
           <template #title>{{ $t('nav.generate') }}</template>
         </el-menu-item>
+        <el-menu-item index="/workflow">
+          <el-icon><Connection /></el-icon>
+          <template #title>{{ $t('nav.workflow') || '工作流编排' }}</template>
+        </el-menu-item>
         <el-menu-item index="/tasks">
           <el-icon><List /></el-icon>
           <template #title>{{ $t('nav.task_monitor') }}</template>

@@ -147,6 +147,17 @@ class IPAdapterService:
                 requires_safety_checker=False,
                 local_files_only=True,
             )
+
+            # Replace default PNDMScheduler with DPM++ 2M Karras
+            # Better quality per step, especially for facial details
+            from diffusers import DPMSolverMultistepScheduler
+            self._base_pipe.scheduler = DPMSolverMultistepScheduler.from_config(
+                self._base_pipe.scheduler.config,
+                use_karras_sigmas=True,
+                algorithm_type="dpmsolver++",
+            )
+            logger.info("Scheduler: DPMSolver++ 2M Karras")
+
             self._base_pipe = self._base_pipe.to(self.device)
             if self.device == "mps":
                 logger.info("Attention slicing disabled for MPS (IP-Adapter compatibility)")

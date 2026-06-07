@@ -122,6 +122,7 @@ TASK_ROUTES = {
     "celery_worker.generate_video_task": {"queue": "video_generation"},
     "celery_worker.download_model_task": {"queue": "default"},  # 下载任务走默认队列
     "celery_worker.train_lora_task": {"queue": "training"},  # LoRA训练任务走training队列
+    "celery_worker.execute_workflow_task": {"queue": "image_generation"},  # FlowPipe工作流任务
 }
 
 # Celery application instance
@@ -1260,4 +1261,115 @@ def download_model_task(self, model_id: str, mirror: str = "huggingface") -> dic
             "success": False,
             "model_id": model_id,
             "error": str(exc)
+        }
+
+
+# =============================================================================
+# FlowPipe Workflow Execution Task
+# =============================================================================
+
+@celery_app.task(bind=True, name="celery_worker.execute_workflow_task")
+def execute_workflow_task(self, workflow_json: dict, runtime_inputs: dict = None) -> dict:
+    """
+    Execute a FlowPipe workflow asynchronously.
+    
+    Args:
+        workflow_json: Complete workflow definition dict
+        runtime_inputs: External inputs (e.g. image paths, IP asset data)
+    
+    Returns:
+        Dict with execution results and output node data
+    """
+    import time
+    import asyncio
+    from datetime import datetime
+    
+    start_time = time.time()
+    task_id = self.request.id
+    
+    try:
+        update_task_status(task_id, 'running', 10, started_at=datetime.now())
+        
+        # Import FlowPipe engine
+        from flowpipe import WorkflowExecutor, dict_to_workflow
+        from flowpipe.core.registry import NodeRegistry
+        import flowpipe.nodes  # Ensure nodes are registered
+        
+        # Parse workflow
+        workflow = dict_to_workflow(workflow_json)
+        
+        update_task_status(task_id, 'running', 30)
+        
+        # Execute
+        executor = WorkflowExecutor(registry=NodeRegistry)
+        
+        # Run async executor in sync context
+        try:
+            loop = asyncio.get_event_loop()
+        except RuntimeError:
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+        
+        if loop.is_running():
+            import concurrent.futures
+            with concurrent.futures.ThreadPoolExecutor() as pool:
+                future = pool.submit(
+                    asyncio.run,
+                    executor.execute(workflow, runtime_inputs)
+                )
+                node_outputs = future.result()
+        else:
+            node_outputs = loop.run_until_complete(
+                executor.execute(workflow, runtime_inputs)
+            )
+        
+        update_task_status(task_id, 'running', 90)
+        
+        # Collect output node results
+        output_results = {}
+        for node_id, outputs in node_outputs.items():
+            if node_id.startswith("__"):
+                continue
+            # Mark output nodes
+            try:
+                node_instance = workflow.get_node(node_id)
+                if node_instance:
+                    node_cls = NodeRegistry.get(node_instance.type)
+                    if node_cls.OUTPUT_NODE:
+                        output_results[node_id] = {
+                            "type": node_instance.type,
+                            "outputs": {k: str(v)[:200] for k, v in outputs.items()},
+                        }
+            except Exception:
+                pass
+        
+        execution_time = time.time() - start_time
+        
+        update_task_status(
+            task_id, 'completed', 100,
+            completed_at=datetime.now()
+        )
+        
+        return {
+            "success": True,
+            "workflow_name": workflow.name,
+            "execution_time": execution_time,
+            "node_count": len(workflow.nodes),
+            "outputs": output_results,
+        }
+        
+    except Exception as exc:
+        execution_time = time.time() - start_time
+        logger.error(f"Workflow execution failed: {exc}", exc_info=True)
+        
+        update_task_status(
+            task_id, 'failed', 0,
+            error_message=f"Workflow failed: {str(exc)}",
+            completed_at=datetime.now()
+        )
+        
+        return {
+            "success": False,
+            "error": str(exc),
+            "execution_time": execution_time,
         }
