@@ -8,7 +8,7 @@ Inspired by OneAPI's channel management approach.
 from typing import Dict, List, Optional
 from pydantic import BaseModel
 from sqlalchemy import select
-from app.config.database import get_db_session
+from app.config.database import get_db_session_standalone
 from app.models.llm_provider import LLMProvider, LLMModel
 from app.utils.logger import logger
 
@@ -103,6 +103,7 @@ LLM_PROVIDERS: Dict[str, ProviderInfo] = {
         api_docs="https://open.bigmodel.cn/dev/api",
         default_endpoint="https://open.bigmodel.cn/api/paas/v4",
         models=[
+            ModelInfo(id="glm-4.7", name="GLM-4.7", max_tokens=200000, description="High-intelligence model for Agentic Coding"),
             ModelInfo(id="glm-4", name="GLM-4", max_tokens=128000, description="Latest GLM model"),
             ModelInfo(id="glm-4v", name="GLM-4V", max_tokens=8192, description="Vision model"),
             ModelInfo(id="glm-3-turbo", name="GLM-3 Turbo", max_tokens=128000, description="Fast GLM model"),
@@ -203,7 +204,7 @@ async def get_provider_by_id(provider_id: str) -> Optional[ProviderInfo]:
     """Get provider by ID from database, fallback to hardcoded data."""
     # Try database first
     try:
-        async for db in get_db_session():
+        async with get_db_session_standalone() as db:
             result = await db.execute(
                 select(LLMProvider).where(
                     LLMProvider.code == provider_id,
@@ -242,7 +243,6 @@ async def get_provider_by_id(provider_id: str) -> Optional[ProviderInfo]:
                         for m in db_models
                     ]
                 )
-            break
     except Exception as e:
         logger.warning(f"Database query failed for provider {provider_id}, using hardcoded data: {e}")
     
@@ -256,7 +256,7 @@ async def get_all_providers() -> List[ProviderInfo]:
     
     # Try database first
     try:
-        async for db in get_db_session():
+        async with get_db_session_standalone() as db:
             result = await db.execute(
                 select(LLMProvider)
                 .where(LLMProvider.is_active == True)
@@ -295,11 +295,8 @@ async def get_all_providers() -> List[ProviderInfo]:
                         ]
                     ))
                 return providers
-            break
     except Exception as e:
         logger.warning(f"Database query failed for all providers, using hardcoded data: {e}")
-    
-    # Fallback to hardcoded data
     return list(LLM_PROVIDERS.values())
 
 
@@ -307,7 +304,7 @@ async def get_provider_models(provider_id: str) -> List[ModelInfo]:
     """Get all models for a specific provider from database, fallback to hardcoded data."""
     # Try database first
     try:
-        async for db in get_db_session():
+        async with get_db_session_standalone() as db:
             result = await db.execute(
                 select(LLMProvider).where(LLMProvider.code == provider_id)
             )
@@ -331,7 +328,6 @@ async def get_provider_models(provider_id: str) -> List[ModelInfo]:
                     )
                     for m in db_models
                 ]
-            break
     except Exception as e:
         logger.warning(f"Database query failed for provider models {provider_id}, using hardcoded data: {e}")
     

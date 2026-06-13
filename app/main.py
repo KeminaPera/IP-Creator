@@ -31,12 +31,7 @@ HF_HUB_CACHE_PATH = Path(settings.HF_HUB_CACHE_PATH).resolve()
 os.environ.setdefault('HF_HUB_CACHE', str(HF_HUB_CACHE_PATH))
 logger.info(f"HuggingFace cache path set to: {HF_HUB_CACHE_PATH}")
 
-# Import API routers
-from app.api.v1 import llm_router
-from app.api.v1 import auth_router
-from app.api.v1 import ip_router
-from app.api.v1 import llm_provider_router
-from app.api.v1 import dataset_router
+# Import API routers (unified import below)
 
 
 @asynccontextmanager
@@ -132,7 +127,7 @@ from app.core.trace import TraceIDMiddleware
 app.add_middleware(TraceIDMiddleware)
 
 # Import routers
-from app.api.v1 import llm_router, auth_router, ip_router, task_router, generation_router, lora_router, content_router, system_health, settings_router, dataset_router, ip_feature_router, training_websocket, resource_router
+from app.api.v1 import llm_router, auth_router, ip_router, llm_provider_router, task_router, generation_router, lora_router, content_router, system_health, settings_router, dataset_router, ip_feature_router, training_websocket, resource_router
 
 # Include API routers
 app.include_router(llm_router.router)

@@ -3,7 +3,7 @@ Generation Router
 
 API endpoints for content generation (story, image, video).
 """
-from fastapi import APIRouter, Depends, UploadFile, File
+from fastapi import APIRouter, Depends
 from fastapi.responses import FileResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 from typing import Optional, List
@@ -18,7 +18,8 @@ from app.api.deps import get_current_user
 from app.core.exceptions import (
     NotFoundException,
     BadRequestException,
-    AppException
+    AppException,
+    InternalServerError
 )
 from app.utils.response import success_response, list_response, created_response, updated_response, deleted_response, message_response
 from app.utils.logger import logger
@@ -108,11 +109,7 @@ async def generate_story(
             response = await generation_dispatcher.dispatch(gen_request)
             
             if response.status == "failed":
-                raise AppException(
-                    status_code=500,
-                    error="GenerationError",
-                    message=response.error or "Story generation failed"
-                )
+                raise InternalServerError(message=response.error or "Story generation failed")
             
             return created_response(
                 data={
@@ -132,11 +129,7 @@ async def generate_story(
         )
         
         if result.get("status") == "failed":
-            raise AppException(
-                status_code=500,
-                error="GenerationError",
-                message=result.get("error", "Story generation failed")
-            )
+            raise InternalServerError(message=result.get("error", "Story generation failed"))
         
         return created_response(
             data=result,
@@ -147,11 +140,7 @@ async def generate_story(
         raise
     except Exception as e:
         logger.error(f"Story generation error: {e}", exc_info=True)
-        raise AppException(
-            status_code=500,
-            error="GenerationError",
-            message="Story generation failed"
-        )
+        raise InternalServerError(message="Story generation failed")
 
 
 @router.post("/image")
@@ -192,11 +181,7 @@ async def generate_image(
             response = await generation_dispatcher.dispatch(gen_request)
             
             if response.status == "failed":
-                raise AppException(
-                    status_code=500,
-                    error="GenerationError",
-                    message=response.error or "Image generation failed"
-                )
+                raise InternalServerError(message=response.error or "Image generation failed")
             
             return created_response(
                 data={
@@ -224,11 +209,7 @@ async def generate_image(
         )
         
         if result.get("status") == "failed":
-            raise AppException(
-                status_code=500,
-                error="GenerationError",
-                message=result.get("error", "Image generation failed")
-            )
+            raise InternalServerError(message=result.get("error", "Image generation failed"))
         
         return created_response(
             data=result,
@@ -239,11 +220,7 @@ async def generate_image(
         raise
     except Exception as e:
         logger.error(f"Image generation error: {e}", exc_info=True)
-        raise AppException(
-            status_code=500,
-            error="GenerationError",
-            message="Image generation failed"
-        )
+        raise InternalServerError(message="Image generation failed")
 
 
 @router.post("/video")
@@ -282,11 +259,7 @@ async def generate_video(
             response = await generation_dispatcher.dispatch(gen_request)
             
             if response.status == "failed":
-                raise AppException(
-                    status_code=500,
-                    error="GenerationError",
-                    message=response.error or "Video generation failed"
-                )
+                raise InternalServerError(message=response.error or "Video generation failed")
             
             return created_response(
                 data={
@@ -312,11 +285,7 @@ async def generate_video(
         )
         
         if result.get("status") == "failed":
-            raise AppException(
-                status_code=500,
-                error="GenerationError",
-                message=result.get("error", "Video generation failed")
-            )
+            raise InternalServerError(message=result.get("error", "Video generation failed"))
         
         return created_response(
             data=result,
@@ -327,11 +296,7 @@ async def generate_video(
         raise
     except Exception as e:
         logger.error(f"Video generation error: {e}", exc_info=True)
-        raise AppException(
-            status_code=500,
-            error="GenerationError",
-            message="Video generation failed"
-        )
+        raise InternalServerError(message="Video generation failed")
 
 
 @router.get("/files/{file_path:path}")
@@ -370,11 +335,7 @@ async def get_file(
         raise
     except Exception as e:
         logger.error(f"File serving error: {e}", exc_info=True)
-        raise AppException(
-            status_code=500,
-            error="FileError",
-            message="Failed to serve file"
-        )
+        raise InternalServerError(message="Failed to serve file")
 
 
 @router.post("/story/async")
@@ -439,11 +400,7 @@ async def generate_story_async(
     
     except Exception as e:
         logger.error(f"Async story generation error: {e}", exc_info=True)
-        raise AppException(
-            status_code=500,
-            error="TaskCreationError",
-            message="Failed to create async story task"
-        )
+        raise InternalServerError(message="Failed to create async story task")
 
 
 @router.post("/image/async")
@@ -522,11 +479,7 @@ async def generate_image_async(
     
     except Exception as e:
         logger.error(f"Async image generation error: {e}", exc_info=True)
-        raise AppException(
-            status_code=500,
-            error="TaskCreationError",
-            message="Failed to create async image task"
-        )
+        raise InternalServerError(message="Failed to create async image task")
 
 
 @router.post("/video/async")
@@ -605,11 +558,7 @@ async def generate_video_async(
     
     except Exception as e:
         logger.error(f"Async video generation error: {e}", exc_info=True)
-        raise AppException(
-            status_code=500,
-            error="TaskCreationError",
-            message="Failed to create async video task"
-        )
+        raise InternalServerError(message="Failed to create async video task")
 
 
 # ============================================
@@ -651,7 +600,7 @@ async def get_smart_references(
         ip_asset = result.scalar_one_or_none()
         
         if not ip_asset:
-            raise NotFoundException(f"IP asset {request.ip_asset_id} not found")
+            raise NotFoundException(resource="IP asset", identifier=str(request.ip_asset_id))
         
         # Extract reference images
         reference_images = ip_asset.reference_images or []
@@ -693,11 +642,7 @@ async def get_smart_references(
         raise
     except Exception as e:
         logger.error(f"Smart reference selection error: {e}", exc_info=True)
-        raise AppException(
-            status_code=500,
-            error="ServerError",
-            message="Failed to select reference images"
-        )
+        raise InternalServerError(message="Failed to select reference images")
 
 
 @router.post("/check-consistency")
@@ -727,11 +672,7 @@ async def check_generation_consistency(
         
     except Exception as e:
         logger.error(f"Consistency check error: {e}", exc_info=True)
-        raise AppException(
-            status_code=500,
-            error="ServerError",
-            message="Failed to check consistency"
-        )
+        raise InternalServerError(message="Failed to check consistency")
 
 
 @router.post("/adaptive-scale")
@@ -782,8 +723,4 @@ async def calculate_adaptive_scale(
         
     except Exception as e:
         logger.error(f"Adaptive scale calculation error: {e}", exc_info=True)
-        raise AppException(
-            status_code=500,
-            error="ServerError",
-            message="Failed to calculate adaptive scale"
-        )
+        raise InternalServerError(message="Failed to calculate adaptive scale")

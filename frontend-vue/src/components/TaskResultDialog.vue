@@ -339,7 +339,7 @@ function getFileUrl(filePath) {
   if (!filePath) return ''
   // Convert backend path to URL and normalize path separators
   const normalizedPath = filePath.replace(/\\/g, '/')
-  return `/api/v1/files/${normalizedPath}`
+  return `/api/v1/contents/files/${normalizedPath}`
 }
 
 function openImagePreview(image) {

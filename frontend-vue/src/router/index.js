@@ -31,12 +31,7 @@ const routes = [
     component: () => import('../views/IPAssetDetail.vue'),
     meta: { requiresAuth: true },
   },
-  {
-    path: '/generate',
-    name: 'Generate',
-    component: () => import('../views/Generate.vue'),
-    meta: { requiresAuth: true },
-  },
+
   {
     path: '/lora',
     name: 'LoRAModels',

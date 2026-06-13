@@ -55,10 +55,7 @@ async def generate_three_views(
         ip_asset = result.scalar_one_or_none()
         
         if not ip_asset:
-            raise NotFoundException(
-                message=f"IP asset {ip_id} not found",
-                details={"ip_id": ip_id}
-            )
+            raise NotFoundException(resource="IP asset", identifier=str(ip_id))
         
         # 2. Get LoRA model path if available
         lora_path = None
@@ -302,10 +299,7 @@ async def generate_single_view(
         ip_asset = result.scalar_one_or_none()
         
         if not ip_asset:
-            raise NotFoundException(
-                message=f"IP asset {ip_id} not found",
-                details={"ip_id": ip_id}
-            )
+            raise NotFoundException(resource="IP asset", identifier=str(ip_id))
         
         # 3. Get LoRA model path if available
         lora_path = None

@@ -16,49 +16,12 @@ All error responses follow this unified format:
     "traceId": "a1b2c3d4..."
 }
 """
-from typing import Optional, Any, Dict
+from typing import Optional, Any
 from fastapi import HTTPException, Request, status
 from fastapi.responses import JSONResponse
 from fastapi.exceptions import RequestValidationError
-from pydantic import BaseModel
 from app.utils.logger import logger
 from app.utils.response import error_response
-
-
-# ==========================================
-# Error Response Models
-# ==========================================
-
-class APIError(BaseModel):
-    """
-    Unified API error response model.
-    
-    All API errors should follow this structure for consistency.
-    """
-    error: str  # Error type (e.g., "ValidationError", "NotFoundError")
-    message: str  # Human-readable error message
-    code: Optional[str] = None  # Machine-readable error code (e.g., "CONTENT_NOT_FOUND")
-    details: Optional[Any] = None  # Additional error details (validation errors, etc.)
-    request_id: Optional[str] = None  # Request tracking ID for debugging
-    
-    class Config:
-        json_schema_extra = {
-            "example": {
-                "error": "NotFoundError",
-                "message": "Content with ID 123 not found",
-                "code": "CONTENT_NOT_FOUND",
-                "details": None,
-                "request_id": "req_abc123"
-            }
-        }
-
-
-class ErrorResponse(BaseModel):
-    """
-    Standard error response wrapper.
-    """
-    success: bool = False
-    error: APIError
 
 
 # ==========================================
@@ -160,18 +123,6 @@ class ValidationException(AppException):
             error="ValidationError",
             message=message,
             code="VALIDATION_ERROR",
-            details=details
-        )
-
-
-class RateLimitException(AppException):
-    """Rate limit exceeded (429)."""
-    def __init__(self, message: str = "Rate limit exceeded", details: Optional[Any] = None):
-        super().__init__(
-            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
-            error="RateLimitError",
-            message=message,
-            code="RATE_LIMIT_EXCEEDED",
             details=details
         )
 
@@ -331,40 +282,6 @@ async def general_exception_handler(request: Request, exc: Exception):
 # ==========================================
 # Helper Functions
 # ==========================================
-
-def create_error_response(
-    status_code: int,
-    error: str,
-    message: str,
-    code: Optional[str] = None,
-    details: Optional[Any] = None
-) -> JSONResponse:
-    """
-    Create a unified error response manually (for use in try-except blocks).
-    
-    Example:
-        try:
-            # Some operation
-        except Exception as e:
-            return create_error_response(
-                status_code=500,
-                error="DatabaseError",
-                message="Failed to query database",
-                details=str(e)
-            )
-    """
-    error_response = APIError(
-        error=error,
-        message=message,
-        code=code,
-        details=details
-    )
-    
-    return JSONResponse(
-        status_code=status_code,
-        content={"success": False, "error": error_response.model_dump()}
-    )
-
 
 def register_exception_handlers(app):
     """

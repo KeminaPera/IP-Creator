@@ -51,7 +51,7 @@
       </template>
       <el-row :gutter="16">
         <el-col :span="8">
-          <el-button type="primary" size="large" class="action-btn" @click="$router.push('/generate')">
+          <el-button type="primary" size="large" class="action-btn" @click="$router.push('/workflow')">
             <el-icon><VideoCameraFilled /></el-icon>
             {{ $t('dashboard.start_generation') }}
           </el-button>

@@ -4,18 +4,21 @@ Defines all asynchronous task definitions for background processing
 including LLM calls, LoRA training, and video generation.
 """
 import os
+import sys
 import asyncio
 import logging
 from datetime import datetime
 from pathlib import Path
+
+# ✅ 确保项目根目录在 sys.path 中（Celery worker 任务执行时需要导入 flowpipe 等本地模块）
+_PROJECT_ROOT = str(Path(__file__).resolve().parent)
+if _PROJECT_ROOT not in sys.path:
+    sys.path.insert(0, _PROJECT_ROOT)
 from celery import Celery
 from celery.signals import worker_process_init, worker_ready
 from app.config.settings import settings
 from typing import Optional
-from sqlalchemy.sql import func
-from sqlalchemy import update, select
-from app.utils.time_utils import format_datetime_full
-from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import update
 
 logger = logging.getLogger(__name__)
 
@@ -63,7 +66,7 @@ from app.models import (  # noqa: F401
 def update_task_status(task_id: str, status: str, progress: int = 0, 
                        started_at=None, completed_at=None, error_message=None):
     """
-    Update task status using connection pool.
+    Update task status using connection pool with automatic rollback.
     
     Args:
         task_id: Celery task ID
@@ -73,7 +76,7 @@ def update_task_status(task_id: str, status: str, progress: int = 0,
         completed_at: datetime object or None
         error_message: Error message or None
     """
-    from app.config.database import get_sync_session
+    from app.config.database import get_sync_session_safe
     from app.models.task import TaskRecord
     
     values = {'status': status, 'progress': progress}
@@ -84,13 +87,12 @@ def update_task_status(task_id: str, status: str, progress: int = 0,
     if error_message:
         values['error_message'] = error_message
     
-    with get_sync_session() as session:
+    with get_sync_session_safe() as session:
         session.execute(
             update(TaskRecord)
             .where(TaskRecord.task_id == task_id)
             .values(**values)
         )
-        session.commit()
 
 
 # =============================================================================
@@ -120,8 +122,8 @@ TASK_ROUTES = {
     "celery_worker.generate_image_task": {"queue": "image_generation"},
     "celery_worker.generate_story_task": {"queue": "story_generation"},
     "celery_worker.generate_video_task": {"queue": "video_generation"},
-    "celery_worker.download_model_task": {"queue": "default"},  # 下载任务走默认队列
-    "celery_worker.train_lora_task": {"queue": "training"},  # LoRA训练任务走training队列
+    "celery_worker.download_model_task": {"queue": "celery"},  # 下载任务走默认队列
+    "celery_worker.train_lora_task": {"queue": "lora_training"},  # LoRA训练任务走lora_training队列
     "celery_worker.execute_workflow_task": {"queue": "image_generation"},  # FlowPipe工作流任务
 }
 
@@ -219,7 +221,7 @@ def create_content_record(
         import json
         from datetime import datetime
         from pathlib import Path
-        from app.config.database import get_sync_session
+        from app.config.database import get_sync_session_safe
         from app.models.generated_content import GeneratedContent
         
         # Extract metadata from result
@@ -252,8 +254,8 @@ def create_content_record(
         # Parameters used for generation
         parameters = result_data.get('params', result_data.get('input_params', {}))
         
-        # Use connection pool
-        with get_sync_session() as session:
+        # Use connection pool with auto commit/rollback
+        with get_sync_session_safe() as session:
             content = GeneratedContent(
                 task_id=task_id,
                 task_type=task_type,
@@ -274,7 +276,6 @@ def create_content_record(
                 channel_id=channel_id
             )
             session.add(content)
-            session.commit()
         
         logger.info(f"Created content record: {content_type} - {title} (ID: {task_id})")
         
@@ -377,21 +378,9 @@ def generate_story_task(self, prompt: str, ip_name: Optional[str] = None, ip_ass
     try:
         import asyncio
         from app.core.video_generator import video_generator
-        from app.config.database import get_sync_session
-        from app.models.task import TaskRecord
         
         # Update task status to running
-        with get_sync_session() as session:
-            session.execute(
-                update(TaskRecord)
-                .where(TaskRecord.task_id == self.request.id)
-                .values(
-                    status='running',
-                    started_at=datetime.now(),
-                    progress=10
-                )
-            )
-            session.commit()
+        update_task_status(self.request.id, 'running', 10, started_at=datetime.now())
         
         # 在Celery子线程中显式创建事件循环（避免'There is no current event loop'错误）
         try:
@@ -413,27 +402,14 @@ def generate_story_task(self, prompt: str, ip_name: Optional[str] = None, ip_ass
         
         if result["status"] == "failed":
             # Update task status to failed
-            with get_sync_session() as session:
-                session.execute(
-                    update(TaskRecord)
-                    .where(TaskRecord.task_id == self.request.id)
-                    .values(status='failed', progress=0)
-                )
-                session.commit()
+            update_task_status(self.request.id, 'failed', 0)
             raise Exception(result.get("error", "Story generation failed"))
         
         # Update task status to completed
-        with get_sync_session() as session:
-            session.execute(
-                update(TaskRecord)
-                .where(TaskRecord.task_id == self.request.id)
-                .values(
-                    status='completed',
-                    completed_at=datetime.now(),
-                    progress=100
-                )
-            )
-            session.commit()
+        update_task_status(
+            self.request.id, 'completed', 100,
+            completed_at=datetime.now()
+        )
         
         # Create content record with complete metadata
         execution_time = time.time() - start_time
@@ -464,14 +440,8 @@ def generate_story_task(self, prompt: str, ip_name: Optional[str] = None, ip_ass
     except Exception as exc:
         # Update task status to failed on error
         try:
-            with get_sync_session() as session:
-                session.execute(
-                    update(TaskRecord)
-                    .where(TaskRecord.task_id == self.request.id)
-                    .values(status='failed', progress=0)
-                )
-                session.commit()
-        except:
+            update_task_status(self.request.id, 'failed', 0)
+        except Exception:
             pass
         raise self.retry(exc=exc, countdown=60 * (2 ** self.request.retries))
 
@@ -598,12 +568,12 @@ def generate_image_task(self, prompt: str, ip_asset_id: int = 0, **kwargs) -> di
             if view_type and ip_asset_id and file_path:
                 try:
                     from app.models.ip_multi_view import IPMultiView
-                    from app.config.database import get_sync_session
+                    from app.config.database import get_sync_session_safe
                     
                     # Get consistency score from result
                     consistency_score = result.get('consistency_score', 0)
                     
-                    with get_sync_session() as session:
+                    with get_sync_session_safe() as session:
                         multi_view = IPMultiView(
                             ip_asset_id=ip_asset_id,
                             view_type=view_type,  # Table field: for query/sort/display
@@ -633,7 +603,6 @@ def generate_image_task(self, prompt: str, ip_asset_id: int = 0, **kwargs) -> di
                             is_primary=(view_type == "front"),
                         )
                         session.add(multi_view)
-                        session.commit()
                         
                         logger.info(f"Created IPMultiView for IP {ip_asset_id}, view {view_type}")
                 except Exception as e:
@@ -784,7 +753,7 @@ def _mock_training(self, lora_id: int, training_params: dict) -> dict:
     import time
     import os
     from datetime import datetime
-    from app.config.database import get_sync_session
+    from app.config.database import get_sync_session_safe
     from app.config.settings import settings
     from app.services.progress_reporter import progress_reporter
     from app.models.lora_model import LoRAModel
@@ -793,9 +762,9 @@ def _mock_training(self, lora_id: int, training_params: dict) -> dict:
     from sqlalchemy import select, update
     
     try:
-        # Use sync session with connection pool
-        with get_sync_session() as session:
-            now = datetime.now()  # 使用datetime对象
+        now = datetime.now()
+        # Use sync session with auto commit/rollback
+        with get_sync_session_safe() as session:
             
             # Update status to training
             session.execute(
@@ -807,7 +776,6 @@ def _mock_training(self, lora_id: int, training_params: dict) -> dict:
                     progress=0
                 )
             )
-            session.commit()
             
             # Mock training with progress updates
             total_epochs = training_params.get('epochs', 10)
@@ -868,7 +836,6 @@ def _mock_training(self, lora_id: int, training_params: dict) -> dict:
                     updated_at=completed_at
                 )
             )
-            session.commit()
             
             # Update IP asset association after training completes
             try:
@@ -895,7 +862,6 @@ def _mock_training(self, lora_id: int, training_params: dict) -> dict:
                                 updated_at=now
                             )
                         )
-                        session.commit()
                         logger.info(f"Updated IP asset {ip_asset_id} with LoRA model {lora_id}")
             except Exception as e:
                 logger.error(f"Failed to update IP association: {e}")
@@ -905,10 +871,10 @@ def _mock_training(self, lora_id: int, training_params: dict) -> dict:
             import asyncio
             from app.services.quality_assessor import QualityAssessor
             from app.models.lora_model import LoRAModel
-            from app.core.database import AsyncSessionLocal
+            from app.config.database import get_db_session_standalone
             
             async def run_assessment():
-                async with AsyncSessionLocal() as db:
+                async with get_db_session_standalone() as db:
                     from sqlalchemy import select
                     result = await db.execute(select(LoRAModel).where(LoRAModel.id == lora_id))
                     lora_model = result.scalar_one_or_none()
@@ -946,10 +912,10 @@ def _mock_training(self, lora_id: int, training_params: dict) -> dict:
         # Update failed status
         try:
             update_task_status(
-                lora_id, 'failed',
+                self.request.id, 'failed',
                 error_message=str(exc)
             )
-        except:
+        except Exception:
             pass
         
         raise Exception(f"Mock training failed: {str(exc)}")
@@ -958,11 +924,12 @@ def _mock_training(self, lora_id: int, training_params: dict) -> dict:
 def _real_training(self, lora_id: int, training_params: dict) -> dict:
     """Real LoRA training task with Kohya-ss."""
     import signal
+    import subprocess
     from datetime import datetime
     from app.utils.time_utils import format_datetime_full
     from app.core.lora_trainer import lora_trainer
     from app.services.progress_reporter import progress_reporter
-    from app.config.database import get_sync_session
+    from app.config.database import get_sync_session_safe
     from app.models.lora_model import LoRAModel
     from app.models.ip_asset import IPAsset
     from app.models.training_dataset import TrainingDataset
@@ -1001,9 +968,9 @@ def _real_training(self, lora_id: int, training_params: dict) -> dict:
     signal.signal(signal.SIGINT, handle_revoke_signal)
     
     try:
-        # Use sync session with connection pool
-        with get_sync_session() as session:
-            now = datetime.now()  # 使用datetime对象而不是字符串
+        # Use sync session with auto commit/rollback
+        with get_sync_session_safe() as session:
+            now = datetime.now()
             
             # Update status to training
             session.execute(
@@ -1015,7 +982,6 @@ def _real_training(self, lora_id: int, training_params: dict) -> dict:
                     progress=0
                 )
             )
-            session.commit()
         
         # ✅ Inject ProgressReporter into lora_trainer
         lora_trainer.set_progress_reporter(progress_reporter)
@@ -1040,7 +1006,7 @@ def _real_training(self, lora_id: int, training_params: dict) -> dict:
         
         # Update IP asset association after training completes
         try:
-            with get_sync_session() as session:
+            with get_sync_session_safe() as session:
                 # Get the dataset_id from lora_models
                 lora_result = session.execute(
                     select(LoRAModel.dataset_id).where(LoRAModel.id == lora_id)
@@ -1064,13 +1030,12 @@ def _real_training(self, lora_id: int, training_params: dict) -> dict:
                                 updated_at=datetime.now()
                             )
                         )
-                        session.commit()
                         logger.info(f"Updated IP asset {ip_asset_id} with LoRA model {lora_id}")
         except Exception as e:
             logger.error(f"Failed to update IP association: {e}")
         
         # Update to completed status
-        update_task_status(lora_id, 'completed', progress=100)
+        update_task_status(self.request.id, 'completed', progress=100)
         logger.info(f"LoRA training completed: {lora_id}")
         
         return {"status": "success", "data": result}
@@ -1084,7 +1049,7 @@ def _real_training(self, lora_id: int, training_params: dict) -> dict:
         error_msg = f"Real training failed: {str(exc)}"
         try:
             update_task_status(
-                lora_id, 'failed',
+                self.request.id, 'failed',
                 error_message=error_msg
             )
         except Exception as db_exc:
@@ -1268,6 +1233,101 @@ def download_model_task(self, model_id: str, mirror: str = "huggingface") -> dic
 # FlowPipe Workflow Execution Task
 # =============================================================================
 
+# Map node types to content_type for GeneratedContent records
+_NODE_TYPE_TO_CONTENT = {
+    "ImageSave": "image",
+    "CloudImage": "image",
+    "CloudVideo": "video",
+    "LLMText": "story",
+}
+
+
+def _persist_workflow_outputs(task_id, workflow_name, primary_output, runtime_inputs, execution_time):
+    """
+    Create GeneratedContent and IPMultiView records from workflow execution outputs.
+    
+    This is the 'last mile' data persistence for FlowPipe workflows.
+    """
+    if not primary_output:
+        logger.warning(f"Workflow {task_id}: no output nodes found, skipping persistence")
+        return
+    
+    node_type = primary_output["node_type"]
+    outputs = primary_output["outputs"]
+    content_type = _NODE_TYPE_TO_CONTENT.get(node_type)
+    
+    if not content_type:
+        logger.info(f"Workflow {task_id}: output node '{node_type}' has no content mapping, skipping")
+        return
+    
+    # Extract file path based on node type
+    file_path = ""
+    if node_type == "ImageSave":
+        file_path = outputs.get("path", "")
+    elif node_type == "CloudImage":
+        file_path = outputs.get("path", "") or outputs.get("url", "")
+    elif node_type == "CloudVideo":
+        file_path = outputs.get("video_path", "") or outputs.get("video_url", "")
+    elif node_type == "LLMText":
+        file_path = ""  # Text content stored inline
+    
+    ip_asset_id = runtime_inputs.get("ip_asset_id")
+    view_type = runtime_inputs.get("view_type")
+    
+    # Build result_data for create_content_record
+    text_content = outputs.get("text", "") if node_type == "LLMText" else ""
+    result_data = {
+        "title": f"{workflow_name} - {task_id[:8]}",
+        "description": f"Workflow: {workflow_name}",
+        "file_path": file_path,
+        "output_path": file_path,
+        "ip_asset_id": ip_asset_id,
+        "content": text_content,
+        "params": {
+            "workflow_name": workflow_name,
+            "node_type": node_type,
+            "runtime_inputs": {k: str(v)[:200] for k, v in runtime_inputs.items()},
+        },
+    }
+    
+    try:
+        create_content_record(
+            task_id=task_id,
+            task_type="workflow_execution",
+            content_type=content_type,
+            result_data=result_data,
+            execution_time=execution_time,
+        )
+        logger.info(f"Workflow {task_id}: created {content_type} content record")
+    except Exception as e:
+        logger.error(f"Workflow {task_id}: failed to create content record: {e}", exc_info=True)
+    
+    # Create IPMultiView record for image outputs with ip_asset_id + view_type
+    if content_type == "image" and file_path and ip_asset_id and view_type:
+        try:
+            from app.models.ip_multi_view import IPMultiView
+            from app.config.database import get_sync_session_safe
+            
+            with get_sync_session_safe() as session:
+                multi_view = IPMultiView(
+                    ip_asset_id=ip_asset_id,
+                    view_type=view_type,
+                    image_path=file_path,
+                    source="workflow",
+                    generation_params={
+                        "workflow_name": workflow_name,
+                        "task_id": task_id,
+                        "runtime_inputs": {k: str(v)[:200] for k, v in runtime_inputs.items()},
+                        "generation_time": execution_time,
+                    },
+                    is_primary=(view_type == "front"),
+                )
+                session.add(multi_view)
+                
+            logger.info(f"Workflow {task_id}: created IPMultiView for IP {ip_asset_id}, view {view_type}")
+        except Exception as e:
+            logger.error(f"Workflow {task_id}: failed to create IPMultiView: {e}", exc_info=True)
+
 @celery_app.task(bind=True, name="celery_worker.execute_workflow_task")
 def execute_workflow_task(self, workflow_json: dict, runtime_inputs: dict = None) -> dict:
     """
@@ -1290,7 +1350,13 @@ def execute_workflow_task(self, workflow_json: dict, runtime_inputs: dict = None
     try:
         update_task_status(task_id, 'running', 10, started_at=datetime.now())
         
-        # Import FlowPipe engine
+        # Import FlowPipe engine - 必须在函数内强制添加项目根目录到 sys.path
+        # （Celery 框架会在启动后重置 sys.path，模块级的 insert 会被覆盖）
+        import sys as _sys
+        from pathlib import Path as _Path
+        _project_root = str(_Path(__file__).resolve().parent)
+        if _project_root not in _sys.path:
+            _sys.path.insert(0, _project_root)
         from flowpipe import WorkflowExecutor, dict_to_workflow
         from flowpipe.core.registry import NodeRegistry
         import flowpipe.nodes  # Ensure nodes are registered
@@ -1327,10 +1393,10 @@ def execute_workflow_task(self, workflow_json: dict, runtime_inputs: dict = None
         
         # Collect output node results
         output_results = {}
+        primary_output = None  # First output node for content record
         for node_id, outputs in node_outputs.items():
             if node_id.startswith("__"):
                 continue
-            # Mark output nodes
             try:
                 node_instance = workflow.get_node(node_id)
                 if node_instance:
@@ -1340,10 +1406,24 @@ def execute_workflow_task(self, workflow_json: dict, runtime_inputs: dict = None
                             "type": node_instance.type,
                             "outputs": {k: str(v)[:200] for k, v in outputs.items()},
                         }
+                        if primary_output is None:
+                            primary_output = {
+                                "node_type": node_instance.type,
+                                "outputs": outputs,
+                            }
             except Exception:
                 pass
         
         execution_time = time.time() - start_time
+        
+        # --- Data persistence: create GeneratedContent + IPMultiView records ---
+        _persist_workflow_outputs(
+            task_id=task_id,
+            workflow_name=workflow.name,
+            primary_output=primary_output,
+            runtime_inputs=runtime_inputs or {},
+            execution_time=execution_time,
+        )
         
         update_task_status(
             task_id, 'completed', 100,

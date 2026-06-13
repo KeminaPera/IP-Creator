@@ -6,7 +6,7 @@ API endpoints for managing IP feature library including:
 - Feature library (outfits, expressions, poses, etc.)
 - Feature images management
 """
-from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form
+from fastapi import APIRouter, Depends, UploadFile, File, Form
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, delete
 from typing import Optional, List
@@ -28,6 +28,7 @@ from app.utils.response import success_response, created_response, updated_respo
 from app.api.deps import get_current_user
 from app.config.feature_types import get_feature_types, get_feature_type, is_feature_type_valid, get_trigger_phrase
 from app.utils.logger import logger
+from app.core.exceptions import NotFoundException, BadRequestException, ConflictException
 
 router = APIRouter(prefix="/api/v1/ip", tags=["IP Features"])
 
@@ -65,7 +66,7 @@ async def create_multi_view(
     ip_result = await db.execute(select(IPAsset).where(IPAsset.id == ip_id))
     ip_asset = ip_result.scalar_one_or_none()
     if not ip_asset:
-        raise HTTPException(status_code=404, detail="IP asset not found")
+        raise NotFoundException(resource="IP asset", identifier=str(ip_id))
     
     # Create multi-view
     multi_view = IPMultiView(
@@ -118,7 +119,7 @@ async def delete_multi_view(
     )
     view = result.scalar_one_or_none()
     if not view:
-        raise HTTPException(status_code=404, detail="Multi-view not found")
+        raise NotFoundException(resource="Multi-view", identifier=str(view_id))
     
     # 删除资源文件（如果是新资源路径格式）
     if view.image_path and view.image_path.startswith('data/resources/'):
@@ -154,13 +155,12 @@ async def create_feature(
     ip_result = await db.execute(select(IPAsset).where(IPAsset.id == ip_id))
     ip_asset = ip_result.scalar_one_or_none()
     if not ip_asset:
-        raise HTTPException(status_code=404, detail="IP asset not found")
+        raise NotFoundException(resource="IP asset", identifier=str(ip_id))
     
     # Validate feature type
     if not is_feature_type_valid(feature_data.feature_type):
-        raise HTTPException(
-            status_code=400,
-            detail=f"Invalid feature type: {feature_data.feature_type}. Valid types: outfit, expression, pose"
+        raise BadRequestException(
+            f"Invalid feature type: {feature_data.feature_type}. Valid types: outfit, expression, pose"
         )
     
     # Check uniqueness
@@ -172,9 +172,8 @@ async def create_feature(
         )
     )
     if existing.scalar_one_or_none():
-        raise HTTPException(
-            status_code=400,
-            detail=f"Feature {feature_data.feature_name} already exists for this IP"
+        raise ConflictException(
+            message=f"Feature '{feature_data.feature_name}' already exists for this IP"
         )
     
     # Auto-generate trigger phrase if not provided
@@ -246,7 +245,7 @@ async def get_feature(
     )
     feature = result.scalar_one_or_none()
     if not feature:
-        raise HTTPException(status_code=404, detail="Feature not found")
+        raise NotFoundException(resource="Feature", identifier=str(feature_id))
     
     return success_response(
         data=FeatureResponse.model_validate(feature),
@@ -271,7 +270,7 @@ async def update_feature(
     )
     feature = result.scalar_one_or_none()
     if not feature:
-        raise HTTPException(status_code=404, detail="Feature not found")
+        raise NotFoundException(resource="Feature", identifier=str(feature_id))
     
     # Update fields
     update_data = feature_data.model_dump(exclude_unset=True)
@@ -309,7 +308,7 @@ async def delete_feature(
     )
     feature = result.scalar_one_or_none()
     if not feature:
-        raise HTTPException(status_code=404, detail="Feature not found")
+        raise NotFoundException(resource="Feature", identifier=str(feature_id))
     
     # Delete associated images files
     for image in feature.images:
@@ -346,7 +345,7 @@ async def create_feature_image(
     )
     feature = result.scalar_one_or_none()
     if not feature:
-        raise HTTPException(status_code=404, detail="Feature not found")
+        raise NotFoundException(resource="Feature", identifier=str(feature_id))
     
     # Create image record
     image = IPFeatureImage(
@@ -398,7 +397,7 @@ async def delete_feature_image(
     )
     image = result.scalar_one_or_none()
     if not image:
-        raise HTTPException(status_code=404, detail="Image not found")
+        raise NotFoundException(resource="Feature image", identifier=str(image_id))
     
     # Delete file
     if image.image_path and image.image_path.startswith('data/resources/'):

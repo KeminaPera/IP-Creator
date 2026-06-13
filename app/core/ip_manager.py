@@ -11,7 +11,7 @@ from app.models.ip_asset import IPAsset
 from app.schemas.ip_schema import IPAssetCreate, IPAssetUpdate, ImageReference
 from app.config.settings import settings
 from app.utils.logger import logger
-from app.config.database import async_session_factory
+from app.config.database import get_db_session_standalone
 from sqlalchemy import select
 
 
@@ -73,7 +73,7 @@ class IPManager:
         Returns:
             Created IP asset
         """
-        async with async_session_factory() as session:
+        async with get_db_session_standalone() as session:
             # Process reference images
             ref_images = []
             for img in ip_data.reference_images or []:
@@ -117,7 +117,7 @@ class IPManager:
         Returns:
             IP asset or None
         """
-        async with async_session_factory() as session:
+        async with get_db_session_standalone() as session:
             result = await session.execute(
                 select(IPAsset).where(IPAsset.id == ip_id)
             )
@@ -140,7 +140,7 @@ class IPManager:
         Returns:
             Tuple of (IP assets list, total count)
         """
-        async with async_session_factory() as session:
+        async with get_db_session_standalone() as session:
             query = select(IPAsset)
             
             if category:
@@ -175,7 +175,7 @@ class IPManager:
         Returns:
             Updated IP asset or None
         """
-        async with async_session_factory() as session:
+        async with get_db_session_standalone() as session:
             ip_asset = await session.get(IPAsset, ip_id)
             if not ip_asset:
                 return None
@@ -208,7 +208,7 @@ class IPManager:
         Returns:
             True if deleted successfully
         """
-        async with async_session_factory() as session:
+        async with get_db_session_standalone() as session:
             ip_asset = await session.get(IPAsset, ip_id)
             if not ip_asset:
                 return False

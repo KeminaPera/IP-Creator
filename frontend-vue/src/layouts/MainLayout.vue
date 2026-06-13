@@ -39,13 +39,9 @@
           <el-icon><Coin /></el-icon>
           <template #title>{{ $t('nav.lora_models') }}</template>
         </el-menu-item>
-        <el-menu-item index="/generate">
-          <el-icon><VideoCameraFilled /></el-icon>
-          <template #title>{{ $t('nav.generate') }}</template>
-        </el-menu-item>
         <el-menu-item index="/workflow">
-          <el-icon><Connection /></el-icon>
-          <template #title>{{ $t('nav.workflow') || '工作流编排' }}</template>
+          <el-icon><MagicStick /></el-icon>
+          <template #title>{{ $t('nav.ai_generate') || 'AI 生成' }}</template>
         </el-menu-item>
         <el-menu-item index="/tasks">
           <el-icon><List /></el-icon>
@@ -132,7 +128,7 @@ import { useAuthStore } from '../stores/auth'
 import { useAppStore } from '../stores/app'
 import {
   HomeFilled, Monitor, PictureFilled, Coin,
-  VideoCameraFilled, List, MagicStick,
+  List, MagicStick,
   Fold, Expand, Location, ArrowDown, SwitchButton, Files, Setting,
 } from '@element-plus/icons-vue'
 

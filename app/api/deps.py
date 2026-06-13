@@ -82,10 +82,11 @@ async def require_admin(
     Raises:
         ForbiddenException: If user is not admin
     """
-    if current_user.get("role") != "admin":
+    role = current_user.get("role", "")
+    if role not in ("admin", "super_admin"):
         raise ForbiddenException(
             message="Admin privileges required",
-            details={"required_role": "admin", "current_role": current_user.get("role")}
+            details={"required_role": "admin", "current_role": role}
         )
     
     return current_user

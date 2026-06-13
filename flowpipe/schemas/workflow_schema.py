@@ -74,6 +74,8 @@ class WorkflowExecuteRequest(BaseModel):
     workflow_id: Optional[int] = Field(default=None, description="Saved workflow ID (or use workflow_json)")
     workflow_json: Optional[Dict[str, Any]] = Field(default=None, description="Inline workflow JSON")
     runtime_inputs: Dict[str, Any] = Field(default_factory=dict, description="Runtime inputs (e.g. image paths)")
+    ip_asset_id: Optional[int] = Field(default=None, description="IP asset ID for business context")
+    view_type: Optional[str] = Field(default=None, description="View type for multi-view (front/side/back)")
 
 
 class NodeSchemaResponse(BaseModel):

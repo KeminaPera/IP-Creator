@@ -22,7 +22,7 @@ from app.services.adapters.video_adapter import VideoGenerationAdapter
 from app.models.llm_model import LLMConfig
 from app.models.llm_provider import LLMProvider, LLMModel
 from app.utils.logger import logger
-from app.config.database import async_session_factory
+from app.config.database import get_db_session_standalone
 
 
 class GenerationDispatcher:
@@ -140,7 +140,7 @@ class GenerationDispatcher:
         Returns:
             Tuple of (LLMConfig, LLMProvider, LLMModel) or None
         """
-        async with async_session_factory() as db:
+        async with get_db_session_standalone() as db:
             try:
                 # Get channel config
                 result = await db.execute(
@@ -211,7 +211,7 @@ class GenerationDispatcher:
         Used by the frontend to populate model selectors filtered by tag.
         """
         channels = []
-        async with async_session_factory() as db:
+        async with get_db_session_standalone() as db:
             try:
                 # Get all active channels
                 result = await db.execute(

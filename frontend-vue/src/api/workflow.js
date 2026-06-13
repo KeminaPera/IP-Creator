@@ -40,6 +40,12 @@ export function deleteWorkflow(id) {
   return request.delete(`/workflow/${id}`)
 }
 
+// --- Templates ---
+
+export function getWorkflowTemplates() {
+  return request.get('/workflow/templates')
+}
+
 // --- Validation & Execution ---
 
 export function validateWorkflow(workflowJson) {

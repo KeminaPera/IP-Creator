@@ -4,7 +4,7 @@ Resource Management Router
 Provides unified resource upload, delete, and access APIs.
 All files are stored in data/resources/{year}/{month}/{day}/ with UUID prefix.
 """
-from fastapi import APIRouter, UploadFile, File, HTTPException, Depends
+from fastapi import APIRouter, UploadFile, File, Depends
 from fastapi.responses import FileResponse
 from pathlib import Path
 import uuid
@@ -16,6 +16,7 @@ from urllib.parse import unquote
 from app.api.deps import get_current_user
 from app.utils.response import success_response
 from app.utils.logger import logger
+from app.core.exceptions import BadRequestException, ForbiddenException, NotFoundException, InternalServerError, AppException
 
 router = APIRouter(prefix="/api/v1/resources", tags=["resources"])
 
@@ -42,7 +43,7 @@ async def upload_resource(
     try:
         # 1. 验证文件名
         if not file.filename:
-            raise HTTPException(status_code=400, detail="Filename is required")
+            raise BadRequestException("Filename is required")
         
         # 2. 读取文件内容
         file_content = await file.read()
@@ -50,13 +51,12 @@ async def upload_resource(
         
         # 3. 验证文件大小
         if file_size > MAX_FILE_SIZE:
-            raise HTTPException(
-                status_code=400,
-                detail=f"File size {file_size} exceeds limit ({MAX_FILE_SIZE})"
+            raise BadRequestException(
+                f"File size {file_size} exceeds limit ({MAX_FILE_SIZE})"
             )
         
         if file_size == 0:
-            raise HTTPException(status_code=400, detail="Empty file")
+            raise BadRequestException("Empty file")
         
         # 4. 提取文件信息
         original_name = file.filename
@@ -104,11 +104,11 @@ async def upload_resource(
             message="Resource uploaded successfully"
         )
         
-    except HTTPException:
+    except AppException:
         raise
     except Exception as e:
         logger.error(f"Resource upload failed: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail=f"Upload failed: {str(e)}")
+        raise InternalServerError(message=f"Upload failed: {str(e)}")
 
 
 @router.delete("/{resource_path:path}")
@@ -136,17 +136,14 @@ async def delete_resource(
         try:
             full_path.relative_to(resource_base)
         except ValueError:
-            raise HTTPException(
-                status_code=403,
-                detail="Invalid resource path"
-            )
+            raise ForbiddenException(message="Invalid resource path")
         
         # 3. 验证文件存在
         if not full_path.exists():
-            raise HTTPException(status_code=404, detail="Resource not found")
+            raise NotFoundException(resource="Resource", identifier=resource_path)
         
         if not full_path.is_file():
-            raise HTTPException(status_code=400, detail="Not a file")
+            raise BadRequestException("Not a file")
         
         # 4. 删除文件
         full_path.unlink()
@@ -161,11 +158,11 @@ async def delete_resource(
             message="Resource deleted successfully"
         )
         
-    except HTTPException:
+    except AppException:
         raise
     except Exception as e:
         logger.error(f"Resource delete failed: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail=f"Delete failed: {str(e)}")
+        raise InternalServerError(message=f"Delete failed: {str(e)}")
 
 
 @router.get("/{resource_path:path}")
@@ -190,14 +187,14 @@ async def get_resource(resource_path: str):
         try:
             full_path.relative_to(resource_base)
         except ValueError:
-            raise HTTPException(status_code=403, detail="Invalid resource path")
+            raise ForbiddenException(message="Invalid resource path")
         
         # 3. 验证文件存在
         if not full_path.exists():
-            raise HTTPException(status_code=404, detail="Resource not found")
+            raise NotFoundException(resource="Resource", identifier=resource_path)
         
         if not full_path.is_file():
-            raise HTTPException(status_code=400, detail="Not a file")
+            raise BadRequestException("Not a file")
         
         # 4. 获取MIME类型
         mime_type, _ = mimetypes.guess_type(str(full_path))
@@ -217,8 +214,8 @@ async def get_resource(resource_path: str):
             }
         )
         
-    except HTTPException:
+    except AppException:
         raise
     except Exception as e:
         logger.error(f"Resource access failed: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail=f"Access failed: {str(e)}")
+        raise InternalServerError(message=f"Access failed: {str(e)}")

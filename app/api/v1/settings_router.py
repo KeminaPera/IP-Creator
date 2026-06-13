@@ -3,7 +3,7 @@ System Settings Router
 
 API endpoints for managing system-wide configuration settings.
 """
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends
 from sqlalchemy import select, distinct
 from sqlalchemy.ext.asyncio import AsyncSession
 from typing import Dict, Any
@@ -14,6 +14,7 @@ from app.services.settings_service import settings_service
 from app.models.system_setting import SystemSetting
 from app.utils.response import success_response
 from app.utils.logger import logger
+from app.core.exceptions import NotFoundException, BadRequestException, InternalServerError, AppException
 
 router = APIRouter(prefix="/api/v1/settings", tags=["System Settings"])
 
@@ -34,7 +35,7 @@ async def get_all_settings(
         return success_response(data=settings)
     except Exception as e:
         logger.error(f"Failed to get all settings: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail=str(e))
+        raise InternalServerError(message="Failed to retrieve settings")
 
 
 @router.get("/{category}")
@@ -57,7 +58,7 @@ async def get_settings_by_category(
         return success_response(data=settings)
     except Exception as e:
         logger.error(f"Failed to get settings for category {category}: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail=str(e))
+        raise InternalServerError(message=f"Failed to retrieve settings for category: {category}")
 
 
 @router.get("/{category}/{key}")
@@ -81,17 +82,14 @@ async def get_setting_detail(
         setting = await settings_service.get_setting_detail(db, category, key)
         
         if not setting:
-            raise HTTPException(
-                status_code=404,
-                detail=f"Setting not found: {category}.{key}"
-            )
+            raise NotFoundException(resource="Setting", identifier=f"{category}.{key}")
         
         return success_response(data=setting)
-    except HTTPException:
+    except AppException:
         raise
     except Exception as e:
         logger.error(f"Failed to get setting detail {category}.{key}: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail=str(e))
+        raise InternalServerError(message="Failed to retrieve setting")
 
 
 @router.put("/{category}/{key}")
@@ -117,10 +115,7 @@ async def update_setting(
         value = request_data.get('value')
         
         if value is None:
-            raise HTTPException(
-                status_code=400,
-                detail="Value is required in request body"
-            )
+            raise BadRequestException("Value is required in request body")
         
         await settings_service.update_setting(
             db,
@@ -135,12 +130,12 @@ async def update_setting(
             data={"category": category, "key": key, "value": value}
         )
     except ValueError as e:
-        raise HTTPException(status_code=400, detail=str(e))
-    except HTTPException:
+        raise BadRequestException(str(e))
+    except AppException:
         raise
     except Exception as e:
         logger.error(f"Failed to update setting {category}.{key}: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail=str(e))
+        raise InternalServerError(message="Failed to update setting")
 
 
 @router.post("/{category}/reset")
@@ -171,7 +166,7 @@ async def reset_category_settings(
         )
     except Exception as e:
         logger.error(f"Failed to reset settings for category {category}: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail=str(e))
+        raise InternalServerError(message=f"Failed to reset settings for category: {category}")
 
 
 @router.get("/categories")
@@ -196,4 +191,4 @@ async def list_categories(
         return success_response(data=categories)
     except Exception as e:
         logger.error(f"Failed to list categories: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail=str(e))
+        raise InternalServerError(message="Failed to list setting categories")

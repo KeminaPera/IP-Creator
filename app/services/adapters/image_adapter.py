@@ -13,7 +13,7 @@ from app.services.adapters.protocol import GenerationRequest, GenerationResponse
 from app.services.cloud_gen_service import cloud_gen_service
 from app.services.diffusion_service import diffusion_service
 from app.services.storage_service import storage_service
-from app.config.database import async_session_factory
+from app.config.database import get_db_session_standalone
 from app.models.llm_model import LLMConfig
 from app.security.crypto import encryption_service
 from sqlalchemy import select
@@ -222,7 +222,7 @@ class ImageGenerationAdapter(BaseGenerationAdapter):
 
     async def _get_channel_config(self, channel_id: int) -> Optional[LLMConfig]:
         """Look up channel config from database."""
-        async with async_session_factory() as db:
+        async with get_db_session_standalone() as db:
             result = await db.execute(
                 select(LLMConfig).where(LLMConfig.id == channel_id)
             )

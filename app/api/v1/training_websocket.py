@@ -5,15 +5,11 @@ Provides WebSocket endpoints for clients to receive real-time training logs.
 """
 
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
-from typing import Dict
 
 from app.services.training_logger import training_logger
 from app.websocket.instances import ws_manager
 
 router = APIRouter()
-
-# Track active connections
-active_connections: Dict[int, list] = {}
 
 
 @router.websocket("/ws/training/{lora_id}")

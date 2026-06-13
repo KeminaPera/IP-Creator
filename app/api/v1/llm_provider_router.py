@@ -22,7 +22,7 @@ from app.core.exceptions import (
     NotFoundException,
     BadRequestException,
     ConflictException,
-    AppException
+    InternalServerError
 )
 from app.utils.logger import logger
 from app.utils.response import success_response, created_response, updated_response, deleted_response, message_response
@@ -126,7 +126,7 @@ async def list_providers(
     
     except Exception as e:
         logger.error(f"Error listing providers: {e}", exc_info=True)
-        raise AppException(status_code=500, error="ServerError", message=f"Failed to list providers: {str(e)}")
+        raise InternalServerError(message=f"Failed to list providers: {str(e)}")
 
 
 @router.get("/all")
@@ -160,7 +160,7 @@ async def list_all_providers(
     
     except Exception as e:
         logger.error(f"Error listing all providers: {e}", exc_info=True)
-        raise AppException(status_code=500, error="ServerError", message=f"Failed to list providers: {str(e)}")
+        raise InternalServerError(message=f"Failed to list providers: {str(e)}")
 
 
 @router.post("/", status_code=201)
@@ -208,7 +208,7 @@ async def create_provider(
     except Exception as e:
         await db.rollback()
         logger.error(f"Error creating provider: {e}", exc_info=True)
-        raise AppException(status_code=500, error="ServerError", message=f"Failed to create provider: {str(e)}")
+        raise InternalServerError(message=f"Failed to create provider: {str(e)}")
 
 
 @router.put("/{provider_id}")
@@ -250,7 +250,7 @@ async def update_provider(
     except Exception as e:
         await db.rollback()
         logger.error(f"Error updating provider: {e}", exc_info=True)
-        raise AppException(status_code=500, error="ServerError", message=f"Failed to update provider: {str(e)}")
+        raise InternalServerError(message=f"Failed to update provider: {str(e)}")
 
 
 @router.delete("/{provider_id}", status_code=204)
@@ -279,7 +279,7 @@ async def delete_provider(
     except Exception as e:
         await db.rollback()
         logger.error(f"Error deleting provider: {e}", exc_info=True)
-        raise AppException(status_code=500, error="ServerError", message=f"Failed to delete provider: {str(e)}")
+        raise InternalServerError(message=f"Failed to delete provider: {str(e)}")
 
 
 # ========== Model Endpoints ==========
@@ -347,7 +347,7 @@ async def list_all_models(
     
     except Exception as e:
         logger.error(f"Error listing models: {e}", exc_info=True)
-        raise AppException(status_code=500, error="ServerError", message=f"Failed to list models: {str(e)}")
+        raise InternalServerError(message=f"Failed to list models: {str(e)}")
 
 
 @router.post("/models", status_code=201)
@@ -394,7 +394,7 @@ async def create_model(
     except Exception as e:
         await db.rollback()
         logger.error(f"Error creating model: {e}", exc_info=True)
-        raise AppException(status_code=500, error="ServerError", message=f"Failed to create model: {str(e)}")
+        raise InternalServerError(message=f"Failed to create model: {str(e)}")
 
 
 @router.put("/models/{model_id}")
@@ -432,7 +432,7 @@ async def update_model(
     except Exception as e:
         await db.rollback()
         logger.error(f"Error updating model: {e}", exc_info=True)
-        raise AppException(status_code=500, error="ServerError", message=f"Failed to update model: {str(e)}")
+        raise InternalServerError(message=f"Failed to update model: {str(e)}")
 
 
 @router.delete("/models/{model_id}", status_code=204)
@@ -461,7 +461,7 @@ async def delete_model(
     except Exception as e:
         await db.rollback()
         logger.error(f"Error deleting model: {e}", exc_info=True)
-        raise AppException(status_code=500, error="ServerError", message=f"Failed to delete model: {str(e)}")
+        raise InternalServerError(message=f"Failed to delete model: {str(e)}")
 
 
 # ========== Provider Model Sync Endpoints ==========
@@ -501,8 +501,4 @@ async def sync_provider_models(
         raise BadRequestException(message=str(e))
     except Exception as e:
         logger.error(f"Error occurred: {e}", exc_info=True)
-        raise AppException(
-            status_code=500,
-            error="ModelSyncError",
-            message=f"Failed to sync models for {provider_code}"
-        )
+        raise InternalServerError(message=f"Failed to sync models for {provider_code}")

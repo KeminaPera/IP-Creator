@@ -16,7 +16,6 @@ from sqlalchemy import select, func, and_
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config.settings import settings
-from app.config.database import async_session_factory
 from app.models.training_dataset import TrainingDataset
 from app.models.dataset_image import DatasetImage
 from app.models.ip_asset import IPAsset
@@ -119,8 +118,8 @@ class DatasetManager:
         
         if not ip_asset:
             raise NotFoundException(
-                message=f"IP asset {dataset_data.ip_asset_id} not found",
-                details={"ip_asset_id": dataset_data.ip_asset_id}
+                resource="IP asset",
+                identifier=str(dataset_data.ip_asset_id)
             )
         
         # Create dataset directory
@@ -171,8 +170,8 @@ class DatasetManager:
         
         if not dataset:
             raise NotFoundException(
-                message=f"Training dataset {dataset_id} not found",
-                details={"dataset_id": dataset_id}
+                resource="Training dataset",
+                identifier=str(dataset_id)
             )
         
         return dataset

@@ -179,6 +179,13 @@ async def switch_llm(
     )
 
 
+@router.get("/health/all")
+async def check_all_llms_health():
+    """Check health status of all registered LLM models."""
+    results = await llm_manager.health_check_all_models()
+    return success_response(data=results)
+
+
 @router.get("/health/{model_id}")
 async def check_llm_health(
     model_id: int,
@@ -195,13 +202,6 @@ async def check_llm_health(
             "error_message": health.get("error"),
         }
     )
-
-
-@router.get("/health/all")
-async def check_all_llms_health():
-    """Check health status of all registered LLM models."""
-    results = await llm_manager.health_check_all_models()
-    return success_response(data=results)
 
 
 @router.get("/channels/by-capability")

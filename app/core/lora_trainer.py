@@ -14,7 +14,7 @@ from datetime import datetime
 from app.models.lora_model import LoRAModel
 from app.config.settings import settings
 from app.utils.logger import logger
-from app.config.database import async_session_factory
+from app.config.database import get_db_session_standalone
 from sqlalchemy import select
 from app.services.training_logger import training_logger
 from app.services.kohya_detector import KohyaDetector
@@ -68,7 +68,7 @@ class LoRATrainer:
         Returns:
             Created LoRA model record
         """
-        async with async_session_factory() as session:
+        async with get_db_session_standalone() as session:
             # Generate output file path
             output_path = self.lora_path / f"{name}.safetensors"
             
@@ -102,7 +102,7 @@ class LoRATrainer:
         Returns:
             True if training completed successfully
         """
-        async with async_session_factory() as session:
+        async with get_db_session_standalone() as session:
             lora_model = await session.get(LoRAModel, lora_id)
             if not lora_model:
                 logger.error(f"LoRA model {lora_id} not found")
@@ -472,7 +472,7 @@ class LoRATrainer:
                 try:
                     from app.services.quality_assessor import QualityAssessor
                     
-                    async with async_session_factory() as assess_db:
+                    async with get_db_session_standalone() as assess_db:
                         # Refresh model in new session
                         assess_model = await assess_db.get(LoRAModel, lora_model.id)
                         if assess_model:
@@ -556,7 +556,7 @@ class LoRATrainer:
         Returns:
             True if cancelled successfully
         """
-        async with async_session_factory() as session:
+        async with get_db_session_standalone() as session:
             lora_model = await session.get(LoRAModel, lora_id)
             if not lora_model:
                 return False
@@ -595,7 +595,7 @@ class LoRATrainer:
         Returns:
             LoRA model or None
         """
-        async with async_session_factory() as session:
+        async with get_db_session_standalone() as session:
             return await session.get(LoRAModel, lora_id)
     
     async def list_lora_models(
@@ -615,7 +615,7 @@ class LoRATrainer:
         Returns:
             Tuple of (models list, total count)
         """
-        async with async_session_factory() as session:
+        async with get_db_session_standalone() as session:
             query = select(LoRAModel)
             
             if status:
@@ -642,7 +642,7 @@ class LoRATrainer:
         Returns:
             Validation results
         """
-        async with async_session_factory() as session:
+        async with get_db_session_standalone() as session:
             lora_model = await session.get(LoRAModel, lora_id)
             if not lora_model:
                 return {"valid": False, "error": "Model not found"}

@@ -12,7 +12,7 @@ import shutil
 import json
 from app.models.training_dataset import TrainingDataset
 from app.models.dataset_image import DatasetImage
-from app.config.database import async_session_factory
+from app.config.database import get_db_session_standalone
 from sqlalchemy import select
 from app.utils.logger import logger
 from app.config.settings import settings
@@ -47,7 +47,7 @@ class DatasetConverter:
         """
         logger.info(f"Converting dataset {dataset_id} to Kohya format")
         
-        async with async_session_factory() as session:
+        async with get_db_session_standalone() as session:
             # 1. Load dataset
             dataset = await session.get(TrainingDataset, dataset_id)
             if not dataset:

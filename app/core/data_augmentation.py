@@ -8,7 +8,6 @@ from typing import List, Dict, Any, Optional, Tuple
 from pathlib import Path
 import numpy as np
 import cv2
-from datetime import datetime
 
 from app.utils.logger import logger
 

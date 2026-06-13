@@ -42,6 +42,10 @@ class ImageSaveNode(BaseNode):
                     "default": "",
                     "label": "Output Directory (empty = data/videos/images)",
                 }),
+                "ip_asset_id": ("INT", {
+                    "default": 0,
+                    "label": "IP Asset ID (auto-sets output_dir to ip_N/)",
+                }),
             },
         }
 
@@ -49,10 +53,13 @@ class ImageSaveNode(BaseNode):
     def RETURN_TYPES(cls):
         return {"path": PortType.STRING, "image_bytes": PortType.ANY}
 
-    def save(self, image: Image.Image, format: str, output_dir: str = ""):
+    def save(self, image: Image.Image, format: str, output_dir: str = "", ip_asset_id: int = 0):
         if not output_dir:
             project_root = Path(__file__).resolve().parent.parent.parent
-            output_dir = str(project_root / "data" / "videos" / "images")
+            if ip_asset_id and ip_asset_id > 0:
+                output_dir = str(project_root / "data" / "videos" / "images" / f"ip_{ip_asset_id}")
+            else:
+                output_dir = str(project_root / "data" / "videos" / "images")
 
         out_path = Path(output_dir)
         out_path.mkdir(parents=True, exist_ok=True)

@@ -28,9 +28,10 @@ INSERT OR IGNORE INTO llm_models (provider_id, code, name, version, capabilities
 
 -- Zhipu AI Models
 INSERT OR IGNORE INTO llm_models (provider_id, code, name, version, capabilities, max_tokens, max_output_tokens, supports_streaming, supports_function_calling, supports_vision, input_price_per_million, output_price_per_million, speed_rating, quality_rating, is_active, is_recommended, sort_order, description) VALUES
-((SELECT id FROM llm_providers WHERE code='zhipu'), 'glm-4', 'GLM-4', 'latest', '["text_generation", "vision", "chat"]', 128000, 4096, 1, 1, 1, 50.0, 50.0, 4, 5, 1, 1, 1, '智谱最新旗舰模型，支持多模态'),
-((SELECT id FROM llm_providers WHERE code='zhipu'), 'glm-4-plus', 'GLM-4 Plus', 'latest', '["text_generation", "chat"]', 128000, 4096, 1, 1, 0, 50.0, 50.0, 4, 4, 1, 1, 2, '增强版对话模型'),
-((SELECT id FROM llm_providers WHERE code='zhipu'), 'glm-4-flash', 'GLM-4 Flash', 'latest', '["text_generation", "chat"]', 128000, 4096, 1, 0, 0, 0.0, 0.0, 5, 3, 1, 1, 3, '免费高速模型');
+((SELECT id FROM llm_providers WHERE code='zhipu'), 'glm-4.7', 'GLM-4.7', 'latest', '["text_generation", "chat", "function_calling"]', 200000, 128000, 1, 1, 0, 2.0, 8.0, 4, 5, 1, 1, 1, '智谱高智能模型，面向Agentic Coding场景强化编码能力'),
+((SELECT id FROM llm_providers WHERE code='zhipu'), 'glm-4', 'GLM-4', 'latest', '["text_generation", "vision", "chat"]', 128000, 4096, 1, 1, 1, 50.0, 50.0, 4, 5, 1, 1, 2, '智谱旗舰模型，支持多模态'),
+((SELECT id FROM llm_providers WHERE code='zhipu'), 'glm-4-plus', 'GLM-4 Plus', 'latest', '["text_generation", "chat"]', 128000, 4096, 1, 1, 0, 50.0, 50.0, 4, 4, 1, 1, 3, '增强版对话模型'),
+((SELECT id FROM llm_providers WHERE code='zhipu'), 'glm-4-flash', 'GLM-4 Flash', 'latest', '["text_generation", "chat"]', 128000, 4096, 1, 0, 0, 0.0, 0.0, 5, 3, 1, 1, 4, '免费高速模型');
 
 -- Qwen Models
 INSERT OR IGNORE INTO llm_models (provider_id, code, name, version, capabilities, max_tokens, max_output_tokens, supports_streaming, supports_function_calling, supports_vision, input_price_per_million, output_price_per_million, speed_rating, quality_rating, is_active, is_recommended, sort_order, description) VALUES
@@ -55,6 +56,6 @@ INSERT OR IGNORE INTO llm_models (provider_id, code, name, version, capabilities
 -- Data Summary
 -- =============================================
 -- Providers: 5 (OpenAI, Zhipu AI, Qwen, Ollama, DeepSeek)
--- Models: 11 (across all providers)
+-- Models: 12 (across all providers)
 -- Admin User: Created via init_admin.py script
 -- =============================================

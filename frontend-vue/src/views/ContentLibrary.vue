@@ -184,7 +184,7 @@
       <!-- Content Grid -->
       <div v-loading="loading" style="min-height: 400px;">
         <el-empty v-if="contents.length === 0 && !loading" :description="$t('content.no_contents')">
-          <el-button type="primary" @click="$router.push('/generate')">{{ $t('content.go_to_generate') }}</el-button>
+          <el-button type="primary" @click="$router.push('/workflow')">{{ $t('content.go_to_generate') }}</el-button>
         </el-empty>
 
         <!-- Card View -->

@@ -4,6 +4,7 @@ Database configuration and session management.
 Provides SQLAlchemy engine setup and async session factory
 for database operations throughout the application.
 """
+from contextlib import asynccontextmanager, contextmanager
 from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession, async_sessionmaker
 from sqlalchemy import create_engine
 from sqlalchemy.orm import DeclarativeBase, Session, sessionmaker
@@ -65,6 +66,27 @@ def get_sync_session() -> Session:
     return sync_session_factory()
 
 
+@contextmanager
+def get_sync_session_safe():
+    """
+    Sync session context manager with automatic commit/rollback (for Celery tasks).
+    
+    Usage:
+        with get_sync_session_safe() as session:
+            session.execute(...)
+            # auto commit on success, rollback on exception
+    """
+    session = sync_session_factory()
+    try:
+        yield session
+        session.commit()
+    except Exception:
+        session.rollback()
+        raise
+    finally:
+        session.close()
+
+
 # ============================================================
 # Base and Helpers
 # ============================================================
@@ -91,6 +113,28 @@ async def get_db_session() -> AsyncSession:
             raise
         finally:
             await session.close()
+
+
+@asynccontextmanager
+async def get_db_session_standalone():
+    """
+    Async session context manager with automatic commit/rollback.
+    
+    Use this for async code OUTSIDE FastAPI request context
+    (e.g., service classes, background tasks, quality assessor).
+    
+    Usage:
+        async with get_db_session_standalone() as session:
+            result = await session.execute(select(...))
+            # auto commit on success, rollback on exception
+    """
+    async with async_session_factory() as session:
+        try:
+            yield session
+            await session.commit()
+        except Exception:
+            await session.rollback()
+            raise
 
 
 async def init_db():

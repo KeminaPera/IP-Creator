@@ -35,8 +35,8 @@ class MultiViewBase(BaseModel):
 
     @validator('source')
     def validate_source(cls, v):
-        if v not in ['generated', 'uploaded']:
-            raise ValueError('source must be "generated" or "uploaded"')
+        if v not in ['generated', 'uploaded', 'workflow']:
+            raise ValueError('source must be "generated", "uploaded", or "workflow"')
         return v
 
 
@@ -109,8 +109,8 @@ class FeatureImageBase(BaseModel):
 
     @validator('source')
     def validate_source(cls, v):
-        if v not in ['generated', 'uploaded']:
-            raise ValueError('source must be "generated" or "uploaded"')
+        if v not in ['generated', 'uploaded', 'workflow']:
+            raise ValueError('source must be "generated", "uploaded", or "workflow"')
         return v
 
 

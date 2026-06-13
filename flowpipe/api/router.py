@@ -14,6 +14,7 @@ Provides REST API endpoints for workflow management and execution:
   POST /api/v1/workflow/execute        - Execute a workflow (async via Celery)
 """
 import json
+from datetime import datetime
 from typing import Optional
 
 from fastapi import APIRouter, Depends
@@ -116,6 +117,15 @@ async def get_default_workflow(
     """Get the built-in default three-view generation workflow."""
     from flowpipe.nodes import DEFAULT_THREE_VIEW_WORKFLOW
     return success_response(data=DEFAULT_THREE_VIEW_WORKFLOW)
+
+
+@router.get("/templates")
+async def list_workflow_templates(
+    current_user: dict = Depends(get_current_user),
+):
+    """List all built-in workflow templates."""
+    from flowpipe.nodes import BUILTIN_WORKFLOW_TEMPLATES
+    return success_response(data=BUILTIN_WORKFLOW_TEMPLATES)
 
 
 @router.post("")
@@ -277,12 +287,39 @@ async def execute_workflow(
     if errors:
         return success_response(data={"valid": False, "errors": errors})
 
+    # Inject business context into runtime_inputs
+    runtime_inputs = dict(request.runtime_inputs or {})
+    if request.ip_asset_id is not None:
+        runtime_inputs["ip_asset_id"] = request.ip_asset_id
+    if request.view_type is not None:
+        runtime_inputs["view_type"] = request.view_type
+
     # Submit to Celery
     from celery_worker import execute_workflow_task
     task = execute_workflow_task.delay(
         workflow_json=workflow_json,
-        runtime_inputs=request.runtime_inputs,
+        runtime_inputs=runtime_inputs,
     )
+
+    # Create TaskRecord so the task is visible in Task Monitor
+    try:
+        from app.models.task import TaskRecord
+        task_record = TaskRecord(
+            task_id=task.id,
+            task_type="workflow_execution",
+            ip_asset_id=request.ip_asset_id,
+            status="pending",
+            parameters={
+                "workflow_name": workflow.name,
+                "runtime_inputs": {k: str(v)[:200] for k, v in runtime_inputs.items()},
+            },
+            created_by=current_user.get("id", 1),
+            created_at=datetime.now(),
+        )
+        db.add(task_record)
+        await db.commit()
+    except Exception as e:
+        logger.warning(f"Failed to create TaskRecord for workflow task: {e}")
 
     logger.info(f"Workflow submitted: task_id={task.id}, workflow='{workflow.name}'")
 

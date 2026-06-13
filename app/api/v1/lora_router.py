@@ -17,7 +17,7 @@ from app.api.deps import get_current_user
 from app.core.exceptions import (
     NotFoundException,
     BadRequestException,
-    AppException
+    InternalServerError
 )
 from app.utils.response import success_response, list_response, created_response, updated_response, deleted_response, message_response
 from app.core.lora_trainer import lora_trainer
@@ -80,7 +80,7 @@ async def create_lora_model(
             dataset = dataset_result.scalar_one_or_none()
             
             if not dataset:
-                raise NotFoundException(f"Dataset with ID {dataset_id} not found")
+                raise NotFoundException(resource="Dataset", identifier=str(dataset_id))
             
             # Verify dataset is ready for training
             if dataset.status != "ready":
@@ -106,7 +106,7 @@ async def create_lora_model(
             ip_asset = ip_result.scalar_one_or_none()
             
             if not ip_asset:
-                raise NotFoundException(f"IP asset with ID {ip_asset_id} not found")
+                raise NotFoundException(resource="IP asset", identifier=str(ip_asset_id))
         
         # Generate default file path
         output_path = Path(settings.LORA_MODELS_PATH) / f"{name}.safetensors"
@@ -152,11 +152,7 @@ async def create_lora_model(
     except Exception as e:
         await db.rollback()
         logger.error(f"Create LoRA error: {str(e)}", exc_info=True)
-        raise AppException(
-            status_code=500,
-            error="DatabaseError",
-            message="Failed to create LoRA model"
-        )
+        raise InternalServerError(message="Failed to create LoRA model")
 
 
 @router.put("/update/{lora_id}")
@@ -175,7 +171,7 @@ async def update_lora_model(
         lora_model = result.scalar_one_or_none()
         
         if not lora_model:
-            raise NotFoundException(f"LoRA model with ID {lora_id} not found")
+            raise NotFoundException(resource="LoRA model", identifier=str(lora_id))
         
         # Update fields
         if "name" in lora_data:
@@ -204,11 +200,7 @@ async def update_lora_model(
     except Exception as e:
         await db.rollback()
         logger.error(f"Error occurred: {e}", exc_info=True)
-        raise AppException(
-            status_code=500,
-            error="DatabaseError",
-            message="Failed to update LoRA model"
-        )
+        raise InternalServerError(message="Failed to update LoRA model")
 
 
 @router.get("/list")
@@ -344,7 +336,7 @@ async def list_lora_models(
         
     except Exception as e:
         logger.error(f"Error listing LoRA models: {e}", exc_info=True)
-        raise AppException(status_code=500, error="ServerError", message=f"Failed to list LoRA models: {str(e)}")
+        raise InternalServerError(message=f"Failed to list LoRA models: {str(e)}")
 
 
 @router.get("/presets")
@@ -363,7 +355,7 @@ async def get_training_presets(
         )
     except Exception as e:
         logger.error(f"Error getting training presets: {e}", exc_info=True)
-        raise AppException(status_code=500, error="ServerError", message="Failed to get training presets")
+        raise InternalServerError(message="Failed to get training presets")
 
 
 @router.post("/validate-config")
@@ -404,7 +396,7 @@ async def validate_training_config(
         )
     except Exception as e:
         logger.error(f"Error validating training config: {e}", exc_info=True)
-        raise AppException(status_code=500, error="ServerError", message="Failed to validate configuration")
+        raise InternalServerError(message="Failed to validate configuration")
 
 
 @router.get("/{lora_id}")
@@ -423,7 +415,7 @@ async def get_lora_model(
         model = result.scalar_one_or_none()
         
         if not model:
-            raise NotFoundException(message=f"LoRA model with ID {lora_id} not found")
+            raise NotFoundException(resource="LoRA model", identifier=str(lora_id))
         
         # Get associated IP
         ip_result = await db.execute(
@@ -455,7 +447,7 @@ async def get_lora_model(
         
     except Exception as e:
         logger.error(f"Error getting LoRA model: {e}", exc_info=True)
-        raise AppException(status_code=500, error="ServerError", message=f"Failed to get LoRA model: {str(e)}")
+        raise InternalServerError(message=f"Failed to get LoRA model: {str(e)}")
 
 
 @router.post("/{lora_id}/cancel")
@@ -477,7 +469,7 @@ async def cancel_training(
             
     except Exception as e:
         logger.error(f"Error cancelling training: {e}", exc_info=True)
-        raise AppException(status_code=500, error="ServerError", message="Failed to cancel training")
+        raise InternalServerError(message="Failed to cancel training")
 
 
 @router.delete("/{lora_id}")
@@ -496,7 +488,7 @@ async def delete_lora_model(
         model = result.scalar_one_or_none()
         
         if not model:
-            raise NotFoundException(message=f"LoRA model with ID {lora_id} not found")
+            raise NotFoundException(resource="LoRA model", identifier=str(lora_id))
         
         await db.delete(model)
         await db.commit()
@@ -509,7 +501,7 @@ async def delete_lora_model(
         
     except Exception as e:
         logger.error(f"Error deleting LoRA model: {e}", exc_info=True)
-        raise AppException(status_code=500, error="ServerError", message=f"Failed to delete LoRA model: {str(e)}")
+        raise InternalServerError(message=f"Failed to delete LoRA model: {str(e)}")
 
 
 @router.get("/{lora_id}/validate")
@@ -527,7 +519,7 @@ async def validate_lora_model(
         
     except Exception as e:
         logger.error(f"Error validating LoRA model: {e}", exc_info=True)
-        raise AppException(status_code=500, error="ServerError", message=f"Failed to validate LoRA model: {str(e)}")
+        raise InternalServerError(message=f"Failed to validate LoRA model: {str(e)}")
 
 
 @router.post("/{lora_id}/train")
@@ -598,7 +590,7 @@ async def start_training(
         # Load and validate dataset
         dataset = await db.get(TrainingDataset, lora_model.dataset_id)
         if not dataset:
-            raise NotFoundException(f"Dataset with ID {lora_model.dataset_id} not found")
+            raise NotFoundException(resource="Dataset", identifier=str(lora_model.dataset_id))
         
         # Verify dataset is ready
         if dataset.status != "ready":
@@ -691,7 +683,7 @@ async def start_training(
         raise
     except Exception as e:
         logger.error(f"Error starting training: {e}", exc_info=True)
-        raise AppException(status_code=500, error="ServerError", message="Failed to start training")
+        raise InternalServerError(message="Failed to start training")
 
 
 @router.get("/{lora_id}/logs")
@@ -713,7 +705,7 @@ async def get_training_logs(
         )
     except Exception as e:
         logger.error(f"Error getting training logs: {e}", exc_info=True)
-        raise AppException(status_code=500, error="ServerError", message="Failed to get training logs")
+        raise InternalServerError(message="Failed to get training logs")
 
 
 @router.get("/{lora_id}/metrics")
@@ -733,7 +725,7 @@ async def get_training_metrics(
         )
     except Exception as e:
         logger.error(f"Error getting training metrics: {e}", exc_info=True)
-        raise AppException(status_code=500, error="ServerError", message="Failed to get training metrics")
+        raise InternalServerError(message="Failed to get training metrics")
 
 
 # ============================================
@@ -763,7 +755,7 @@ async def check_kohya_environment(
         )
     except Exception as e:
         logger.error(f"Error checking Kohya environment: {e}", exc_info=True)
-        raise AppException(status_code=500, error="ServerError", message="Failed to check environment")
+        raise InternalServerError(message="Failed to check environment")
 
 
 # ============================================
@@ -817,7 +809,7 @@ async def assess_model_quality(
         raise
     except Exception as e:
         logger.error(f"Error assessing quality: {e}", exc_info=True)
-        raise AppException(status_code=500, error="ServerError", message="Failed to assess quality")
+        raise InternalServerError(message="Failed to assess quality")
 
 
 @router.get("/{lora_id}/quality-report")
@@ -873,4 +865,4 @@ async def get_quality_report(
     except Exception as e:
         logger.error(f"Error getting quality report: {e}", exc_info=True)
         logger.error(f"Traceback: {traceback.format_exc()}")
-        raise AppException(status_code=500, error="ServerError", message=f"Failed to get quality report: {str(e)}")
+        raise InternalServerError(message=f"Failed to get quality report: {str(e)}")

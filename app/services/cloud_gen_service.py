@@ -83,12 +83,12 @@ class CloudGenService:
             response_time_ms: Response time in milliseconds
         """
         try:
-            from app.config.database import async_session_factory
+            from app.config.database import get_db_session_standalone
             from app.models.llm_model import LLMConfig
             from sqlalchemy import select
             from datetime import datetime
             
-            async with async_session_factory() as session:
+            async with get_db_session_standalone() as session:
                 # Get current config
                 result = await session.execute(
                     select(LLMConfig).where(LLMConfig.id == channel_id)

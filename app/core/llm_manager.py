@@ -13,7 +13,7 @@ from app.models.llm_model import LLMConfig
 from app.security.crypto import encryption_service
 from app.config.settings import settings
 from app.utils.logger import logger
-from app.config.database import async_session_factory
+from app.config.database import get_db_session_standalone
 from sqlalchemy import select
 
 
@@ -230,7 +230,7 @@ class LLMManager:
         
         Called during application startup to populate the registry.
         """
-        async with async_session_factory() as session:
+        async with get_db_session_standalone() as session:
             result = await session.execute(
                 select(LLMConfig).where(LLMConfig.is_active == True)
             )
@@ -429,7 +429,7 @@ class LLMManager:
             response_time_ms: Response time in milliseconds
         """
         try:
-            async with async_session_factory() as session:
+            async with get_db_session_standalone() as session:
                 # Get current config
                 result = await session.execute(
                     select(LLMConfig).where(LLMConfig.id == model_id)

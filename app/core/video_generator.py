@@ -197,14 +197,14 @@ Return the response in JSON format with the following structure:
             # If channel_id is provided, use API-based generation
             if channel_id:
                 from app.services.cloud_gen_service import CloudGenService
-                from app.config.database import async_session_factory
+                from app.config.database import get_db_session_standalone
                 from app.models.llm_model import LLMConfig
                 from sqlalchemy import select
                             
                 logger.info(f"Using API-based image generation with channel_id={channel_id}")
                             
                 # Get channel info from database
-                async with async_session_factory() as db:
+                async with get_db_session_standalone() as db:
                     result_db = await db.execute(
                         select(LLMConfig).where(LLMConfig.id == channel_id)
                     )

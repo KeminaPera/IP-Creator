@@ -22,7 +22,7 @@ import redis
 from sqlalchemy import update
 
 from app.config.settings import settings
-from app.config.database import async_session_factory
+from app.config.database import get_db_session_standalone
 from app.models.lora_model import LoRAModel
 from app.services.training_logger import training_logger
 
@@ -115,7 +115,7 @@ class ProgressReporter:
         loss: Optional[float]
     ):
         """更新数据库进度"""
-        async with async_session_factory() as session:
+        async with get_db_session_standalone() as session:
             stmt = (
                 update(LoRAModel)
                 .where(LoRAModel.id == lora_id)

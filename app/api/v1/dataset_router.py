@@ -88,10 +88,7 @@ async def create_dataset(
         ip_asset = result.scalar_one_or_none()
         
         if not ip_asset:
-            raise NotFoundException(
-                message=f"IP asset {dataset_data.ip_asset_id} not found",
-                details={"ip_asset_id": dataset_data.ip_asset_id}
-            )
+            raise NotFoundException(resource="IP asset", identifier=str(dataset_data.ip_asset_id))
         
         # Create dataset
         dataset = TrainingDataset(

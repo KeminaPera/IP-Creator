@@ -14,6 +14,9 @@ from flowpipe.nodes.ip_adapter_embed import IPAdapterEmbedNode
 from flowpipe.nodes.lora_loader import LoRALoaderNode
 from flowpipe.nodes.diffusion_sampler import DiffusionSamplerNode
 from flowpipe.nodes.image_save import ImageSaveNode
+from flowpipe.nodes.llm_text import LLMTextNode
+from flowpipe.nodes.cloud_image import CloudImageNode
+from flowpipe.nodes.cloud_video import CloudVideoNode
 
 
 # Default three-view generation workflow definition
@@ -118,9 +121,98 @@ DEFAULT_THREE_VIEW_WORKFLOW = {
     ],
     "metadata": {
         "description": "Default three-view generation workflow using IP-Adapter FaceID-Plus with SD 1.5",
+        "template_key": "three_view",
+        "content_type": "image",
         "author": "flowpipe",
     },
 }
+
+STORY_GENERATION_WORKFLOW = {
+    "name": "Story Generation (LLM)",
+    "version": "1.0",
+    "nodes": [
+        {
+            "id": "llm_text",
+            "type": "LLMText",
+            "position": {"x": 200, "y": 200},
+            "parameters": {
+                "prompt": "",
+                "channel_id": 0,
+                "style": "healing",
+                "temperature": 0.8,
+                "max_tokens": 2048,
+            },
+        },
+    ],
+    "edges": [],
+    "metadata": {
+        "description": "Generate story/script using LLM models",
+        "template_key": "story",
+        "content_type": "story",
+        "author": "flowpipe",
+    },
+}
+
+CLOUD_IMAGE_WORKFLOW = {
+    "name": "Cloud Image Generation",
+    "version": "1.0",
+    "nodes": [
+        {
+            "id": "cloud_image",
+            "type": "CloudImage",
+            "position": {"x": 200, "y": 200},
+            "parameters": {
+                "prompt": "",
+                "channel_id": 0,
+                "width": 1024,
+                "height": 1024,
+                "negative_prompt": "",
+            },
+        },
+    ],
+    "edges": [],
+    "metadata": {
+        "description": "Generate images via cloud API (Zhipu/DALL-E/Dashscope)",
+        "template_key": "cloud_image",
+        "content_type": "image",
+        "author": "flowpipe",
+    },
+}
+
+CLOUD_VIDEO_WORKFLOW = {
+    "name": "Cloud Video Generation",
+    "version": "1.0",
+    "nodes": [
+        {
+            "id": "cloud_video",
+            "type": "CloudVideo",
+            "position": {"x": 200, "y": 200},
+            "parameters": {
+                "prompt": "",
+                "channel_id": 0,
+                "duration_seconds": 5,
+                "fps": 24,
+                "width": 512,
+                "height": 512,
+            },
+        },
+    ],
+    "edges": [],
+    "metadata": {
+        "description": "Generate videos via cloud API (Zhipu CogVideoX / Dashscope)",
+        "template_key": "cloud_video",
+        "content_type": "video",
+        "author": "flowpipe",
+    },
+}
+
+# All built-in workflow templates
+BUILTIN_WORKFLOW_TEMPLATES = [
+    DEFAULT_THREE_VIEW_WORKFLOW,
+    STORY_GENERATION_WORKFLOW,
+    CLOUD_IMAGE_WORKFLOW,
+    CLOUD_VIDEO_WORKFLOW,
+]
 
 __all__ = [
     "SDModelLoaderNode",
@@ -131,5 +223,12 @@ __all__ = [
     "LoRALoaderNode",
     "DiffusionSamplerNode",
     "ImageSaveNode",
+    "LLMTextNode",
+    "CloudImageNode",
+    "CloudVideoNode",
     "DEFAULT_THREE_VIEW_WORKFLOW",
+    "STORY_GENERATION_WORKFLOW",
+    "CLOUD_IMAGE_WORKFLOW",
+    "CLOUD_VIDEO_WORKFLOW",
+    "BUILTIN_WORKFLOW_TEMPLATES",
 ]

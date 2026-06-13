@@ -10,7 +10,7 @@ import json
 from app.utils.time_utils import get_timestamp_filename
 from app.models.lora_model import LoRAModel
 from app.models.quality_report import QualityReport
-from app.config.database import async_session_factory
+from app.config.database import get_db_session_standalone
 from app.utils.logger import logger
 from app.config.settings import settings
 from app.services.sd_image_generator import SDImageGenerator
@@ -393,10 +393,10 @@ class QualityAssessor:
             # Indicator 2: Epochs vs dataset size ratio
             if lora_model.training_steps and lora_model.dataset_id:
                 from app.models.training_dataset import TrainingDataset
-                from app.config.database import async_session_factory
+                from app.config.database import get_db_session_standalone
                 from sqlalchemy import select
                 
-                async with async_session_factory() as session:
+                async with get_db_session_standalone() as session:
                     dataset = await session.get(TrainingDataset, lora_model.dataset_id)
                     if dataset and dataset.image_count:
                         # Rule of thumb: 100-200 steps per image is reasonable
@@ -738,10 +738,10 @@ class QualityAssessor:
         """
         try:
             from app.models.ip_asset import IPAsset
-            from app.config.database import async_session_factory
+            from app.config.database import get_db_session_standalone
             from sqlalchemy import select
             
-            async with async_session_factory() as session:
+            async with get_db_session_standalone() as session:
                 # Get associated IP asset
                 if not lora_model.ip_asset_id:
                     return []
@@ -807,7 +807,7 @@ class QualityAssessor:
         Returns:
             Created QualityReport instance
         """
-        async with async_session_factory() as session:
+        async with get_db_session_standalone() as session:
             lora_model = await session.get(LoRAModel, lora_id)
             if not lora_model:
                 raise ValueError(f"LoRA model {lora_id} not found")
@@ -936,7 +936,7 @@ class QualityAssessor:
         """
         logger.info(f"Starting quality assessment for LoRA {lora_id}")
         
-        async with async_session_factory() as session:
+        async with get_db_session_standalone() as session:
             lora_model = await session.get(LoRAModel, lora_id)
             if not lora_model:
                 raise ValueError(f"LoRA model {lora_id} not found")
